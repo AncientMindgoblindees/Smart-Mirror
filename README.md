@@ -1,9 +1,11 @@
 ﻿# Smart-Mirror
 This README.md contains information about the SmartMirror project process, workflows, rules, and notes for Senior Design Group 12. 
 
-#### TODO 2/11 (FOR GROUP MEMBERS):
-- Finish biweekly report
-- Order our parts
+#### TODO 2/12 (FOR GROUP MEMBERS):
+- Biweekly meeting (2/12 @ 2:00)
+- Follow up with ECS about borrowing monitors
+- Buy all hardware components early to get a demo started ASAP
+- Start research on available SaaS technologies that might be useful in our project
 
 ## General Description
 ### Hardware Stack
@@ -96,6 +98,7 @@ At the top, under "Compare Changes", make sure that it is configured to base:mai
 At this point, if you properly merged your branch with the current version of the origin/main branch, the UI should tell you that your branch is ready to be merged. If not, try to merge again and resolve the merge conflicts.
 
 Now, other team members will be able to review the changed that you are adding to the main branch. Once your PR is reviewed and approved, it will be added into origin/main.
+
 
 
 
