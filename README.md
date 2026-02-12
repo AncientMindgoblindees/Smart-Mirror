@@ -7,13 +7,13 @@ This README.md contains information about the SmartMirror project process, workf
 
 ## General Description
 ### Hardware Stack
-Raspberry Pi 5
-Camera (details soon)
-Buttons/Sensors
-TV/Monitor
-Wood frame
+- Raspberry Pi 5
+- Camera (details soon)
+- Buttons/Sensors
+- TV/Monitor
+- Wood frame
 ### Software Stack
-Coming soon
+- Coming soon
 
 ## How to: Version Control with Git
 ### Cloning the repo in VSCode:
@@ -96,6 +96,7 @@ At the top, under "Compare Changes", make sure that it is configured to base:mai
 At this point, if you properly merged your branch with the current version of the origin/main branch, the UI should tell you that your branch is ready to be merged. If not, try to merge again and resolve the merge conflicts.
 
 Now, other team members will be able to review the changed that you are adding to the main branch. Once your PR is reviewed and approved, it will be added into origin/main.
+
 
 
 
