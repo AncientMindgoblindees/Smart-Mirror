@@ -38,6 +38,8 @@ async function loadInitialData() {
     const instance = mountWidget(config, container);
     if (instance) {
       widgetInstances.push({ config, instance });
+    } else if (container && typeof container.remove === "function") {
+      container.remove();
     }
   });
 

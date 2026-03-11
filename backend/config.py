@@ -12,7 +12,9 @@ def get_db_path() -> Path:
     """
     env_path = os.getenv("MIRROR_DB_PATH")
     if env_path:
-        return Path(env_path)
+        db_path = Path(env_path)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        return db_path
 
     # Fallback to ./data/mirror.db under repo root
     data_dir = BASE_DIR / "data"

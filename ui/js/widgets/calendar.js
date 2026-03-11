@@ -29,9 +29,10 @@ const calendarWidget = {
     if (!list) return;
 
     list.innerHTML = "";
+    const maxEvents = calendarWidget.settings?.()?.options?.maxEvents ?? 3;
     const events = (data && Array.isArray(data.events) ? data.events : []).slice(
       0,
-      3
+      maxEvents
     );
 
     if (!events.length) {

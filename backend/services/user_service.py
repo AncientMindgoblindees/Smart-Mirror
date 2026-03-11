@@ -17,7 +17,7 @@ def get_or_create_user_settings(db: Session) -> UserSettings:
 def update_user_settings(db: Session, updates: UserSettingsUpdate) -> UserSettings:
     settings = get_or_create_user_settings(db)
 
-    for field, value in updates.dict(exclude_unset=True).items():
+    for field, value in updates.model_dump(exclude_unset=True).items():
         setattr(settings, field, value)
 
     db.commit()
