@@ -61,10 +61,10 @@ def get_all_widgets(db: Session) -> List[WidgetConfig]:
     return widgets
 
 
-def upsert_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[WidgetConfig]:
+def replace_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[WidgetConfig]:
     """
-    Bulk upsert widget configurations from client payload.
-    Existing records are updated in-place; unknown ids create new rows.
+    Replace widget configurations from client payload.
+    Upserts incoming configs and deletes any rows not present in the list.
     """
     existing_by_id = {w.id: w for w in db.query(WidgetConfig).all()}
 
@@ -80,6 +80,11 @@ def upsert_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[Widge
             obj = WidgetConfig(**data)
             db.add(obj)
             db.flush()
+
+    # Delete rows not present in the incoming list (true PUT/replace semantics).
+    for obj in existing_by_id.values():
+        if obj.id not in seen_ids:
+            db.delete(obj)
 
     db.commit()
     return get_all_widgets(db)
