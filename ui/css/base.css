@@ -32,6 +32,15 @@ body {
   overflow: hidden;
 }
 
+body.display-dim {
+  filter: brightness(0.6);
+}
+
+body.display-sleep {
+  background-color: #000000;
+  color: var(--color-text-primary);
+}
+
 .metric-primary {
   font-size: var(--fs-primary);
   font-weight: 600;
