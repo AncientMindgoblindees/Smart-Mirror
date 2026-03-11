@@ -1,0 +1,34 @@
+.widget--clock .clock-time {
+  line-height: 1.05;
+}
+
+.widget--clock .clock-date {
+  margin-top: 16px;
+}
+
+.widget--weather .weather-main {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.widget--weather .weather-meta {
+  margin-top: 12px;
+}
+
+.widget--calendar .calendar-events {
+  list-style: none;
+  margin-top: 8px;
+}
+
+.widget--calendar .calendar-event {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.widget--calendar .calendar-event-title {
+  flex: 1;
+}
+
