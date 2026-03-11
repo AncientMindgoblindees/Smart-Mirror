@@ -20,10 +20,16 @@ export function mountWidget(config, container) {
 
   def.render(container, config);
 
+  const boundUpdate =
+    typeof def.update === "function" ? def.update.bind(container) : () => {};
+  const settingsFn =
+    typeof def.settings === "function" ? def.settings : () => ({});
+
   return {
     id: def.id,
-    update: def.update,
-    settings: def.settings,
+    container,
+    update: boundUpdate,
+    settings: settingsFn,
   };
 }
 

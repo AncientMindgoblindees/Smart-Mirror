@@ -31,7 +31,8 @@ async function loadInitialData() {
 
   applyUserSettings(settings);
 
-  const enabledWidgets = widgets.filter((w) => w.enabled);
+  const enabledWidgets =
+    widgets && widgets.length ? widgets.filter((w) => w.enabled) : [];
   enabledWidgets.forEach((config) => {
     const container = createWidgetContainer(config);
     const instance = mountWidget(config, container);
@@ -45,22 +46,19 @@ async function loadInitialData() {
 
 function startUpdateLoops() {
   widgetInstances.forEach(({ config, instance }) => {
-    const defaults = instance.settings();
+    const defaults = instance.settings ? instance.settings() : {};
     const options = defaults && defaults.options ? defaults.options : {};
     const intervalMs = options.refreshIntervalMs || 0;
 
     if (config.widget_id === "clock") {
-      const target = instance;
-      setInterval(() => {
-        target.update.call(
-          target.container || target,
-          undefined
-        );
-      }, intervalMs || 1000);
+      const tick = () => {
+        instance.update();
+      };
+      tick();
+      setInterval(tick, intervalMs || 1000);
     }
 
     if (config.widget_id === "weather") {
-      const target = instance;
       const tick = () => {
         const data = {
           temperatureC: 21,
@@ -69,10 +67,7 @@ function startUpdateLoops() {
           locationName: "Home",
           updatedAt: new Date().toISOString(),
         };
-        target.update.call(
-          target.container || target,
-          data
-        );
+        instance.update(data);
       };
       tick();
       const refresh = intervalMs || 15 * 60 * 1000;
@@ -80,7 +75,6 @@ function startUpdateLoops() {
     }
 
     if (config.widget_id === "calendar") {
-      const target = instance;
       const tick = () => {
         const now = new Date();
         const inThirty = new Date(now.getTime() + 30 * 60 * 1000);
@@ -93,10 +87,7 @@ function startUpdateLoops() {
             allDay: false,
           },
         ];
-        target.update.call(
-          target.container || target,
-          { events }
-        );
+        instance.update({ events });
       };
       tick();
       const refresh = intervalMs || 5 * 60 * 1000;

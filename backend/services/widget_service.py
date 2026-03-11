@@ -6,15 +6,59 @@ from backend.database.models import WidgetConfig
 from backend.schemas.widget import WidgetConfigUpdate
 
 
-def get_all_widgets(db: Session) -> List[WidgetConfig]:
+def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
     """
-    Return all widget configurations ordered for deterministic layout.
+    Insert a minimal default layout if no widgets exist yet.
+    This ensures the UI is not blank on first run.
     """
+    defaults = [
+        WidgetConfig(
+            widget_id="clock",
+            enabled=True,
+            position_row=1,
+            position_col=1,
+            size_rows=2,
+            size_cols=2,
+        ),
+        WidgetConfig(
+            widget_id="weather",
+            enabled=True,
+            position_row=1,
+            position_col=3,
+            size_rows=2,
+            size_cols=2,
+        ),
+        WidgetConfig(
+            widget_id="calendar",
+            enabled=True,
+            position_row=3,
+            position_col=1,
+            size_rows=2,
+            size_cols=3,
+        ),
+    ]
+    db.add_all(defaults)
+    db.commit()
     return (
         db.query(WidgetConfig)
         .order_by(WidgetConfig.position_row, WidgetConfig.position_col, WidgetConfig.id)
         .all()
     )
+
+
+def get_all_widgets(db: Session) -> List[WidgetConfig]:
+    """
+    Return all widget configurations ordered for deterministic layout.
+    Seed with a default layout if DB is empty.
+    """
+    widgets = (
+        db.query(WidgetConfig)
+        .order_by(WidgetConfig.position_row, WidgetConfig.position_col, WidgetConfig.id)
+        .all()
+    )
+    if not widgets:
+        widgets = _seed_default_widgets(db)
+    return widgets
 
 
 def upsert_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[WidgetConfig]:
