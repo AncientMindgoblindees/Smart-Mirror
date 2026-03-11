@@ -29,5 +29,5 @@ def put_widgets(
     payload: List[WidgetConfigUpdate],
     db: Session = Depends(get_db),
 ) -> List[WidgetConfigOut]:
-    return widget_service.upsert_widgets(db, payload)
+    return widget_service.replace_widgets(db, payload)
 

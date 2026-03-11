@@ -1,5 +1,6 @@
 import asyncio
 from collections import deque
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Deque, Optional
 
 from hardware.gpio.buttons import Buttons
@@ -63,5 +64,5 @@ def emit_dev_event(button_id: ButtonId, action: ButtonAction) -> None:
     Helper for local development on non-Pi machines:
     push a synthetic event into the same queue used by GPIO.
     """
-    _on_event(ButtonEvent(button_id=button_id, action=action, ts=None))  # type: ignore[arg-type]
+    _on_event(ButtonEvent(button_id=button_id, action=action, ts=datetime.now(timezone.utc)))
 
