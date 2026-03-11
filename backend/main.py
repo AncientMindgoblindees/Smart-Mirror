@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
 
 from backend.api import events, health, user, widgets
 from backend.database.session import init_db
@@ -27,8 +28,17 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api")
     app.include_router(events.router)
 
-    # Serve UI under /ui to avoid conflicts with WebSocket routes
-    app.mount("/ui", StaticFiles(directory="ui", html=True), name="ui")
+    # Serve UI under /ui and ignore non-HTTP (e.g. stray websocket) requests
+    static_ui = StaticFiles(directory="ui", html=True)
+
+    async def ui_app(scope, receive, send):  # type: ignore[func-returns-value]
+        if scope["type"] != "http":
+            resp = Response(status_code=404)
+            await resp(scope, receive, send)
+            return
+        await static_ui(scope, receive, send)
+
+    app.mount("/ui", ui_app, name="ui")
 
     @app.on_event("startup")
     async def _startup() -> None:  # type: ignore[func-returns-value]
