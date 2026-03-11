@@ -1,12 +1,11 @@
-﻿# Smart-Mirror
+# Smart-Mirror
 This README.md contains information about the SmartMirror project process, workflows, rules, and notes for Senior Design Group 12. 
 
 #### Next Biweekly TODO:
-- Follow up with ECS about borrowing monitors
 - Buy all hardware components early to get a demo started ASAP
-- Create a basic UI on the Pi that connects via microHDMI-HDMI cable
-- Connect the repo to the Pi
 - Start a rough draft build on the camera module
+- Research + planning for GPIO interaction and UI event handling
+- Build demo mirror for presentation
 
 ## General Description
 ### Hardware Stack
