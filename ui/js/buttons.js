@@ -5,8 +5,11 @@ const WS_PATH = (location.protocol === "https:" ? "wss://" : "ws://") +
 let socket = null;
 let handler = null;
 let reconnectTimeout = null;
+let stopped = false;
+let _keydownHandler = null;
 
 function connect() {
+  if (stopped) return;
   try {
     socket = new WebSocket(WS_PATH);
   } catch (e) {
@@ -36,7 +39,7 @@ function connect() {
 
   socket.onclose = () => {
     socket = null;
-    if (reconnectTimeout == null) {
+    if (!stopped && reconnectTimeout == null) {
       reconnectTimeout = setTimeout(() => {
         reconnectTimeout = null;
         connect();
@@ -50,13 +53,19 @@ function connect() {
 }
 
 export function startButtonListener(onEvent) {
+  stopped = false;
   handler = onEvent;
   if (!socket) {
     connect();
   }
 
+  // Remove any previously registered keydown handler before adding a new one.
+  if (_keydownHandler) {
+    window.removeEventListener("keydown", _keydownHandler);
+  }
+
   // Optional: keyboard shortcuts for local dev (no GPIO).
-  window.addEventListener("keydown", (e) => {
+  _keydownHandler = (e) => {
     if (!handler) return;
     if (e.key === "1") {
       handler({ button_id: "LAYOUT", action: "CLICK", effect: "cycle_layout" });
@@ -71,11 +80,21 @@ export function startButtonListener(onEvent) {
         effect: "toggle_sleep",
       });
     }
-  });
+  };
+  window.addEventListener("keydown", _keydownHandler);
 }
 
 export function stopButtonListener() {
+  stopped = true;
   handler = null;
+  if (reconnectTimeout != null) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
+  if (_keydownHandler) {
+    window.removeEventListener("keydown", _keydownHandler);
+    _keydownHandler = null;
+  }
   if (socket) {
     socket.close();
     socket = null;
