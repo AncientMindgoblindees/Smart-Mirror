@@ -27,7 +27,8 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api")
     app.include_router(events.router)
 
-    app.mount("/", StaticFiles(directory="ui", html=True), name="ui")
+    # Serve UI under /ui to avoid conflicts with WebSocket routes
+    app.mount("/ui", StaticFiles(directory="ui", html=True), name="ui")
 
     @app.on_event("startup")
     async def _startup() -> None:  # type: ignore[func-returns-value]
