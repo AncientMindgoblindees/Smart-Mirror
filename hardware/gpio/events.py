@@ -1,6 +1,7 @@
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from enum import Enum, auto
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Optional
 
 from hardware.gpio.config import ButtonId
 
@@ -16,12 +17,13 @@ class ButtonAction(str, Enum):
 class ButtonEvent:
     button_id: ButtonId
     action: ButtonAction
-    ts: datetime
+    ts: Optional[datetime] = field(default=None)
 
     def to_dict(self) -> dict:
+        ts_str = self.ts.isoformat() if self.ts is not None else None
         return {
             "button_id": self.button_id.value,
             "action": self.action.value,
-            "ts": self.ts.replace(tzinfo=timezone.utc).isoformat(),
+            "ts": ts_str,
         }
 

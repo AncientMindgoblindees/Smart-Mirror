@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-import time
+from datetime import datetime, timezone
 from typing import Callable, Dict, Optional
 
 from hardware.gpio.config import (
@@ -64,7 +64,7 @@ class Buttons:
             }
 
     def _now_ms(self) -> int:
-        return int(time.time() * 1000)
+        return int(datetime.now(timezone.utc).timestamp() * 1000)
 
     def process_edge(self, button_id: ButtonId, pressed: bool) -> None:
         """
@@ -110,14 +110,13 @@ class Buttons:
         evt = ButtonEvent(
             button_id=button_id,
             action=action,
-            ts=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            ts=datetime.now(timezone.utc),
         )
-        # Convert ts to datetime in a follow-up; for dev focus on flow.
-        self._on_event(evt)  # type: ignore[arg-type]
+        self._on_event(evt)
 
     # Convenience for local dev tests
     def emit_mock_event(self, button_id: ButtonId, action: ButtonAction) -> None:
         self._on_event(
-            ButtonEvent(button_id=button_id, action=action, ts=time.gmtime())  # type: ignore[arg-type]
+            ButtonEvent(button_id=button_id, action=action, ts=datetime.now(timezone.utc))
         )
 
