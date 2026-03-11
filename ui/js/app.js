@@ -1,9 +1,10 @@
-import { getWidgets, getUserSettings } from "./api.js";
-import { createWidgetContainer } from "./layout.js";
+import { getCurrentWeather, getWidgets, getUserSettings } from "./api.js";
+import { createWidgetContainer, renderLayoutMode } from "./layout.js";
 import { mountWidget } from "./widgets/base.js";
 import { startButtonListener } from "./buttons.js";
 
 const widgetInstances = [];
+const LAYOUT_MODES = ["home", "weather-focus", "agenda-focus", "minimal"];
 
 const interactionState = {
   layoutIndex: 0,
@@ -15,21 +16,26 @@ function applyUserSettings(settings) {
   const root = document.documentElement;
   if (settings.accent_color) {
     root.style.setProperty("--color-accent", settings.accent_color);
+    root.style.setProperty("--color-accent-soft", `${settings.accent_color}33`);
   }
   if (settings.primary_font_size) {
+    const displaySize = Math.max(settings.primary_font_size, 120);
     root.style.setProperty(
-      "--fs-primary",
-      `${settings.primary_font_size}px`
+      "--fs-display",
+      `${displaySize}px`
     );
+    root.style.setProperty("--fs-hero", `${Math.round(displaySize * 0.67)}px`);
   }
   if (settings.theme === "light") {
     root.style.setProperty("--color-bg", "#f5f5f5");
     root.style.setProperty("--color-text-primary", "#111111");
     root.style.setProperty("--color-text-secondary", "#444444");
+    root.style.setProperty("--color-text-muted", "#666666");
   }
 }
 
 async function loadInitialData() {
+  renderLayoutMode(LAYOUT_MODES[interactionState.layoutIndex]);
   const [settings, widgets] = await Promise.all([
     getUserSettings().catch(() => null),
     getWidgets().catch(() => []),
@@ -56,8 +62,7 @@ async function loadInitialData() {
 
 function startUpdateLoops() {
   widgetInstances.forEach(({ config, instance }) => {
-    const defaults = instance.settings ? instance.settings() : {};
-    const options = defaults && defaults.options ? defaults.options : {};
+    const options = getWidgetOptions(config, instance);
     const intervalMs = options.refreshIntervalMs || 0;
 
     if (config.widget_id === "clock") {
@@ -69,19 +74,19 @@ function startUpdateLoops() {
     }
 
     if (config.widget_id === "weather") {
-      const tick = () => {
-        const data = {
-          temperatureC: 21,
-          condition: "Partly cloudy",
-          iconCode: "cloudy",
-          locationName: "Home",
-          updatedAt: new Date().toISOString(),
-        };
-        instance.update(data);
+      const tick = async () => {
+        try {
+          const data = await getCurrentWeather();
+          instance.update(data);
+        } catch {
+          instance.update(null);
+        }
       };
-      tick();
+      void tick();
       const refresh = intervalMs || 15 * 60 * 1000;
-      setInterval(tick, refresh);
+      setInterval(() => {
+        void tick();
+      }, refresh);
     }
 
     if (config.widget_id === "calendar") {
@@ -106,21 +111,33 @@ function startUpdateLoops() {
   });
 }
 
+function getWidgetOptions(config, instance) {
+  const defaults = instance.settings ? instance.settings() : {};
+  const defaultOptions = defaults && defaults.options ? defaults.options : {};
+  const configOptions = config && config.config_json ? config.config_json : {};
+  return {
+    ...defaultOptions,
+    ...configOptions,
+  };
+}
+
 function handleButtonEvent(evt) {
   const { button_id: buttonId, action } = evt;
 
   if (buttonId === "LAYOUT" && action === "CLICK") {
     interactionState.layoutIndex =
-      (interactionState.layoutIndex + 1) % 4;
-    // Phase 2: could trigger different layouts; for now, log.
-    // eslint-disable-next-line no-console
-    console.log("Layout cycle to index", interactionState.layoutIndex);
+      (interactionState.layoutIndex + 1) % LAYOUT_MODES.length;
+    applyLayoutMode();
   }
 
   if (buttonId === "DISPLAY") {
     if (action === "CLICK") {
       interactionState.displayMode =
-        interactionState.displayMode === "dim" ? "normal" : "dim";
+        interactionState.displayMode === "sleep"
+          ? "normal"
+          : interactionState.displayMode === "dim"
+            ? "normal"
+            : "dim";
     } else if (action === "LONG_PRESS") {
       interactionState.displayMode =
         interactionState.displayMode === "sleep" ? "normal" : "sleep";
@@ -131,16 +148,18 @@ function handleButtonEvent(evt) {
 
 function applyDisplayMode() {
   const body = document.body;
-  body.classList.remove("display-dim", "display-sleep");
-  if (interactionState.displayMode === "dim") {
-    body.classList.add("display-dim");
-  }
-  if (interactionState.displayMode === "sleep") {
-    body.classList.add("display-sleep");
-  }
+  body.dataset.displayMode = interactionState.displayMode;
+}
+
+function applyLayoutMode() {
+  const mode = LAYOUT_MODES[interactionState.layoutIndex];
+  document.body.dataset.layoutMode = mode;
+  renderLayoutMode(mode);
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  applyDisplayMode();
+  applyLayoutMode();
   loadInitialData();
 });
 

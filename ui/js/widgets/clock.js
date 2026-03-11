@@ -6,9 +6,12 @@ const clockWidget = {
   render(container) {
     container.classList.add("widget--clock");
 
-    const header = document.createElement("div");
-    header.className = "widget-header";
-    header.textContent = "Time";
+    const kickerEl = document.createElement("div");
+    kickerEl.className = "widget-header clock-kicker";
+    kickerEl.textContent = "Now";
+
+    const stackEl = document.createElement("div");
+    stackEl.className = "clock-stack";
 
     const timeEl = document.createElement("div");
     timeEl.className = "clock-time metric-primary";
@@ -16,11 +19,17 @@ const clockWidget = {
     const dateEl = document.createElement("div");
     dateEl.className = "clock-date metric-secondary";
 
-    container.appendChild(header);
-    container.appendChild(timeEl);
-    container.appendChild(dateEl);
+    const metaEl = document.createElement("div");
+    metaEl.className = "clock-meta metric-tertiary";
 
-    container._clockEls = { timeEl, dateEl };
+    stackEl.appendChild(timeEl);
+    stackEl.appendChild(dateEl);
+
+    container.appendChild(kickerEl);
+    container.appendChild(stackEl);
+    container.appendChild(metaEl);
+
+    container._clockEls = { timeEl, dateEl, metaEl };
 
     this.update.call(container);
   },
@@ -37,10 +46,16 @@ const clockWidget = {
       month: "short",
       day: "numeric",
     });
+    const metaStr = now.toLocaleDateString(undefined, {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
 
-    const { timeEl, dateEl } = this._clockEls || {};
+    const { timeEl, dateEl, metaEl } = this._clockEls || {};
     if (timeEl) timeEl.textContent = timeStr;
     if (dateEl) dateEl.textContent = dateStr;
+    if (metaEl) metaEl.textContent = metaStr;
   },
 
   settings() {
@@ -49,8 +64,13 @@ const clockWidget = {
       enabled: true,
       position_row: 1,
       position_col: 1,
-      size_rows: 2,
-      size_cols: 2,
+      size_rows: 3,
+      size_cols: 5,
+      zone: "hero",
+      display_order: 10,
+      row_span: 2,
+      col_span: 2,
+      config_json: null,
       options: {
         refreshIntervalMs: 1000,
       },

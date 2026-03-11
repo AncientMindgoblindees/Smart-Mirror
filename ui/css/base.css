@@ -1,14 +1,59 @@
 :root {
-  --color-bg: #050505;
-  --color-text-primary: #e8e8e8;
-  --color-text-secondary: #a0a0a0;
-  --color-accent: #4a9eff;
+  --color-bg: #000000;
+  --color-surface: rgba(255, 255, 255, 0.04);
+  --color-surface-strong: rgba(255, 255, 255, 0.08);
+  --color-surface-soft: rgba(255, 255, 255, 0.02);
+  --color-border-subtle: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+  --color-text-primary: rgba(248, 250, 252, 0.98);
+  --color-text-secondary: rgba(248, 250, 252, 0.8);
+  --color-text-muted: rgba(248, 250, 252, 0.56);
+  --color-accent: #8ab4ff;
+  --color-accent-soft: rgba(138, 180, 255, 0.16);
+  --shadow-soft: 0 24px 60px rgba(0, 0, 0, 0.34);
+  --shadow-glow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 12px 32px rgba(138, 180, 255, 0.08);
 
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 
-  --fs-primary: 96px;
-  --fs-secondary: 32px;
-  --fs-tertiary: 24px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  --fs-display: clamp(124px, 10vw, 184px);
+  --fs-hero: clamp(72px, 7vw, 112px);
+  --fs-primary: var(--fs-hero);
+  --fs-xl: clamp(56px, 5vw, 84px);
+  --fs-lg: clamp(40px, 3.8vw, 56px);
+  --fs-md: clamp(24px, 2.6vw, 34px);
+  --fs-secondary: var(--fs-lg);
+  --fs-sm: clamp(18px, 1.8vw, 24px);
+  --fs-tertiary: var(--fs-sm);
+  --fs-xs: clamp(12px, 1.2vw, 16px);
+
+  --lh-tight: 1;
+  --lh-snug: 1.12;
+  --lh-normal: 1.3;
+
+  --ls-display: -0.04em;
+  --ls-tight: -0.02em;
+  --ls-label: 0.08em;
+
+  --space-1: 10px;
+  --space-2: 14px;
+  --space-3: 20px;
+  --space-4: 28px;
+  --space-5: 40px;
+  --space-6: 56px;
+  --space-7: 72px;
+
+  --radius-tile: 28px;
+  --radius-inner: 18px;
+  --radius-pill: 999px;
+
+  --motion-fast: 180ms;
+  --motion-standard: 240ms;
+  --motion-slow: 320ms;
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 *,
@@ -30,32 +75,35 @@ body {
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   overflow: hidden;
+  transition:
+    background-color var(--motion-standard) var(--ease-standard),
+    color var(--motion-standard) var(--ease-standard);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
-body.display-dim {
-  filter: brightness(0.6);
-}
-
-body.display-sleep {
+body[data-display-mode="sleep"] {
   background-color: #000000;
-  color: var(--color-text-primary);
 }
 
 .metric-primary {
   font-size: var(--fs-primary);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
   color: var(--color-text-primary);
 }
 
 .metric-secondary {
   font-size: var(--fs-secondary);
-  font-weight: 400;
-  color: var(--color-text-primary);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-snug);
+  color: var(--color-text-secondary);
 }
 
 .metric-tertiary {
   font-size: var(--fs-tertiary);
-  font-weight: 400;
-  color: var(--color-text-secondary);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+  color: var(--color-text-muted);
 }
 

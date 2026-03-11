@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class WidgetConfigBase(BaseModel):
@@ -13,7 +13,20 @@ class WidgetConfigBase(BaseModel):
     size_rows: int = Field(1, ge=1)
     size_cols: int = Field(1, ge=1)
 
+    zone: Optional[str] = None
+    display_order: Optional[int] = None
+    row_span: Optional[int] = Field(default=None, ge=1)
+    col_span: Optional[int] = Field(default=None, ge=1)
+
     config_json: Optional[Dict[str, Any]] = None
+
+    @model_validator(mode="after")
+    def apply_layout_defaults(self) -> "WidgetConfigBase":
+        if self.row_span is None:
+            self.row_span = self.size_rows
+        if self.col_span is None:
+            self.col_span = self.size_cols
+        return self
 
 
 class WidgetConfigOut(WidgetConfigBase):

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from backend.api import events, health, user, widgets
+from backend.api import events, health, user, weather, widgets
 from backend.database.session import init_db
 from hardware.gpio import service as gpio_service
 
@@ -25,6 +25,7 @@ def create_app() -> FastAPI:
 
     app.include_router(widgets.router, prefix="/api")
     app.include_router(user.router, prefix="/api")
+    app.include_router(weather.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(events.router)
 

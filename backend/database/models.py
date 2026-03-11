@@ -18,6 +18,10 @@ class WidgetConfig(Base):
     position_col = Column(Integer, nullable=False, default=1)
     size_rows = Column(Integer, nullable=False, default=1)
     size_cols = Column(Integer, nullable=False, default=1)
+    zone = Column(String(32), nullable=False, default="ambient")
+    display_order = Column(Integer, nullable=False, default=100)
+    row_span = Column(Integer, nullable=False, default=1)
+    col_span = Column(Integer, nullable=False, default=1)
 
     config_json = Column(JSON, nullable=True)
 
@@ -33,7 +37,7 @@ class UserSettings(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     theme = Column(String(20), nullable=False, default="dark")
-    primary_font_size = Column(Integer, nullable=False, default=72)
+    primary_font_size = Column(Integer, nullable=False, default=144)
     accent_color = Column(String(16), nullable=False, default="#4a9eff")
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

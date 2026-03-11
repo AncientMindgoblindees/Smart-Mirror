@@ -8,8 +8,13 @@
     <link rel="stylesheet" href="./css/layout.css" />
     <link rel="stylesheet" href="./css/widgets.css" />
   </head>
-  <body>
-    <div id="mirror-grid" aria-label="Smart mirror information grid"></div>
+  <body data-display-mode="normal" data-layout-mode="home">
+    <div id="display-shell">
+      <div id="display-surface">
+        <div id="mirror-grid" aria-label="Smart mirror information grid"></div>
+        <div id="display-overlay" aria-hidden="true"></div>
+      </div>
+    </div>
 
     <script type="module" src="./js/api.js"></script>
     <script type="module" src="./js/buttons.js"></script>

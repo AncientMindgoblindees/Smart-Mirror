@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class UserSettingsBase(BaseModel):
     theme: str = Field("dark", description="Theme name, e.g. 'dark' or 'light'")
-    primary_font_size: int = Field(72, ge=10, le=200)
+    primary_font_size: int = Field(144, ge=10, le=200)
     accent_color: str = Field("#4a9eff", description="Hex color like '#4a9eff'")
 
 

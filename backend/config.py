@@ -1,8 +1,21 @@
 import os
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+@dataclass(frozen=True)
+class WeatherConfig:
+    latitude: Optional[float]
+    longitude: Optional[float]
+    location_name: str
+    timezone: str
+    cache_ttl_seconds: int
+    stale_if_error_seconds: int
+    http_timeout_seconds: float
 
 
 def get_db_path() -> Path:
@@ -34,4 +47,48 @@ def get_sqlalchemy_database_url() -> str:
     db_path = get_db_path()
     # Use absolute path to avoid ambiguity when running from different cwd
     return f"sqlite:///{db_path.as_posix()}"
+
+
+def _get_env_float(name: str) -> Optional[float]:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _get_env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def _get_env_float_with_default(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+def get_weather_config() -> WeatherConfig:
+    return WeatherConfig(
+        latitude=_get_env_float("WEATHER_LAT"),
+        longitude=_get_env_float("WEATHER_LON"),
+        location_name=os.getenv("WEATHER_LOCATION_NAME", "Home"),
+        timezone=os.getenv("WEATHER_TIMEZONE", "auto"),
+        cache_ttl_seconds=_get_env_int("WEATHER_CACHE_TTL_SECONDS", 600),
+        stale_if_error_seconds=_get_env_int("WEATHER_STALE_IF_ERROR_SECONDS", 3600),
+        http_timeout_seconds=_get_env_float_with_default(
+            "WEATHER_HTTP_TIMEOUT_SECONDS", 5.0
+        ),
+    )
 
