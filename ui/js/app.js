@@ -1,8 +1,14 @@
 import { getWidgets, getUserSettings } from "./api.js";
 import { createWidgetContainer } from "./layout.js";
 import { mountWidget } from "./widgets/base.js";
+import { startButtonListener } from "./buttons.js";
 
 const widgetInstances = [];
+
+const interactionState = {
+  layoutIndex: 0,
+  displayMode: "normal",
+};
 
 function applyUserSettings(settings) {
   if (!settings) return;
@@ -42,6 +48,8 @@ async function loadInitialData() {
   });
 
   startUpdateLoops();
+
+  startButtonListener(handleButtonEvent);
 }
 
 function startUpdateLoops() {
@@ -94,6 +102,40 @@ function startUpdateLoops() {
       setInterval(tick, refresh);
     }
   });
+}
+
+function handleButtonEvent(evt) {
+  const { button_id: buttonId, action } = evt;
+
+  if (buttonId === "LAYOUT" && action === "CLICK") {
+    interactionState.layoutIndex =
+      (interactionState.layoutIndex + 1) % 4;
+    // Phase 2: could trigger different layouts; for now, log.
+    // eslint-disable-next-line no-console
+    console.log("Layout cycle to index", interactionState.layoutIndex);
+  }
+
+  if (buttonId === "DISPLAY") {
+    if (action === "CLICK") {
+      interactionState.displayMode =
+        interactionState.displayMode === "dim" ? "normal" : "dim";
+    } else if (action === "LONG_PRESS") {
+      interactionState.displayMode =
+        interactionState.displayMode === "sleep" ? "normal" : "sleep";
+    }
+    applyDisplayMode();
+  }
+}
+
+function applyDisplayMode() {
+  const body = document.body;
+  body.classList.remove("display-dim", "display-sleep");
+  if (interactionState.displayMode === "dim") {
+    body.classList.add("display-dim");
+  }
+  if (interactionState.displayMode === "sleep") {
+    body.classList.add("display-sleep");
+  }
 }
 
 window.addEventListener("DOMContentLoaded", () => {

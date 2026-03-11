@@ -1,9 +1,12 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.api import health, user, widgets
+from backend.api import events, health, user, widgets
 from backend.database.session import init_db
+from hardware.gpio import service as gpio_service
 
 
 def create_app() -> FastAPI:
@@ -22,8 +25,18 @@ def create_app() -> FastAPI:
     app.include_router(widgets.router, prefix="/api")
     app.include_router(user.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
+    app.include_router(events.router)
 
     app.mount("/", StaticFiles(directory="ui", html=True), name="ui")
+
+    @app.on_event("startup")
+    async def _startup() -> None:  # type: ignore[func-returns-value]
+        if os.getenv("ENABLE_GPIO", "false").lower() == "true":
+            gpio_service.start_button_service()
+
+    @app.on_event("shutdown")
+    async def _shutdown() -> None:  # type: ignore[func-returns-value]
+        gpio_service.stop_button_service()
 
     return app
 
