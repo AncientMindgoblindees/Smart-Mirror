@@ -1,0 +1,52 @@
+:root {
+  --color-bg: #050505;
+  --color-text-primary: #e8e8e8;
+  --color-text-secondary: #a0a0a0;
+  --color-accent: #4a9eff;
+
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --fs-primary: 96px;
+  --fs-secondary: 32px;
+  --fs-tertiary: 24px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+
+.metric-primary {
+  font-size: var(--fs-primary);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.metric-secondary {
+  font-size: var(--fs-secondary);
+  font-weight: 400;
+  color: var(--color-text-primary);
+}
+
+.metric-tertiary {
+  font-size: var(--fs-tertiary);
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
