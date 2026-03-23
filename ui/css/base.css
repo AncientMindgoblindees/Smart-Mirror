@@ -113,6 +113,10 @@ body {
   color: var(--color-text-primary);
 }
 
+.widget-tile .metric-primary {
+  font-size: clamp(1.5rem, calc(var(--fs-primary) * var(--widget-scale)), 8rem);
+}
+
 .metric-secondary {
   font-size: var(--fs-secondary);
   font-weight: 500;
@@ -120,10 +124,18 @@ body {
   color: var(--color-text-primary);
 }
 
+.widget-tile .metric-secondary {
+  font-size: clamp(0.95rem, calc(var(--fs-secondary) * var(--widget-scale)), 3.5rem);
+}
+
 .metric-tertiary {
   font-size: var(--fs-tertiary);
   font-weight: 400;
   color: var(--color-text-secondary);
+}
+
+.widget-tile .metric-tertiary {
+  font-size: clamp(0.8rem, calc(var(--fs-tertiary) * var(--widget-scale)), 2.6rem);
 }
 
 body.display-dim {

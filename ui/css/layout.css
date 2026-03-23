@@ -1,5 +1,6 @@
 .mirror-grid {
   display: grid;
+  position: relative;
   width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
@@ -8,6 +9,10 @@
   grid-template-rows: repeat(4, minmax(0, 1fr));
   gap: clamp(0.75rem, 1.8vh, 1.5rem) clamp(0.75rem, 2vw, 1.5rem);
   align-content: stretch;
+}
+
+.mirror-grid--freeform {
+  overflow: visible;
 }
 
 .mirror-tools {
@@ -129,6 +134,7 @@
 }
 
 .widget-tile {
+  --widget-scale: 1;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -145,6 +151,14 @@
   overflow: hidden;
   transition: transform 0.35s var(--ease-out), box-shadow 0.35s var(--ease-out),
     opacity 0.2s ease;
+  touch-action: none;
+}
+
+.mirror-grid--freeform .widget-tile {
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  cursor: default;
 }
 
 .widget-tile--dragging {
@@ -185,6 +199,40 @@
   opacity: 0.4;
 }
 
+.widget-resize-handle {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--color-surface-edge);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  cursor: nwse-resize;
+  z-index: 3;
+}
+
+.widget-resize-handle::before {
+  content: "";
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0.8;
+}
+
+.widget-resize-handle:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.widget-resize-handle--locked {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
 .widget-drag-handle::before {
   content: "";
   display: block;
@@ -206,8 +254,9 @@
   justify-content: flex-start;
   align-items: stretch;
   width: 100%;
-  padding: clamp(0.75rem, 1.8vh, 1.35rem) clamp(1rem, 2.2vw, 1.75rem)
-    clamp(1rem, 2.2vh, 1.75rem);
+  padding: clamp(0.72rem, calc(0.72rem * var(--widget-scale)), 1.35rem)
+    clamp(0.9rem, calc(0.9rem * var(--widget-scale)), 1.75rem)
+    clamp(0.9rem, calc(0.9rem * var(--widget-scale)), 1.75rem);
   border-radius: 0 0 var(--radius-inner) var(--radius-inner);
   overflow-x: hidden;
   overflow-y: auto;
@@ -334,4 +383,15 @@
     transform: translateX(50%);
     top: 0.65rem;
   }
+}
+
+html[data-orientation="vertical"] .mirror-grid {
+  padding-top: clamp(4.75rem, 9vh, 8rem);
+}
+
+html[data-orientation="vertical"] .mirror-tools {
+  width: min(360px, 84vw);
+  right: 50%;
+  transform: translateX(50%);
+  top: 0.65rem;
 }

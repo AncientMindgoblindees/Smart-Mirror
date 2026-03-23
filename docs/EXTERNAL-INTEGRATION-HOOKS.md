@@ -15,12 +15,65 @@ The UI now exposes internal hook names in `ui/js/services/externalHooks.js`.
 - `layout_changed`
   - Fired when layout index changes.
   - Payload: `{ index: number }`
+- `orientation_changed`
+  - Fired when viewport orientation changes.
+  - Payload: `{ orientation: "vertical" | "horizontal", ts: string }`
 - `widgets_changed`
   - Fired when widget enable/disable state changes.
   - Payload: `{ widgets: Array<{ widget_id: string, enabled: boolean }> }`
 - `widget_updated`
   - Fired whenever a widget refresh cycle runs.
   - Payload: `{ widget_id: string, ts: string }`
+- `widget_transform_changed`
+  - Fired after freeform drag/resize persistence in layout mode `0`.
+  - Payload: `{ widget_id: string, freeform_x: number, freeform_y: number, freeform_width: number, freeform_height: number, ts: string }`
+
+## Layout adjustment provider contract
+
+The UI now supports a pluggable layout adapter in `ui/js/services/layoutAdjustmentsProvider.js`.
+By default, it stores layout updates in local storage, but an external service can override behavior without changing core rendering logic.
+
+Provider methods:
+
+- `hydrateWidgetConfigs(configs)`
+  - Optional bootstrap override before initial render.
+  - Return adjusted widget configs (sync or async).
+- `persistWidgetLayouts(configs)`
+  - Called when widget enable/disable or layout updates are persisted.
+- `onWidgetTransformChanged(payload)`
+  - Called when a widget freeform move/resize is finalized.
+- `onOrientationChanged(payload)`
+  - Called when viewport orientation changes.
+
+Example wiring:
+
+```js
+import { setLayoutAdjustmentProvider } from "./services/layoutAdjustmentsProvider.js";
+
+setLayoutAdjustmentProvider({
+  async hydrateWidgetConfigs(configs) {
+    const remote = await fetch("/api/layouts/current").then((r) => r.json());
+    return configs.map((cfg) => {
+      const hit = remote.widgets.find((w) => w.widget_id === cfg.widget_id);
+      return hit ? { ...cfg, ...hit } : cfg;
+    });
+  },
+  async persistWidgetLayouts(configs) {
+    await fetch("/api/layouts/current", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ widgets: configs }),
+    });
+  },
+  async onWidgetTransformChanged(payload) {
+    await fetch("/api/layouts/current/widget-transform", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+});
+```
 
 ## External API endpoints expected by UI
 

@@ -7,8 +7,10 @@ export const EXTERNAL_HOOKS = Object.freeze({
   CAMERA_MODE_CHANGED: "camera_mode_changed",
   DISPLAY_MODE_CHANGED: "display_mode_changed",
   LAYOUT_CHANGED: "layout_changed",
+  ORIENTATION_CHANGED: "orientation_changed",
   WIDGETS_CHANGED: "widgets_changed",
   WIDGET_UPDATED: "widget_updated",
+  WIDGET_TRANSFORM_CHANGED: "widget_transform_changed",
 });
 
 const registry = new Map();

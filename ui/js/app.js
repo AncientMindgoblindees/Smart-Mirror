@@ -1,7 +1,6 @@
 import {
   getLocalUserSettings,
   getMergedWidgetConfigs,
-  storeWidgetLayouts,
 } from "./services/localMirrorConfig.js";
 import {
   initWidgetGridDnD,
@@ -14,6 +13,12 @@ import { mountWidget } from "./widgets/base.js";
 import { getCameraFeedSource, postExternalHookEvent } from "./api.js";
 import { startCameraFeed } from "./services/cameraFeed.js";
 import { EXTERNAL_HOOKS, emitExternalHook } from "./services/externalHooks.js";
+import {
+  hydrateWidgetConfigs,
+  notifyOrientationChanged,
+  notifyWidgetTransformChanged,
+  persistWidgetLayouts,
+} from "./services/layoutAdjustmentsProvider.js";
 import "./widgets/clock.js";
 import "./widgets/weather.js";
 import "./widgets/calendar.js";
@@ -24,6 +29,7 @@ const runtime = {
   stopInput: null,
   destroyDnD: null,
   stopCamera: null,
+  stopOrientationSync: null,
   widgetConfigs: [],
   toolsBound: false,
 };
@@ -94,20 +100,58 @@ function renderWidgetGrid() {
         const updated = configs.find((c) => c.widget_id === existing.widget_id);
         return updated ? { ...existing, ...updated } : existing;
       });
-      storeWidgetLayouts(runtime.widgetConfigs);
+      persistWidgetLayouts(runtime.widgetConfigs);
+    },
+    onTransform: (entry, phase) => {
+      if (phase !== "final") return;
+      const payload = {
+        widget_id: entry.widget_id,
+        freeform_x: entry.config.freeform_x,
+        freeform_y: entry.config.freeform_y,
+        freeform_width: entry.config.freeform_width,
+        freeform_height: entry.config.freeform_height,
+        ts: new Date().toISOString(),
+      };
+      notifyWidgetTransformChanged(payload);
+      emitExternalHook(EXTERNAL_HOOKS.WIDGET_TRANSFORM_CHANGED, payload);
+      postExternalHookEvent("widget_transform_changed", payload).catch(() => {});
     },
   });
 
   startUpdateLoops();
 }
 
-function loadInitialData() {
+async function loadInitialData() {
   const settings = getLocalUserSettings();
   applyUserSettings(settings);
-  runtime.widgetConfigs = getMergedWidgetConfigs();
+  const localConfigs = getMergedWidgetConfigs();
+  runtime.widgetConfigs = await hydrateWidgetConfigs(localConfigs);
   renderWidgetGrid();
   renderTools();
   runtime.stopInput = startLocalInput(handleButtonEvent);
+  runtime.stopOrientationSync = startOrientationSync();
+}
+
+function startOrientationSync() {
+  let lastOrientation = "";
+  const apply = () => {
+    const orientation =
+      window.innerHeight >= window.innerWidth ? "vertical" : "horizontal";
+    if (orientation === lastOrientation) return;
+    lastOrientation = orientation;
+    document.documentElement.dataset.orientation = orientation;
+    const payload = { orientation, ts: new Date().toISOString() };
+    notifyOrientationChanged(payload);
+    emitExternalHook(EXTERNAL_HOOKS.ORIENTATION_CHANGED, payload);
+    postExternalHookEvent("orientation_changed", payload).catch(() => {});
+  };
+  apply();
+  window.addEventListener("resize", apply);
+  window.addEventListener("orientationchange", apply);
+  return () => {
+    window.removeEventListener("resize", apply);
+    window.removeEventListener("orientationchange", apply);
+  };
 }
 
 function startUpdateLoops() {
@@ -242,7 +286,7 @@ function onToggleWidget(widgetId, enabled) {
   const target = runtime.widgetConfigs.find((w) => w.widget_id === widgetId);
   if (!target) return;
   target.enabled = enabled;
-  storeWidgetLayouts(runtime.widgetConfigs);
+  persistWidgetLayouts(runtime.widgetConfigs);
   renderWidgetGrid();
   renderTools();
   emitExternalHook(EXTERNAL_HOOKS.WIDGETS_CHANGED, {
@@ -362,10 +406,11 @@ async function toggleCameraMode(forcedMode = null) {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  loadInitialData();
+  loadInitialData().catch(() => {});
   window.addEventListener("beforeunload", () => {
     runtime.stopInput?.();
     runtime.stopCamera?.();
+    runtime.stopOrientationSync?.();
     clearRuntime();
   });
 });

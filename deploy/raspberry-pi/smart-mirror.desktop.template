@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Smart Mirror
+Comment=Launch Smart Mirror in app window mode
+Exec=__SMART_MIRROR_ROOT__/scripts/start-mirror-app.sh
+Path=__SMART_MIRROR_ROOT__
+Terminal=false
+Categories=Utility;
