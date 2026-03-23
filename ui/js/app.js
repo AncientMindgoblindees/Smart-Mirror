@@ -3,12 +3,18 @@ import {
   getMergedWidgetConfigs,
 } from "./services/localMirrorConfig.js";
 import {
+  ensureFreeformRect,
   initWidgetGridDnD,
   refreshWidgetDragState,
 } from "./services/widgetGridDnD.js";
 import { startLocalInput } from "./services/localInput.js";
 import { emitMirrorEvent } from "./services/mirrorEvents.js";
-import { createWidgetContainer, setMirrorLayoutMode, getGridElement } from "./layout.js";
+import {
+  createWidgetContainer,
+  getGridElement,
+  MIRROR_LAYOUT_MODES,
+  setMirrorLayoutMode,
+} from "./layout.js";
 import { mountWidget } from "./widgets/base.js";
 import { getCameraFeedSource, postExternalHookEvent } from "./api.js";
 import { startCameraFeed } from "./services/cameraFeed.js";
@@ -32,6 +38,8 @@ const runtime = {
   stopOrientationSync: null,
   widgetConfigs: [],
   toolsBound: false,
+  toolsVisible: true,
+  keyboardBound: false,
 };
 
 const interactionState = {
@@ -95,6 +103,24 @@ function renderWidgetGrid() {
         config: w.config,
         container: w.instance.container,
       })),
+    onRequestFreeformLayout: () => {
+      const g = getGridElement();
+      if (!g) return;
+      const entries = runtime.widgetInstances.map((w) => ({
+        widget_id: w.config.widget_id,
+        config: w.config,
+        container: w.instance.container,
+      }));
+      entries.forEach((e) => ensureFreeformRect(g, e));
+      const mod = interactionState.layoutIndex % MIRROR_LAYOUT_MODES;
+      if (mod !== 0) {
+        interactionState.layoutIndex -= mod;
+      }
+      const tiles = runtime.widgetInstances.map((w) => w.instance.container);
+      setMirrorLayoutMode(g, interactionState.layoutIndex, tiles);
+      refreshWidgetDragState(() => parseInt(g.dataset.layout || "0", 10), g);
+      persistWidgetLayouts(runtime.widgetConfigs);
+    },
     onPersist: (configs) => {
       runtime.widgetConfigs = runtime.widgetConfigs.map((existing) => {
         const updated = configs.find((c) => c.widget_id === existing.widget_id);
@@ -128,8 +154,10 @@ async function loadInitialData() {
   runtime.widgetConfigs = await hydrateWidgetConfigs(localConfigs);
   renderWidgetGrid();
   renderTools();
+  applyToolsVisibility();
   runtime.stopInput = startLocalInput(handleButtonEvent);
   runtime.stopOrientationSync = startOrientationSync();
+  bindKeyboardShortcuts();
 }
 
 function startOrientationSync() {
@@ -304,6 +332,43 @@ function onToggleWidget(widgetId, enabled) {
   }).catch(() => {});
 }
 
+function isTypingTarget(el) {
+  if (!(el instanceof Element)) return false;
+  const tag = el.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return el.closest("[contenteditable='true']") != null;
+}
+
+function applyToolsVisibility() {
+  const tools = document.querySelector(".mirror-tools");
+  if (!(tools instanceof HTMLElement)) return;
+  const show = runtime.toolsVisible && !document.body.classList.contains("view-camera");
+  tools.classList.toggle("mirror-tools--hidden", !show);
+  tools.setAttribute("aria-hidden", show ? "false" : "true");
+}
+
+function toggleToolsPanel() {
+  if (document.body.classList.contains("view-camera")) return;
+  runtime.toolsVisible = !runtime.toolsVisible;
+  applyToolsVisibility();
+}
+
+function bindKeyboardShortcuts() {
+  if (runtime.keyboardBound) return;
+  runtime.keyboardBound = true;
+  window.addEventListener("keydown", (e) => {
+    if (e.defaultPrevented) return;
+    if (e.repeat) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (isTypingTarget(e.target)) return;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (k === "d") {
+      e.preventDefault();
+      toggleToolsPanel();
+    }
+  });
+}
+
 function renderTools() {
   const cameraBtn = document.getElementById("tool-toggle-camera");
   const cycleLayoutBtn = document.getElementById("tool-cycle-layout");
@@ -354,6 +419,7 @@ async function toggleCameraMode(forcedMode = null) {
   if (!enteringCamera) {
     interactionState.cameraMode = "dashboard";
     document.body.classList.remove("view-camera");
+    applyToolsVisibility();
     cameraStage.setAttribute("aria-hidden", "true");
     runtime.stopCamera?.();
     runtime.stopCamera = null;
@@ -371,6 +437,7 @@ async function toggleCameraMode(forcedMode = null) {
 
   interactionState.cameraMode = "camera";
   document.body.classList.add("view-camera");
+  applyToolsVisibility();
   cameraStage.setAttribute("aria-hidden", "false");
 
   try {

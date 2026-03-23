@@ -47,7 +47,7 @@ function applyTileFreeformRect(tile, rect) {
  * @param {{ container: HTMLElement, config: object }} entry
  * @returns {{ x: number, y: number, width: number, height: number }}
  */
-function ensureFreeformRect(grid, entry) {
+export function ensureFreeformRect(grid, entry) {
   const tile = entry.container;
   const cfg = entry.config || {};
   const gx = toFinite(cfg.freeform_x, Number.NaN);
@@ -86,15 +86,28 @@ function ensureFreeformRect(grid, entry) {
  * @param {() => number} getLayoutMode
  * @param {HTMLElement | null} grid
  */
+/**
+ * @param {HTMLElement} grid
+ * @param {{ x: number, y: number, width: number, height: number }} rect
+ */
+function clampFreeformRect(grid, rect) {
+  const maxW = grid.clientWidth;
+  const maxH = grid.clientHeight;
+  const width = Math.min(Math.max(1, rect.width), maxW);
+  const height = Math.min(Math.max(1, rect.height), maxH);
+  const x = Math.min(Math.max(0, rect.x), Math.max(0, maxW - width));
+  const y = Math.min(Math.max(0, rect.y), Math.max(0, maxH - height));
+  return { x, y, width, height };
+}
+
 export function refreshWidgetDragState(getLayoutMode, grid) {
   if (!grid) return;
   const free = getLayoutMode() === 0;
   grid.classList.toggle("mirror-grid--freeform", free);
   grid.querySelectorAll(".widget-drag-handle, .widget-resize-handle").forEach((h) => {
     if (h instanceof HTMLElement) {
-      h.toggleAttribute("aria-disabled", !free);
-      h.classList.toggle("widget-drag-handle--locked", !free);
-      h.classList.toggle("widget-resize-handle--locked", !free);
+      h.removeAttribute("aria-disabled");
+      h.classList.remove("widget-drag-handle--locked", "widget-resize-handle--locked");
     }
   });
 }
@@ -106,9 +119,11 @@ export function refreshWidgetDragState(getLayoutMode, grid) {
  * @param {() => Array<{ widget_id: string, config: object, container: HTMLElement }>} opts.getEntries
  * @param {(configs: object[]) => void} opts.onPersist
  * @param {(entry: { widget_id: string, config: object }, phase: "move" | "resize" | "final") => void} [opts.onTransform]
+ * @param {() => void} [opts.onRequestFreeformLayout] — called when user drags while not in freeform; must switch grid to layout 0 before return
  */
 export function initWidgetGridDnD(opts) {
-  const { grid, getLayoutMode, getEntries, onPersist, onTransform } = opts;
+  const { grid, getLayoutMode, getEntries, onPersist, onTransform, onRequestFreeformLayout } =
+    opts;
   if (!grid) return () => {};
 
   /** @type {null | { tile: HTMLElement, entry: { widget_id: string, config: object, container: HTMLElement }, mode: "move" | "resize", pointerId: number, startX: number, startY: number, origin: { x: number, y: number, width: number, height: number } }} */
@@ -134,7 +149,6 @@ export function initWidgetGridDnD(opts) {
 
   function onPointerDown(e) {
     if (!(e.target instanceof Element)) return;
-    if (getLayoutMode() !== 0) return;
 
     const moveHandle = e.target.closest(".widget-drag-handle");
     const resizeHandle = e.target.closest(".widget-resize-handle");
@@ -142,6 +156,11 @@ export function initWidgetGridDnD(opts) {
 
     const tile = e.target.closest(".widget-tile");
     if (!(tile instanceof HTMLElement) || !grid.contains(tile)) return;
+
+    if (getLayoutMode() !== 0) {
+      onRequestFreeformLayout?.();
+    }
+    if (getLayoutMode() !== 0) return;
 
     const id = tile.dataset.widgetId;
     const entry = getEntries().find((x) => x.widget_id === id);
@@ -173,12 +192,12 @@ export function initWidgetGridDnD(opts) {
     const dy = e.clientY - active.startY;
 
     if (active.mode === "move") {
-      const rect = {
+      const rect = clampFreeformRect(grid, {
         x: active.origin.x + dx,
         y: active.origin.y + dy,
         width: active.origin.width,
         height: active.origin.height,
-      };
+      });
       applyTileFreeformRect(active.tile, rect);
       active.entry.config.freeform_x = rect.x;
       active.entry.config.freeform_y = rect.y;
@@ -186,12 +205,12 @@ export function initWidgetGridDnD(opts) {
       return;
     }
 
-    const rect = {
+    const rect = clampFreeformRect(grid, {
       x: active.origin.x,
       y: active.origin.y,
       width: Math.max(1, active.origin.width + dx),
       height: Math.max(1, active.origin.height + dy),
-    };
+    });
     applyTileFreeformRect(active.tile, rect);
     active.entry.config.freeform_width = rect.width;
     active.entry.config.freeform_height = rect.height;

@@ -48,9 +48,15 @@ else
   exit 1
 fi
 
+# Default: maximized resizable app window. Set MIRROR_FULLSCREEN=1 for kiosk-style fullscreen.
+CHROMIUM_WINDOW_FLAGS=(--start-maximized)
+if [[ "${MIRROR_FULLSCREEN:-}" == "1" ]]; then
+  CHROMIUM_WINDOW_FLAGS=(--start-fullscreen)
+fi
+
 exec "${BROWSER_CMD}" \
   --app="${URL}" \
-  --start-fullscreen \
+  "${CHROMIUM_WINDOW_FLAGS[@]}" \
   --noerrdialogs \
   --disable-session-crashed-bubble \
   --disable-infobars \
