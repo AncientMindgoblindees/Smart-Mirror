@@ -58,7 +58,7 @@ Runs FastAPI backend + serves UI at `/ui` (enables API routes and hook endpoints
 1. Create and activate a Python virtual environment:
 ```
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\venv\Scripts\Activate
 ```
 2. Install backend dependencies:
 ```
