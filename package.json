@@ -1,0 +1,8 @@
+{
+  "name": "smart-mirror",
+  "private": true,
+  "description": "Smart Mirror monorepo — run the static UI locally",
+  "scripts": {
+    "ui": "npx --yes serve ui -l 5173"
+  }
+}

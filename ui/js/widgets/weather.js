@@ -1,5 +1,23 @@
 import { registerWidget } from "./base.js";
 
+const ICONS = {
+  sunny: "☀",
+  clear: "☀",
+  cloudy: "☁",
+  "partly-cloudy": "⛅",
+  rain: "🌧",
+  storm: "⛈",
+  snow: "❄",
+  fog: "🌫",
+  wind: "〰",
+};
+
+function iconFor(code) {
+  if (!code || typeof code !== "string") return "◌";
+  const key = code.toLowerCase().replace(/\s+/g, "-");
+  return ICONS[key] || "◌";
+}
+
 const weatherWidget = {
   id: "weather",
 
@@ -8,7 +26,10 @@ const weatherWidget = {
 
     const header = document.createElement("div");
     header.className = "widget-header";
-    header.textContent = "Weather";
+    const label = document.createElement("span");
+    label.className = "widget-header-label";
+    label.textContent = "Weather";
+    header.appendChild(label);
 
     const main = document.createElement("div");
     main.className = "weather-main";
@@ -17,12 +38,15 @@ const weatherWidget = {
     tempEl.className = "weather-temp metric-primary";
     tempEl.textContent = "—";
 
-    const iconEl = document.createElement("div");
-    iconEl.className = "weather-icon metric-secondary";
-    iconEl.textContent = "";
+    const iconWrap = document.createElement("div");
+    iconWrap.className = "weather-icon-wrap";
+    const iconEl = document.createElement("span");
+    iconEl.className = "weather-icon";
+    iconEl.setAttribute("aria-hidden", "true");
+    iconWrap.appendChild(iconEl);
 
     main.appendChild(tempEl);
-    main.appendChild(iconEl);
+    main.appendChild(iconWrap);
 
     const meta = document.createElement("div");
     meta.className = "weather-meta";
@@ -51,13 +75,14 @@ const weatherWidget = {
     if (!data) {
       if (conditionEl) conditionEl.textContent = "Offline";
       if (tempEl) tempEl.textContent = "—";
+      if (iconEl) iconEl.textContent = "";
       return;
     }
 
     if (tempEl) tempEl.textContent = `${Math.round(data.temperatureC)}°`;
     if (conditionEl) conditionEl.textContent = data.condition || "";
     if (locationEl) locationEl.textContent = data.locationName || "";
-    if (iconEl) iconEl.textContent = ""; // placeholder; could map iconCode to glyph
+    if (iconEl) iconEl.textContent = iconFor(data.iconCode);
   },
 
   settings() {
@@ -78,4 +103,3 @@ const weatherWidget = {
 
 registerWidget(weatherWidget);
 export default weatherWidget;
-

@@ -1,14 +1,53 @@
-:root {
-  --color-bg: #050505;
-  --color-text-primary: #e8e8e8;
-  --color-text-secondary: #a0a0a0;
-  --color-accent: #4a9eff;
+:root,
+[data-theme="mirror-dark"] {
+  --color-bg-deep: #06080c;
+  --color-bg: #0a0d12;
+  --color-surface: rgba(18, 22, 30, 0.55);
+  --color-surface-edge: rgba(255, 255, 255, 0.08);
+  --color-surface-glow: rgba(94, 225, 217, 0.06);
+  --color-text-primary: #e8eaef;
+  --color-text-secondary: #8b93a5;
+  --color-text-muted: #5c6478;
+  --color-accent: #5ee1d9;
+  --color-accent-dim: rgba(94, 225, 217, 0.35);
 
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: var(--font-sans);
 
-  --fs-primary: 96px;
-  --fs-secondary: 32px;
-  --fs-tertiary: 24px;
+  --fs-display: clamp(2.75rem, 7.5vw, 5.75rem);
+  --fs-primary: var(--fs-display);
+  --fs-secondary: clamp(1.25rem, 2.4vw, 2rem);
+  --fs-tertiary: clamp(0.95rem, 1.5vw, 1.25rem);
+  --fs-header: clamp(0.65rem, 1vw, 0.8rem);
+
+  --space-xs: 0.35rem;
+  --space-sm: 0.75rem;
+  --space-md: 1.25rem;
+  --space-lg: 2rem;
+
+  --radius-widget: 20px;
+  --radius-inner: 14px;
+
+  --shadow-widget: 0 0 0 1px var(--color-surface-edge),
+    0 24px 48px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-ui: 0.45s var(--ease-out);
+}
+
+[data-theme="light"] {
+  --color-bg-deep: #e8eaef;
+  --color-bg: #f2f4f8;
+  --color-surface: rgba(255, 255, 255, 0.72);
+  --color-surface-edge: rgba(0, 0, 0, 0.06);
+  --color-surface-glow: rgba(94, 225, 217, 0.12);
+  --color-text-primary: #12151a;
+  --color-text-secondary: #4a5160;
+  --color-text-muted: #7a8294;
+  --shadow-widget: 0 0 0 1px var(--color-surface-edge),
+    0 18px 40px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 *,
@@ -26,30 +65,58 @@ body {
 }
 
 body {
-  background-color: var(--color-bg);
+  background-color: var(--color-bg-deep);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   overflow: hidden;
+  transition: filter var(--transition-ui), background-color var(--transition-ui);
 }
 
-body.display-dim {
-  filter: brightness(0.6);
+.mirror-app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  isolation: isolate;
 }
 
-body.display-sleep {
-  background-color: #000000;
-  color: var(--color-text-primary);
+.mirror-ambient {
+  position: absolute;
+  inset: -20%;
+  background: radial-gradient(
+      ellipse 80% 55% at 18% 12%,
+      rgba(94, 225, 217, 0.09),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse 70% 50% at 88% 78%,
+      rgba(74, 158, 255, 0.07),
+      transparent 50%
+    ),
+    radial-gradient(circle at 50% 100%, rgba(0, 0, 0, 0.5), transparent 45%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.mirror-shell {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
 }
 
 .metric-primary {
+  font-family: var(--font-display);
   font-size: var(--fs-primary);
   font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
   color: var(--color-text-primary);
 }
 
 .metric-secondary {
   font-size: var(--fs-secondary);
-  font-weight: 400;
+  font-weight: 500;
+  letter-spacing: -0.02em;
   color: var(--color-text-primary);
 }
 
@@ -59,3 +126,15 @@ body.display-sleep {
   color: var(--color-text-secondary);
 }
 
+body.display-dim {
+  filter: brightness(0.55) saturate(0.9);
+}
+
+body.display-sleep {
+  filter: brightness(0.12);
+  background-color: #000000;
+}
+
+body.display-sleep .mirror-ambient {
+  opacity: 0.2;
+}

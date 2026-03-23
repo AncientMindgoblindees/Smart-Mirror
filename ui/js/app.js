@@ -1,7 +1,19 @@
-import { getWidgets, getUserSettings } from "./api.js";
-import { createWidgetContainer } from "./layout.js";
+import {
+  getLocalUserSettings,
+  getMergedWidgetConfigs,
+  storeWidgetLayouts,
+} from "./services/localMirrorConfig.js";
+import {
+  initWidgetGridDnD,
+  refreshWidgetDragState,
+} from "./services/widgetGridDnD.js";
+import { startLocalInput } from "./services/localInput.js";
+import { emitMirrorEvent } from "./services/mirrorEvents.js";
+import { createWidgetContainer, setMirrorLayoutMode, getGridElement } from "./layout.js";
 import { mountWidget } from "./widgets/base.js";
-import { startButtonListener } from "./buttons.js";
+import "./widgets/clock.js";
+import "./widgets/weather.js";
+import "./widgets/calendar.js";
 
 const widgetInstances = [];
 
@@ -18,40 +30,57 @@ function applyUserSettings(settings) {
   }
   if (settings.primary_font_size) {
     root.style.setProperty(
-      "--fs-primary",
+      "--fs-display",
       `${settings.primary_font_size}px`
     );
   }
   if (settings.theme === "light") {
-    root.style.setProperty("--color-bg", "#f5f5f5");
-    root.style.setProperty("--color-text-primary", "#111111");
-    root.style.setProperty("--color-text-secondary", "#444444");
+    root.setAttribute("data-theme", "light");
+  } else if (settings.theme) {
+    root.setAttribute("data-theme", String(settings.theme));
   }
 }
 
-async function loadInitialData() {
-  const [settings, widgets] = await Promise.all([
-    getUserSettings().catch(() => null),
-    getWidgets().catch(() => []),
-  ]);
-
+function loadInitialData() {
+  const settings = getLocalUserSettings();
   applyUserSettings(settings);
 
-  const enabledWidgets =
-    widgets && widgets.length ? widgets.filter((w) => w.enabled) : [];
-  enabledWidgets.forEach((config) => {
-    const container = createWidgetContainer(config);
-    const instance = mountWidget(config, container);
+  const localLayouts = getMergedWidgetConfigs();
+  const grid = getGridElement();
+  /** @type {HTMLElement[]} */
+  const tiles = [];
+
+  localLayouts.forEach((localConfig) => {
+    if (!localConfig.enabled) return;
+    const { container } = createWidgetContainer(localConfig);
+    tiles.push(container);
+    const instance = mountWidget(localConfig, container);
     if (instance) {
-      widgetInstances.push({ config, instance });
+      widgetInstances.push({ config: localConfig, instance });
     } else if (container && typeof container.remove === "function") {
       container.remove();
     }
   });
 
+  if (grid) {
+    setMirrorLayoutMode(grid, interactionState.layoutIndex, tiles);
+  }
+
+  initWidgetGridDnD({
+    grid,
+    getLayoutMode: () => parseInt(grid?.dataset.layout || "0", 10),
+    getEntries: () =>
+      widgetInstances.map((w) => ({
+        widget_id: w.config.widget_id,
+        config: w.config,
+        container: w.instance.container,
+      })),
+    onPersist: (configs) => storeWidgetLayouts(configs),
+  });
+
   startUpdateLoops();
 
-  startButtonListener(handleButtonEvent);
+  startLocalInput(handleButtonEvent);
 }
 
 function startUpdateLoops() {
@@ -73,8 +102,8 @@ function startUpdateLoops() {
         const data = {
           temperatureC: 21,
           condition: "Partly cloudy",
-          iconCode: "cloudy",
-          locationName: "Home",
+          iconCode: "partly-cloudy",
+          locationName: "Local preview",
           updatedAt: new Date().toISOString(),
         };
         instance.update(data);
@@ -88,12 +117,20 @@ function startUpdateLoops() {
       const tick = () => {
         const now = new Date();
         const inThirty = new Date(now.getTime() + 30 * 60 * 1000);
+        const inTwoH = new Date(now.getTime() + 2 * 60 * 60 * 1000);
         const events = [
           {
             id: "1",
             title: "Morning standup",
             start: now.toISOString(),
             end: inThirty.toISOString(),
+            allDay: false,
+          },
+          {
+            id: "2",
+            title: "Design review",
+            start: inThirty.toISOString(),
+            end: inTwoH.toISOString(),
             allDay: false,
           },
         ];
@@ -110,11 +147,17 @@ function handleButtonEvent(evt) {
   const { button_id: buttonId, action } = evt;
 
   if (buttonId === "LAYOUT" && action === "CLICK") {
-    interactionState.layoutIndex =
-      (interactionState.layoutIndex + 1) % 4;
-    // Phase 2: could trigger different layouts; for now, log.
-    // eslint-disable-next-line no-console
-    console.log("Layout cycle to index", interactionState.layoutIndex);
+    interactionState.layoutIndex += 1;
+    const grid = getGridElement();
+    const tiles = widgetInstances.map((w) => w.instance.container);
+    if (grid) {
+      setMirrorLayoutMode(grid, interactionState.layoutIndex, tiles);
+      refreshWidgetDragState(
+        () => parseInt(grid.dataset.layout || "0", 10),
+        grid
+      );
+    }
+    emitMirrorEvent("layout", { index: interactionState.layoutIndex });
   }
 
   if (buttonId === "DISPLAY") {
@@ -126,6 +169,7 @@ function handleButtonEvent(evt) {
         interactionState.displayMode === "sleep" ? "normal" : "sleep";
     }
     applyDisplayMode();
+    emitMirrorEvent("display", { mode: interactionState.displayMode });
   }
 }
 
@@ -143,4 +187,3 @@ function applyDisplayMode() {
 window.addEventListener("DOMContentLoaded", () => {
   loadInitialData();
 });
-
