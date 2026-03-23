@@ -11,7 +11,38 @@
   <body>
     <div class="mirror-app">
       <div class="mirror-ambient" aria-hidden="true"></div>
+      <aside class="mirror-tools" aria-label="Mirror tools">
+        <div class="mirror-tools__header">Tools</div>
+        <button id="tool-toggle-camera" type="button" class="mirror-tools__btn">
+          Camera Feed
+        </button>
+        <button id="tool-cycle-layout" type="button" class="mirror-tools__btn">
+          Cycle Layout
+        </button>
+        <button id="tool-toggle-display" type="button" class="mirror-tools__btn">
+          Toggle Display
+        </button>
+        <div class="mirror-tools__section">
+          <div class="mirror-tools__section-label">Widgets</div>
+          <div id="tool-widget-list" class="mirror-tools__widget-list"></div>
+        </div>
+      </aside>
       <div class="mirror-shell">
+        <section id="camera-stage" class="camera-stage" aria-hidden="true">
+          <video
+            id="camera-video"
+            class="camera-stage__video"
+            playsinline
+            muted
+            autoplay
+          ></video>
+          <div class="camera-stage__hud">
+            <span id="camera-status" class="camera-stage__status">Camera offline</span>
+            <button id="camera-close" type="button" class="camera-stage__close">
+              Exit camera
+            </button>
+          </div>
+        </section>
         <div
           id="mirror-grid"
           class="mirror-grid"

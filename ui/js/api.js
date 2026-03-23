@@ -38,3 +38,23 @@ export function putUserSettings(partialSettings) {
   });
 }
 
+export function getCameraFeedSource() {
+  return jsonRequest("/camera/feed");
+}
+
+export function postExternalHookEvent(eventName, payload) {
+  return jsonRequest("/integrations/hooks/events", {
+    method: "POST",
+    body: JSON.stringify({
+      event_name: eventName,
+      payload,
+      source: "mirror-ui",
+      ts: new Date().toISOString(),
+    }),
+  });
+}
+
+export function getExternalHookManifest() {
+  return jsonRequest("/integrations/hooks");
+}
+

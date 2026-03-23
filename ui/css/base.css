@@ -138,3 +138,20 @@ body.display-sleep {
 body.display-sleep .mirror-ambient {
   opacity: 0.2;
 }
+
+body.view-camera .camera-stage {
+  display: block;
+}
+
+body.view-camera .mirror-grid {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.view-camera .mirror-ambient {
+  opacity: 0;
+}
+
+body.view-camera .mirror-tools {
+  display: none;
+}
