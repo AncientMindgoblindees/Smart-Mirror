@@ -1,0 +1,3 @@
+# Avoid CRLF in Linux launcher files (invalid .desktop / broken shebangs on Pi)
+*.sh text eol=lf
+deploy/raspberry-pi/*.template text eol=lf
