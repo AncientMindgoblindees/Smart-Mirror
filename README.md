@@ -17,6 +17,90 @@ This README.md contains information about the SmartMirror project process, workf
 ### Software Stack
 - Coming soon
 
+## Run the Application
+
+### Raspberry Pi app window mode (no normal browser tab)
+Runs backend + opens Chromium in app/fullscreen mode so it behaves like a dedicated mirror application.
+
+1. Install system dependencies:
+```
+sudo apt update
+sudo apt install -y python3 python3-pip chromium-browser curl
+```
+2. Install Python dependencies (from repo root):
+```
+pip3 install -r backend/requirements.txt
+```
+3. Start the mirror app window:
+```
+bash scripts/start-mirror-app.sh
+```
+4. (Optional) stop backend later:
+```
+bash scripts/stop-mirror-app.sh
+```
+
+### Raspberry Pi desktop launcher / autostart
+Creates a clickable app launcher and optional login autostart entry.
+
+```
+bash deploy/raspberry-pi/install-pi-launcher.sh
+```
+
+Enable autostart on login:
+```
+bash deploy/raspberry-pi/install-pi-launcher.sh --autostart
+```
+
+### Option 1: Full app (recommended)
+Runs FastAPI backend + serves UI at `/ui` (enables API routes and hook endpoints).
+
+1. Create and activate a Python virtual environment:
+```
+python -m venv .venv
+.\venv\Scripts\Activate
+```
+2. Install backend dependencies:
+```
+pip install -r backend/requirements.txt
+```
+3. Start the backend from repo root:
+```
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+4. Open:
+```
+http://localhost:8000/ui/
+```
+
+### Option 2: UI-only preview
+Runs static UI only (no backend APIs).
+
+1. Install Node dependencies:
+```
+npm install
+```
+2. Start static server:
+```
+npm run ui
+```
+3. Open:
+```
+http://localhost:5173
+```
+
+## External layout adapter (for future services)
+
+The UI now supports an adjustment provider interface in `ui/js/services/layoutAdjustmentsProvider.js`.
+To plug in a remote service, call `setLayoutAdjustmentProvider(...)` and implement:
+
+- `hydrateWidgetConfigs(configs)`
+- `persistWidgetLayouts(configs)`
+- `onWidgetTransformChanged(payload)`
+- `onOrientationChanged(payload)`
+
+See `docs/EXTERNAL-INTEGRATION-HOOKS.md` for details and an example adapter.
+
 ## How to: Version Control with Git
 ### Cloning the repo in VSCode:
 In GitHub, go to the SmartMirror repository in the main branch. In the top right corner you will see the green "<> Code" button. Copy the HTTPS link that appears in the dropdown. Now you can open VSCode. 

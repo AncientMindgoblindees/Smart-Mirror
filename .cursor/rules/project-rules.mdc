@@ -1,0 +1,112 @@
+---
+description: Core standards for all agents — execution, Running log,  communication, code changes,Reasoning,  Smart Mirror context, Subagents, Testing, safety, and UI constraints
+alwaysApply: true
+---
+
+# Smart Mirror — project rules
+
+All agents must follow these rules on every task.
+
+- This is a real workspace with shell and network. Run commands and use tools to investigate; do not only tell the user what to run.
+- All commands must:
+  - Be explained before execution (what and why)
+  - Be logged with a short summary of results
+  - Be retried with alternative approaches if they fail
+- If something fails, diagnose, try alternatives, and retry rather than stopping after one attempt.
+
+## Running log (persistent across iterations)
+
+- Maintain a running log file for the task/session.
+- The log must include:
+  - Actions taken
+  - Commands executed
+  - Key outputs/results
+  - Errors encountered and fixes attempted
+  - Decisions made and reasoning
+- Always read the existing log before continuing work.
+- Append updates after every meaningful step.
+- This log serves as shared memory across iterations and agents.
+
+
+## Communication
+
+- When referencing existing code, use Cursor code citations only in this form (with real line numbers and paths):
+
+```12:15:src/example.ts
+// cited lines
+```
+
+- Prefer markdown links for external URLs. Write in clear, complete sentences; keep length proportional to task complexity.
+- Use bold and inline code sparingly for emphasis, not decoration.
+
+
+##Reasoning about the task
+
+- Use the full conversation: the latest message may refine work in progress rather than start something new.
+- Infer goals and constraints from the thread, not only from the last message.
+- Before making changes:
+    - Identify existing patterns in the codebase
+    - Confirm the simplest viable solution
+    - Avoid introducing new abstractions unless necessary
+    - Prefer simple, readable solutions over clever or complex ones.
+
+## Code and changes
+
+- Change only what the task requires. No drive-by refactors or unrelated files.
+- Read surrounding code first; match naming, types, imports, and documentation level.
+- When publishing code use PR on git.
+- Reuse existing functions and patterns instead of duplicating logic.
+- Every line in the diff should serve the request. Avoid verbose comments, docstrings on obvious code, and unnecessary defensive error handling unless clearly needed.
+- Always test code in an isolated environment before finishing to ensure functionality is standard across programs.
+- Never delete working functionality
+- Write simply dont over complicate tasks. If the task is to ambitious please spawn subagents to break down the tasks and rewrite if unclear.
+
+##Subagent usage
+- Spawn subagents when:
+    - The task spans multiple domains (UI, backend, hardware)
+    - The task is large or ambiguous
+    - Work can be parallelized
+- Each subagent must have:
+    - A clearly scoped goal
+    - Defined inputs and expected outputs
+- The parent agent must coordinate subagents, integrate results, and resolve conflicts.
+
+##Testing and completion
+
+- A task is only complete if:
+    - Code runs without errors
+    - Expected behavior is verified (not assumed)
+    - No regressions are introduced
+    - Results are clearly summarized
+- Always run the code or simulate execution using available tools.
+- If execution is not possible:
+    - Explicitly state why
+    - Describe what would be tested and how
+
+##Hardware safety
+- Do not interact with GPIO, camera, or hardware interfaces unless explicitly required.
+- Simulate hardware interactions whenever possible.
+- Any real hardware interaction must be clearly stated and justified before execution.
+
+## Smart Mirror product context
+
+- Raspberry Pi–based smart mirror: Up-and-Down UI, GPIO, camera, all stuff is handled locally for UI.
+- Respect privacy (e.g. camera off unless the user explicitly activates it), consent for personal data, and responsiveness suitable for embedded hardware.
+
+##UI constraints
+
+- UI must be:
+    - Vertical navigation only (up/down interaction model)
+    - Readable at a distance (large text, high contrast)
+    - Responsive on low-power hardware
+- Avoid:
+    - Complex nested layouts
+    - Heavy animations
+    - Browser-based UI unless explicitly required
+
+##Performance constraints
+
+- Minimize CPU and memory usage
+- Avoid unnecessary background processes
+- Prefer lightweight libraries
+- Favor local computation over network calls

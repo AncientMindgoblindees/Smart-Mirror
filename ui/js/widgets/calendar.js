@@ -3,12 +3,22 @@ import { registerWidget } from "./base.js";
 const calendarWidget = {
   id: "calendar",
 
-  render(container) {
+  render(container, config) {
     container.classList.add("widget--calendar");
+
+    const defOpts = calendarWidget.settings().options || {};
+    const maxEvents =
+      config && config.options && typeof config.options.maxEvents === "number"
+        ? config.options.maxEvents
+        : defOpts.maxEvents ?? 3;
+    container._maxEvents = maxEvents;
 
     const header = document.createElement("div");
     header.className = "widget-header";
-    header.textContent = "Calendar";
+    const label = document.createElement("span");
+    label.className = "widget-header-label";
+    label.textContent = "Calendar";
+    header.appendChild(label);
 
     const list = document.createElement("ul");
     list.className = "calendar-events";
@@ -29,7 +39,7 @@ const calendarWidget = {
     if (!list) return;
 
     list.innerHTML = "";
-    const maxEvents = calendarWidget.settings?.()?.options?.maxEvents ?? 3;
+    const maxEvents = this._maxEvents ?? 3;
     const events = (data && Array.isArray(data.events) ? data.events : []).slice(
       0,
       maxEvents

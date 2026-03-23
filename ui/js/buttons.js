@@ -70,6 +70,9 @@ export function startButtonListener(onEvent) {
     if (e.key === "1") {
       handler({ button_id: "LAYOUT", action: "CLICK", effect: "cycle_layout" });
     }
+    if (e.key === "2") {
+      handler({ button_id: "CAMERA", action: "CLICK", effect: "toggle_camera" });
+    }
     if (e.key === "4") {
       handler({ button_id: "DISPLAY", action: "CLICK", effect: "toggle_dim" });
     }

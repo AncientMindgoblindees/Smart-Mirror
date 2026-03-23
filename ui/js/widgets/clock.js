@@ -8,10 +8,14 @@ const clockWidget = {
 
     const header = document.createElement("div");
     header.className = "widget-header";
-    header.textContent = "Time";
+    const label = document.createElement("span");
+    label.className = "widget-header-label";
+    label.textContent = "Time";
+    header.appendChild(label);
 
     const timeEl = document.createElement("div");
     timeEl.className = "clock-time metric-primary";
+    timeEl.setAttribute("aria-live", "polite");
 
     const dateEl = document.createElement("div");
     dateEl.className = "clock-date metric-secondary";
@@ -33,7 +37,7 @@ const clockWidget = {
       hour12: false,
     });
     const dateStr = now.toLocaleDateString(undefined, {
-      weekday: "short",
+      weekday: "long",
       month: "short",
       day: "numeric",
     });
@@ -60,4 +64,3 @@ const clockWidget = {
 
 registerWidget(clockWidget);
 export default clockWidget;
-
