@@ -9,6 +9,14 @@ LOG_FILE="${ROOT_DIR}/data/mirror-backend.log"
 
 mkdir -p "${ROOT_DIR}/data"
 
+if [[ -x "${ROOT_DIR}/.venv/bin/python" ]]; then
+  PYTHON="${ROOT_DIR}/.venv/bin/python"
+elif [[ -n "${MIRROR_PYTHON:-}" ]]; then
+  PYTHON="${MIRROR_PYTHON}"
+else
+  PYTHON="python3"
+fi
+
 if [[ -f "${PID_FILE}" ]]; then
   OLD_PID="$(cat "${PID_FILE}" || true)"
   if [[ -n "${OLD_PID}" ]] && kill -0 "${OLD_PID}" 2>/dev/null; then
@@ -19,9 +27,23 @@ if [[ -f "${PID_FILE}" ]]; then
 fi
 
 if [[ ! -f "${PID_FILE}" ]]; then
+  if ! "${PYTHON}" -c "import uvicorn" 2>/dev/null; then
+    if [[ -z "${MIRROR_PYTHON:-}" && -f "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" ]]; then
+      bash "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" "${ROOT_DIR}"
+      PYTHON="${ROOT_DIR}/.venv/bin/python"
+    fi
+  fi
+  if ! "${PYTHON}" -c "import uvicorn" 2>/dev/null; then
+    echo "Smart Mirror: uvicorn is not installed for: ${PYTHON}" >&2
+    echo "Run the Pi installer (sets up venv + deps):" >&2
+    echo "  bash ${ROOT_DIR}/deploy/raspberry-pi/install-pi-launcher.sh" >&2
+    echo "Or manually:" >&2
+    echo "  bash ${ROOT_DIR}/scripts/ensure-mirror-python-env.sh ${ROOT_DIR}" >&2
+    exit 1
+  fi
   (
     cd "${ROOT_DIR}"
-    python3 -m uvicorn backend.main:app --host 127.0.0.1 --port "${PORT}"
+    exec "${PYTHON}" -m uvicorn backend.main:app --host 127.0.0.1 --port "${PORT}"
   ) >>"${LOG_FILE}" 2>&1 &
   echo "$!" >"${PID_FILE}"
 fi
