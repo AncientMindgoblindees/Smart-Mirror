@@ -1,17 +1,20 @@
-import { registerWidget } from "./base.js";
+import { BaseWidget, registerWidget } from "./base.js";
+import { getDefaultWidgetLayout } from "./defaultLayouts.js";
 
-const clockWidget = {
-  id: "clock",
+class ClockWidget extends BaseWidget {
+  constructor() {
+    const defaults = getDefaultWidgetLayout("clock");
+    if (!defaults) throw new Error('Missing default layout for "clock"');
+    super({
+      id: "clock",
+      title: "Time",
+      className: "widget--clock",
+      defaults,
+    });
+  }
 
-  render(container) {
-    container.classList.add("widget--clock");
-
-    const header = document.createElement("div");
-    header.className = "widget-header";
-    const label = document.createElement("span");
-    label.className = "widget-header-label";
-    label.textContent = "Time";
-    header.appendChild(label);
+  mount(container) {
+    this.createShell(container);
 
     const timeEl = document.createElement("div");
     timeEl.className = "clock-time metric-primary";
@@ -20,47 +23,35 @@ const clockWidget = {
     const dateEl = document.createElement("div");
     dateEl.className = "clock-date metric-secondary";
 
-    container.appendChild(header);
     container.appendChild(timeEl);
     container.appendChild(dateEl);
 
-    container._clockEls = { timeEl, dateEl };
+    const update = () => {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+      const dateStr = now.toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+      });
 
-    this.update.call(container);
-  },
-
-  update() {
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    const dateStr = now.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-    });
-
-    const { timeEl, dateEl } = this._clockEls || {};
-    if (timeEl) timeEl.textContent = timeStr;
-    if (dateEl) dateEl.textContent = dateStr;
-  },
-
-  settings() {
-    return {
-      widget_id: "clock",
-      enabled: true,
-      position_row: 1,
-      position_col: 1,
-      size_rows: 2,
-      size_cols: 2,
-      options: {
-        refreshIntervalMs: 1000,
-      },
+      timeEl.textContent = timeStr;
+      dateEl.textContent = dateStr;
     };
-  },
-};
 
+    update();
+    return {
+      update,
+      settings: () => this.settings(),
+    };
+  }
+
+}
+
+const clockWidget = new ClockWidget();
 registerWidget(clockWidget);
 export default clockWidget;

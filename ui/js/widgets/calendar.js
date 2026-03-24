@@ -1,24 +1,25 @@
-import { registerWidget } from "./base.js";
+import { BaseWidget, registerWidget } from "./base.js";
+import { getDefaultWidgetLayout } from "./defaultLayouts.js";
 
-const calendarWidget = {
-  id: "calendar",
+class CalendarWidget extends BaseWidget {
+  constructor() {
+    const defaults = getDefaultWidgetLayout("calendar");
+    if (!defaults) throw new Error('Missing default layout for "calendar"');
+    super({
+      id: "calendar",
+      title: "Calendar",
+      className: "widget--calendar",
+      defaults,
+    });
+  }
 
-  render(container, config) {
-    container.classList.add("widget--calendar");
-
-    const defOpts = calendarWidget.settings().options || {};
+  mount(container, config) {
+    this.createShell(container);
+    const defOpts = this.settings().options || {};
     const maxEvents =
       config && config.options && typeof config.options.maxEvents === "number"
         ? config.options.maxEvents
         : defOpts.maxEvents ?? 3;
-    container._maxEvents = maxEvents;
-
-    const header = document.createElement("div");
-    header.className = "widget-header";
-    const label = document.createElement("span");
-    label.className = "widget-header-label";
-    label.textContent = "Calendar";
-    header.appendChild(label);
 
     const list = document.createElement("ul");
     list.className = "calendar-events";
@@ -28,65 +29,47 @@ const calendarWidget = {
     empty.textContent = "No upcoming events";
     list.appendChild(empty);
 
-    container.appendChild(header);
     container.appendChild(list);
 
-    container._calendarList = list;
-  },
+    const update = (data) => {
+      list.innerHTML = "";
+      const events = (
+        data && Array.isArray(data.events) ? data.events : []
+      ).slice(0, maxEvents);
 
-  update(data) {
-    const list = this._calendarList;
-    if (!list) return;
+      if (!events.length) {
+        const fallback = document.createElement("li");
+        fallback.className = "calendar-event-empty metric-secondary";
+        fallback.textContent = "No upcoming events";
+        list.appendChild(fallback);
+        return;
+      }
 
-    list.innerHTML = "";
-    const maxEvents = this._maxEvents ?? 3;
-    const events = (data && Array.isArray(data.events) ? data.events : []).slice(
-      0,
-      maxEvents
-    );
+      events.forEach((event) => {
+        const li = document.createElement("li");
+        li.className = "calendar-event";
 
-    if (!events.length) {
-      const empty = document.createElement("li");
-      empty.className = "calendar-event-empty metric-secondary";
-      empty.textContent = "No upcoming events";
-      list.appendChild(empty);
-      return;
-    }
+        const time = document.createElement("div");
+        time.className = "calendar-event-time metric-tertiary";
+        time.textContent = formatEventTime(event);
 
-    events.forEach((event) => {
-      const li = document.createElement("li");
-      li.className = "calendar-event";
+        const title = document.createElement("div");
+        title.className = "calendar-event-title metric-secondary";
+        title.textContent = event.title || "";
 
-      const time = document.createElement("div");
-      time.className = "calendar-event-time metric-tertiary";
-      time.textContent = formatEventTime(event);
+        li.appendChild(time);
+        li.appendChild(title);
 
-      const title = document.createElement("div");
-      title.className = "calendar-event-title metric-secondary";
-      title.textContent = event.title || "";
-
-      li.appendChild(time);
-      li.appendChild(title);
-
-      list.appendChild(li);
-    });
-  },
-
-  settings() {
-    return {
-      widget_id: "calendar",
-      enabled: true,
-      position_row: 3,
-      position_col: 1,
-      size_rows: 2,
-      size_cols: 3,
-      options: {
-        maxEvents: 3,
-        refreshIntervalMs: 5 * 60 * 1000,
-      },
+        list.appendChild(li);
+      });
     };
-  },
-};
+
+    return {
+      update,
+      settings: () => this.settings(),
+    };
+  }
+}
 
 function formatEventTime(event) {
   if (event.allDay) {
@@ -107,6 +90,7 @@ function formatEventTime(event) {
   return `${startStr}–${endStr}`;
 }
 
+const calendarWidget = new CalendarWidget();
 registerWidget(calendarWidget);
 export default calendarWidget;
 

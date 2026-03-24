@@ -69,6 +69,9 @@ function clearRuntime() {
   runtime.intervals = [];
   runtime.destroyDnD?.();
   runtime.destroyDnD = null;
+  runtime.widgetInstances.forEach(({ instance }) => {
+    instance?.destroy?.();
+  });
   runtime.widgetInstances = [];
 }
 
@@ -185,8 +188,11 @@ function startOrientationSync() {
 function startUpdateLoops() {
   runtime.widgetInstances.forEach(({ config, instance }) => {
     const defaults = instance.settings ? instance.settings() : {};
-    const options = defaults && defaults.options ? defaults.options : {};
-    const intervalMs = options.refreshIntervalMs || 0;
+    const defaultOptions = defaults && defaults.options ? defaults.options : {};
+    const configOptions = config && config.options ? config.options : {};
+    const options = { ...defaultOptions, ...configOptions };
+    const parsedInterval = Number(options.refreshIntervalMs);
+    const intervalMs = Number.isFinite(parsedInterval) && parsedInterval > 0 ? parsedInterval : 0;
 
     if (config.widget_id.startsWith("clock")) {
       const tick = () => {

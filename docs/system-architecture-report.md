@@ -16,6 +16,20 @@ This document describes the current Smart Mirror software stack: overall design,
 
 The mirror is designed as a **single-user, local-first** appliance: one browser session (often Chromium kiosk) talks to one backend on the same machine or LAN.
 
+### Quick guide in simple terms
+
+- **Section 2 (system design):** shows the "big picture" of what talks to what.
+- **Section 3 (backend):** explains the Python server parts and what each one does.
+- **Section 4 (frontend):** explains the browser app parts (layout, widgets, tools).
+- **Section 5 (protocols):** explains which network protocols are used (HTTP/WebSocket).
+- **Section 6 (HTTP API):** lists all REST endpoints that exist right now.
+- **Section 7 (WebSocket API):** explains real-time button events.
+- **Section 8 (missing routes):** calls out UI features that currently hit non-existent endpoints.
+- **Section 9 (env vars):** runtime configuration flags.
+- **Section 10 (auth/trust):** security reality and what to do on a LAN.
+- **Section 11 (extension guidance):** practical advice when adding features.
+- **Section 12 (operator checklist):** quick runbook before deploying/running.
+
 ---
 
 ## 2. Overall system design
@@ -89,8 +103,9 @@ flowchart LR
 | **Bootstrap** | `ui/js/app.js` | Load config, render widgets, layout modes, DnD, tools, camera toggle, intervals |
 | **HTTP client** | `ui/js/api.js` | `fetch` to `/api/...` (JSON) |
 | **Layout** | `ui/js/layout.js` | CSS grid / freeform placement |
-| **Widget registry** | `ui/js/widgets/base.js` | `registerWidget` / `mountWidget` |
+| **Widget registry + base contract** | `ui/js/widgets/base.js` | `registerWidget` / `mountWidget`, `BaseWidget`, lifecycle hooks |
 | **Widgets** | `ui/js/widgets/*.js` | Clock, weather, calendar (register + render + update) |
+| **Widget default layouts (single source)** | `ui/js/widgets/defaultLayouts.js` | Canonical defaults consumed by UI config + widget `settings()` |
 | **Local config fallback** | `ui/js/services/localMirrorConfig.js` | Defaults + `localStorage` when not using server-backed config |
 | **Layout persistence adapter** | `ui/js/services/layoutAdjustmentsProvider.js` | Hydrate/persist; plugs into local storage by default |
 | **Input** | `ui/js/services/localInput.js` | Keyboard as stand-in for buttons (used by `app.js` today) |
@@ -98,6 +113,110 @@ flowchart LR
 | **Camera** | `ui/js/services/cameraFeed.js` + `getCameraFeedSource()` in `api.js` | Video element; prefers stream URL from API when present |
 
 **Frontend stack**: No bundler required; native **ES modules** and browser APIs only.
+
+**Widget architecture notes (plain English):**
+
+- **One registration point:** Every widget is registered in `ui/js/widgets/base.js` with `registerWidget(...)`. This is the single place the app looks up widgets at runtime.
+- **Two supported widget styles:** The runtime supports both:
+  - **New style:** a widget implements `mount(...)` (recommended).
+  - **Legacy style:** a widget implements `render(...)` (still supported so old widgets do not break).
+- **Shared base class:** `BaseWidget` gives common behavior (shell/header helpers + default settings handling) so new widgets are consistent and easier to maintain.
+- **Lifecycle hooks for growth:** Widgets can optionally define:
+  - `beforeMount(surface, config)` — run setup before DOM is built.
+  - `afterMount(surface, config, mountResult)` — run after DOM is built.
+  - `destroy(surface, config)` — clean up listeners/timers/observers.
+- **Safe teardown:** `app.js` calls widget `destroy()` inside `clearRuntime()`. This helps avoid memory leaks and duplicate listeners when the grid rerenders.
+- **Single source of defaults:** `ui/js/widgets/defaultLayouts.js` holds canonical widget defaults. Both `localMirrorConfig` and each widget `settings()` now read from this file.
+- **No more defaults drift:** Because defaults come from one module, layout values like `size_cols`, `maxEvents`, and refresh intervals stay in sync across the app.
+- **Per-widget overrides still work:** `app.js` merges default options with saved config options, so user/custom settings can override defaults cleanly.
+
+### 4.1 Minimal template: adding a new widget
+
+Use this checklist:
+
+1. Add your widget's default layout in `ui/js/widgets/defaultLayouts.js`.
+2. Create a widget file in `ui/js/widgets/` that extends `BaseWidget`.
+3. Register it with `registerWidget(...)`.
+4. Import the widget module in `ui/js/app.js` so it is loaded at startup.
+
+Minimal example:
+
+```js
+// ui/js/widgets/quote.js
+import { BaseWidget, registerWidget } from "./base.js";
+import { getDefaultWidgetLayout } from "./defaultLayouts.js";
+
+class QuoteWidget extends BaseWidget {
+  constructor() {
+    const defaults = getDefaultWidgetLayout("quote");
+    if (!defaults) throw new Error('Missing default layout for "quote"');
+    super({
+      id: "quote",
+      title: "Quote",
+      className: "widget--quote",
+      defaults,
+    });
+  }
+
+  beforeMount(surface, config) {
+    // Optional: prepare state, read config, etc.
+  }
+
+  mount(container, config) {
+    this.createShell(container);
+
+    const text = document.createElement("div");
+    text.className = "quote-text metric-secondary";
+    container.appendChild(text);
+
+    const update = (data) => {
+      text.textContent = data?.quote || "Stay curious.";
+    };
+
+    update();
+    return {
+      update,
+      settings: () => this.settings(),
+      // Optional custom cleanup; called by runtime on teardown.
+      destroy: () => {},
+    };
+  }
+
+  afterMount(surface, config, mountResult) {
+    // Optional: analytics hooks, post-render wiring, etc.
+  }
+
+  destroy(surface, config) {
+    // Optional fallback cleanup.
+  }
+}
+
+const quoteWidget = new QuoteWidget();
+registerWidget(quoteWidget);
+export default quoteWidget;
+```
+
+Add defaults for the new widget:
+
+```js
+// ui/js/widgets/defaultLayouts.js
+{
+  widget_id: "quote",
+  enabled: true,
+  position_row: 5,
+  position_col: 1,
+  size_rows: 1,
+  size_cols: 2,
+  options: { refreshIntervalMs: 60 * 1000 },
+}
+```
+
+Then load it at startup:
+
+```js
+// ui/js/app.js
+import "./widgets/quote.js";
+```
 
 ---
 

@@ -2,6 +2,7 @@
  * Local mirror configuration — replaces remote API until backend wiring exists.
  * Add widgets here: same shape as future `/api/widgets/` payloads.
  */
+import { getDefaultWidgetLayouts } from "../widgets/defaultLayouts.js";
 
 /** @type {Record<string, unknown>} */
 export const defaultUserSettings = {
@@ -14,42 +15,14 @@ export const defaultUserSettings = {
  * Widget grid entries. Positions are 1-based; span = size_rows / size_cols.
  * @type {WidgetConfig[]}
  */
-export const defaultWidgetLayouts = [
-  {
-    widget_id: "clock",
-    enabled: true,
-    position_row: 1,
-    position_col: 1,
-    size_rows: 2,
-    size_cols: 2,
-    options: { refreshIntervalMs: 1000 },
-  },
-  {
-    widget_id: "weather",
-    enabled: true,
-    position_row: 1,
-    position_col: 3,
-    size_rows: 2,
-    size_cols: 2,
-    options: { refreshIntervalMs: 15 * 60 * 1000 },
-  },
-  {
-    widget_id: "calendar",
-    enabled: true,
-    position_row: 3,
-    position_col: 1,
-    size_rows: 2,
-    size_cols: 4,
-    options: { maxEvents: 4, refreshIntervalMs: 5 * 60 * 1000 },
-  },
-];
+export const defaultWidgetLayouts = getDefaultWidgetLayouts();
 
 export function getLocalUserSettings() {
   return { ...defaultUserSettings };
 }
 
 export function getLocalWidgetConfigs() {
-  return defaultWidgetLayouts.map((w) => ({ ...w, options: { ...w.options } }));
+  return getDefaultWidgetLayouts();
 }
 
 const LAYOUT_STORAGE_KEY = "mirror-widget-layouts";

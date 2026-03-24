@@ -1,4 +1,5 @@
-import { registerWidget } from "./base.js";
+import { BaseWidget, registerWidget } from "./base.js";
+import { getDefaultWidgetLayout } from "./defaultLayouts.js";
 
 const ICONS = {
   sunny: "☀",
@@ -18,18 +19,20 @@ function iconFor(code) {
   return ICONS[key] || "◌";
 }
 
-const weatherWidget = {
-  id: "weather",
+class WeatherWidget extends BaseWidget {
+  constructor() {
+    const defaults = getDefaultWidgetLayout("weather");
+    if (!defaults) throw new Error('Missing default layout for "weather"');
+    super({
+      id: "weather",
+      title: "Weather",
+      className: "widget--weather",
+      defaults,
+    });
+  }
 
-  render(container) {
-    container.classList.add("widget--weather");
-
-    const header = document.createElement("div");
-    header.className = "widget-header";
-    const label = document.createElement("span");
-    label.className = "widget-header-label";
-    label.textContent = "Weather";
-    header.appendChild(label);
+  mount(container) {
+    this.createShell(container);
 
     const main = document.createElement("div");
     main.className = "weather-main";
@@ -62,44 +65,30 @@ const weatherWidget = {
     meta.appendChild(conditionEl);
     meta.appendChild(locationEl);
 
-    container.appendChild(header);
     container.appendChild(main);
     container.appendChild(meta);
 
-    container._weatherEls = { tempEl, iconEl, conditionEl, locationEl };
-  },
+    const update = (data) => {
+      if (!data) {
+        conditionEl.textContent = "Offline";
+        tempEl.textContent = "—";
+        iconEl.textContent = "";
+        return;
+      }
 
-  update(data) {
-    const { tempEl, iconEl, conditionEl, locationEl } = this._weatherEls || {};
-
-    if (!data) {
-      if (conditionEl) conditionEl.textContent = "Offline";
-      if (tempEl) tempEl.textContent = "—";
-      if (iconEl) iconEl.textContent = "";
-      return;
-    }
-
-    if (tempEl) tempEl.textContent = `${Math.round(data.temperatureC)}°`;
-    if (conditionEl) conditionEl.textContent = data.condition || "";
-    if (locationEl) locationEl.textContent = data.locationName || "";
-    if (iconEl) iconEl.textContent = iconFor(data.iconCode);
-  },
-
-  settings() {
-    return {
-      widget_id: "weather",
-      enabled: true,
-      position_row: 1,
-      position_col: 3,
-      size_rows: 2,
-      size_cols: 2,
-      options: {
-        units: "metric",
-        refreshIntervalMs: 15 * 60 * 1000,
-      },
+      tempEl.textContent = `${Math.round(data.temperatureC)}°`;
+      conditionEl.textContent = data.condition || "";
+      locationEl.textContent = data.locationName || "";
+      iconEl.textContent = iconFor(data.iconCode);
     };
-  },
-};
 
+    return {
+      update,
+      settings: () => this.settings(),
+    };
+  }
+}
+
+const weatherWidget = new WeatherWidget();
 registerWidget(weatherWidget);
 export default weatherWidget;
