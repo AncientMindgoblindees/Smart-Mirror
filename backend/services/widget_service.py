@@ -67,6 +67,7 @@ def replace_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[Widg
     Upserts incoming configs and deletes any rows not present in the list.
     """
     existing_by_id = {w.id: w for w in db.query(WidgetConfig).all()}
+    seen_ids = set()
 
     for cfg in configs:
         data = cfg.model_dump(exclude_unset=True)
@@ -80,6 +81,7 @@ def replace_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[Widg
             obj = WidgetConfig(**data)
             db.add(obj)
             db.flush()
+        seen_ids.add(obj.id)
 
     # Delete rows not present in the incoming list (true PUT/replace semantics).
     for obj in existing_by_id.values():
