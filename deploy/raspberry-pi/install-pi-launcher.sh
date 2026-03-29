@@ -43,6 +43,12 @@ cp "${APP_FILE}" "${HOME}/Desktop/smart-mirror.desktop"
 chmod +x "${ROOT_DIR}/scripts/start-mirror-app.sh" "${ROOT_DIR}/scripts/stop-mirror-app.sh"
 [[ -f "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" ]] &&
   chmod +x "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh"
+[[ -f "${ROOT_DIR}/scripts/install-cloudflared.sh" ]] &&
+  chmod +x "${ROOT_DIR}/scripts/install-cloudflared.sh"
+[[ -f "${ROOT_DIR}/scripts/setup-cloudflare-tunnel.sh" ]] &&
+  chmod +x "${ROOT_DIR}/scripts/setup-cloudflare-tunnel.sh"
+[[ -f "${ROOT_DIR}/scripts/run-cloudflare-quick-tunnel.sh" ]] &&
+  chmod +x "${ROOT_DIR}/scripts/run-cloudflare-quick-tunnel.sh"
 chmod +x "${APP_FILE}" "${HOME}/Desktop/smart-mirror.desktop"
 
 if [[ "${1:-}" == "--autostart" ]]; then

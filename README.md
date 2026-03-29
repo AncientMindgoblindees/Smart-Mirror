@@ -40,6 +40,8 @@ bash scripts/start-mirror-app.sh
 bash scripts/stop-mirror-app.sh
 ```
 
+When Cloudflare is configured (`~/.cloudflared/config.yml` exists), `scripts/start-mirror-app.sh` now also starts the named tunnel automatically on launch/login. Default tunnel name is `smart-mirror-ui`.
+
 ### Raspberry Pi desktop launcher / autostart
 Creates a clickable app launcher and optional login autostart entry.
 
@@ -87,6 +89,54 @@ npm run ui
 3. Open:
 ```
 http://localhost:5173
+```
+
+## Cloudflare Tunnel on Raspberry Pi / Linux
+
+Expose the Smart Mirror UI securely to another app via Cloudflare Tunnel.
+
+1. Start backend on a known port (example uses `8000`):
+```
+uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+2. Install cloudflared:
+```
+bash scripts/install-cloudflared.sh
+```
+
+3. Configure named tunnel + DNS (replace hostname):
+```
+bash scripts/setup-cloudflare-tunnel.sh --hostname mirror.yourdomain.com --service-url http://127.0.0.1:8000
+```
+
+4. Run tunnel in foreground:
+```
+cloudflared tunnel run smart-mirror-ui
+```
+
+5. Open mirror UI remotely:
+```
+https://mirror.yourdomain.com/ui/
+```
+
+Autostart behavior:
+- `scripts/start-mirror-app.sh` auto-starts tunnel if:
+  - `cloudflared` is installed
+  - `~/.cloudflared/config.yml` exists
+  - `MIRROR_ENABLE_TUNNEL` is not set to `0`
+- Tune with env vars:
+  - `MIRROR_ENABLE_TUNNEL=0` disables tunnel startup
+  - `MIRROR_TUNNEL_NAME=<name>` overrides tunnel name (default: `smart-mirror-ui`)
+
+Optional: install as a service (auto-start on boot):
+```
+bash scripts/setup-cloudflare-tunnel.sh --hostname mirror.yourdomain.com --service-url http://127.0.0.1:8000 --install-service
+```
+
+Quick temporary tunnel for testing (no DNS setup):
+```
+MIRROR_PORT=8000 bash scripts/run-cloudflare-quick-tunnel.sh
 ```
 
 ## External layout adapter (for future services)
