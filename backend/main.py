@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from backend.api import events, health, user, widgets
+from backend.api import events, health, user, widgets, clothing
 from backend.database.session import init_db
 from hardware.gpio import service as gpio_service
 
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(user.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(events.router)
+    app.include_router(clothing.router, prefix="/api")
 
     # Serve UI under /ui and ignore non-HTTP (e.g. stray websocket) requests
     static_ui = StaticFiles(directory="ui", html=True)
