@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +9,9 @@ from starlette.responses import Response
 from backend.api import events, health, user, widgets
 from backend.database.session import init_db
 from hardware.gpio import service as gpio_service
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+UI_DIST = BASE_DIR / "ui" / "dist"
 
 
 def create_app() -> FastAPI:
@@ -28,8 +32,8 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api")
     app.include_router(events.router)
 
-    # Serve UI under /ui and ignore non-HTTP (e.g. stray websocket) requests
-    static_ui = StaticFiles(directory="ui", html=True)
+    # Serve built React UI under /ui (run: cd ui && npm install && npm run build)
+    static_ui = StaticFiles(directory=str(UI_DIST), html=True)
 
     async def ui_app(scope, receive, send):  # type: ignore[func-returns-value]
         if scope["type"] != "http":

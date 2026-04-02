@@ -3,7 +3,9 @@
   "private": true,
   "description": "Smart Mirror monorepo",
   "scripts": {
-    "ui": "npx --yes serve ui -l 5173",
+    "ui:dev": "npm --prefix ui run dev",
+    "ui:build": "npm --prefix ui run build",
+    "ui:preview": "npm --prefix ui run preview",
     "backend": "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8002",
     "app:pi": "bash scripts/start-mirror-app.sh"
   }

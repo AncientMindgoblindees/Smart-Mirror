@@ -9,6 +9,11 @@ LOG_FILE="${ROOT_DIR}/data/mirror-backend.log"
 
 mkdir -p "${ROOT_DIR}/data"
 
+if [[ ! -d "${ROOT_DIR}/ui/dist" ]]; then
+  echo "Smart Mirror: ui/dist not found. Build the React UI first:" >&2
+  echo "  cd \"${ROOT_DIR}/ui\" && npm install && npm run build" >&2
+fi
+
 if [[ -x "${ROOT_DIR}/.venv/bin/python" ]]; then
   PYTHON="${ROOT_DIR}/.venv/bin/python"
 elif [[ -n "${MIRROR_PYTHON:-}" ]]; then

@@ -98,46 +98,30 @@ flowchart LR
 
 | Area | Location | Role |
 |------|----------|------|
-| **Shell** | `ui/index.html` | Grid container, tools sidebar, camera stage, single module entry |
-| **Styles** | `ui/css/base.css`, `layout.css`, `widgets.css` | Theming, grid, widget chrome |
-| **Bootstrap** | `ui/js/app.js` | Load config, render widgets, layout modes, DnD, tools, camera toggle, intervals |
-| **HTTP client** | `ui/js/api.js` | `fetch` to `/api/...` (JSON) |
-| **Layout** | `ui/js/layout.js` | CSS grid / freeform placement |
-| **Widget registry + base contract** | `ui/js/widgets/base.js` | `registerWidget` / `mountWidget`, `BaseWidget`, lifecycle hooks |
-| **Widgets** | `ui/js/widgets/*.js` | Clock, weather, calendar (register + render + update) |
-| **Widget default layouts (single source)** | `ui/js/widgets/defaultLayouts.js` | Canonical defaults consumed by UI config + widget `settings()` |
-| **Local config fallback** | `ui/js/services/localMirrorConfig.js` | Defaults + `localStorage` when not using server-backed config |
-| **Layout persistence adapter** | `ui/js/services/layoutAdjustmentsProvider.js` | Hydrate/persist; plugs into local storage by default |
-| **Input** | `ui/js/services/localInput.js` | Keyboard as stand-in for buttons (used by `app.js` today) |
-| **WebSocket client (optional)** | `ui/js/buttons.js` | Connects to `ws(s)://host/ws/buttons` — **not wired in `app.js` currently** |
-| **Camera** | `ui/js/services/cameraFeed.js` + `getCameraFeedSource()` in `api.js` | Video element; prefers stream URL from API when present |
+| **App shell** | `ui/src/App.tsx` | Layout modes, canvas, tools panel, camera overlay, persistence |
+| **Build** | `ui/vite.config.ts`, `ui/package.json` | Vite + React; production assets in `ui/dist/` (served at `/ui`) |
+| **HTTP client** | `ui/src/api/mirrorApi.ts` | `fetch` to `/api/widgets/`, `/api/user/settings` |
+| **Transforms** | `ui/src/api/transforms.ts` | Maps backend `WidgetConfig` rows ↔ React `WidgetConfig` (grid + `config_json.freeform`) |
+| **Widget registry** | `ui/src/registry.tsx` | `WIDGET_REGISTRY` maps `widget_id` → React widget component |
+| **Layout / freeform** | `ui/src/components/WidgetFrame.tsx` | CSS grid placement + freeform drag/resize (pointer events) |
+| **Styles** | `ui/src/App.css`, `ui/src/index.css` | Theming; user settings apply CSS vars (`--color-accent`, `--fs-display`) |
+| **Local fallback** | `localStorage` key `mirror_dashboard_config` | Used when the API is unreachable |
 
-**Frontend stack**: No bundler required; native **ES modules** and browser APIs only.
+**Frontend stack:** **React 18 + TypeScript + Vite**. The FastAPI app serves the built bundle from `ui/dist` at mount path `/ui` (see `backend/main.py`).
 
-**Widget architecture notes (plain English):**
+**Widget architecture (React):**
 
-- **One registration point:** Every widget is registered in `ui/js/widgets/base.js` with `registerWidget(...)`. This is the single place the app looks up widgets at runtime.
-- **Two supported widget styles:** The runtime supports both:
-  - **New style:** a widget implements `mount(...)` (recommended).
-  - **Legacy style:** a widget implements `render(...)` (still supported so old widgets do not break).
-- **Shared base class:** `BaseWidget` gives common behavior (shell/header helpers + default settings handling) so new widgets are consistent and easier to maintain.
-- **Lifecycle hooks for growth:** Widgets can optionally define:
-  - `beforeMount(surface, config)` — run setup before DOM is built.
-  - `afterMount(surface, config, mountResult)` — run after DOM is built.
-  - `destroy(surface, config)` — clean up listeners/timers/observers.
-- **Safe teardown:** `app.js` calls widget `destroy()` inside `clearRuntime()`. This helps avoid memory leaks and duplicate listeners when the grid rerenders.
-- **Single source of defaults:** `ui/js/widgets/defaultLayouts.js` holds canonical widget defaults. Both `localMirrorConfig` and each widget `settings()` now read from this file.
-- **No more defaults drift:** Because defaults come from one module, layout values like `size_cols`, `maxEvents`, and refresh intervals stay in sync across the app.
-- **Per-widget overrides still work:** `app.js` merges default options with saved config options, so user/custom settings can override defaults cleanly.
+- Register components in `ui/src/registry.tsx` under `WIDGET_REGISTRY`.
+- Backend persistence uses `/api/widgets/` (SQL rows: `widget_id`, grid `position_*` / `size_*`, and `config_json.freeform` for pixel layout).
+- Layout mode cycling and tools are implemented in `App.tsx` / `ToolsPanel.tsx`.
 
-### 4.1 Minimal template: adding a new widget
+### 4.1 Minimal template: adding a new widget (React)
 
-Use this checklist:
+1. Add a component and register it in `ui/src/registry.tsx` (`WIDGET_REGISTRY`).
+2. Ensure the backend knows the `widget_id` string you use (or seed rows via API).
+3. Run `cd ui && npm run build` before serving with the backend.
 
-1. Add your widget's default layout in `ui/js/widgets/defaultLayouts.js`.
-2. Create a widget file in `ui/js/widgets/` that extends `BaseWidget`.
-3. Register it with `registerWidget(...)`.
-4. Import the widget module in `ui/js/app.js` so it is loaded at startup.
+The following subsections retain **legacy vanilla JS** examples for historical reference only.
 
 Minimal example:
 
@@ -226,9 +210,9 @@ import "./widgets/quote.js";
 |----------|--------|------|
 | **HTTP/1.1** | REST, static files | Uvicorn; TLS optional (usually added via reverse proxy on Pi) |
 | **WebSocket** | `/ws/buttons` | JSON messages for physical (or dev) button events |
-| **HTTPS / WSS** | Optional | `buttons.js` picks `wss://` when `location.protocol === 'https:'` |
+| **HTTPS / WSS** | Optional | WebSocket clients should use `wss://` when the page is served over HTTPS |
 
-**Same-origin rule:** The UI is intended to be served from the **same host and port** as the API (`/api`, `/ws/buttons`). If you host the UI elsewhere, you must configure CORS and WebSocket origins explicitly and set `api.js` to an absolute API base.
+**Same-origin rule:** The UI is intended to be served from the **same host and port** as the API (`/api`, `/ws/buttons`). If you host the UI elsewhere, you must configure CORS and WebSocket origins explicitly and point the React app’s API client (or Vite dev proxy) at the backend origin.
 
 **Default ports (from docs/scripts):** Commonly `8000` or `8002` in examples; bind address `0.0.0.0` for LAN access from other devices.
 

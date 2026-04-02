@@ -53,7 +53,17 @@ bash deploy/raspberry-pi/install-pi-launcher.sh --autostart
 ```
 
 ### Option 1: Full app (recommended)
-Runs FastAPI backend + serves UI at `/ui` (enables API routes and hook endpoints).
+Runs FastAPI backend + serves the **built** React UI at `/ui` (API routes, WebSockets, etc.).
+
+**Prerequisite:** build the UI once (or after UI changes):
+
+```
+cd ui
+npm install
+npm run build
+```
+
+From repo root:
 
 1. Create and activate a Python virtual environment:
 ```
@@ -73,33 +83,34 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 http://localhost:8000/ui/
 ```
 
-### Option 2: UI-only preview
-Runs static UI only (no backend APIs).
+### Option 2: UI dev server (Vite + hot reload)
+Runs the React app with `/api` proxied to the backend (default proxy: `http://127.0.0.1:8002`).
 
-1. Install Node dependencies:
+1. Terminal A — backend on port **8002** (must match Vite proxy in `ui/vite.config.ts`):
 ```
-npm install
+npm run backend
 ```
-2. Start static server:
+2. Terminal B — Vite:
 ```
-npm run ui
+npm run ui:dev
 ```
 3. Open:
 ```
-http://localhost:5173
+http://localhost:5173/ui/
 ```
 
-## External layout adapter (for future services)
+### Raspberry Pi: build UI before kiosk launch
+The mirror launcher opens `http://127.0.0.1:<port>/ui/`. That path serves files from `ui/dist`. On the Pi, install Node once and build:
 
-The UI now supports an adjustment provider interface in `ui/js/services/layoutAdjustmentsProvider.js`.
-To plug in a remote service, call `setLayoutAdjustmentProvider(...)` and implement:
+```
+cd /path/to/Smart-Mirror/ui && npm install && npm run build
+```
 
-- `hydrateWidgetConfigs(configs)`
-- `persistWidgetLayouts(configs)`
-- `onWidgetTransformChanged(payload)`
-- `onOrientationChanged(payload)`
+Then use `scripts/start-mirror-app.sh` as before.
 
-See `docs/EXTERNAL-INTEGRATION-HOOKS.md` for details and an example adapter.
+## External integrations (legacy note)
+
+The previous vanilla JS layout adapter (`layoutAdjustmentsProvider`) has been replaced by the React UI, which talks to the backend via `/api/widgets/` and `/api/user/settings`. For external hook concepts, see `docs/EXTERNAL-INTEGRATION-HOOKS.md` (some paths refer to the old `ui/js` tree and may need updating).
 
 ## How to: Version Control with Git
 ### Cloning the repo in VSCode:
