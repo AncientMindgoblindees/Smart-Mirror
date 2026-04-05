@@ -1,0 +1,19 @@
+.calendar-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
+}
+
+.calendar-item {
+  display: flex;
+  gap: 1em;
+  padding-bottom: 0.6em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.9em;
+}
+
+.calendar-item .time {
+  color: var(--color-accent);
+  font-weight: 600;
+  min-width: 4em;
+}

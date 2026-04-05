@@ -1,5 +1,5 @@
 import type { WidgetConfigOut, WidgetConfigUpdate } from './backendTypes';
-import type { WidgetConfig } from '../types';
+import type { WidgetConfig } from '@/features/widgets/types';
 
 const DEFAULT_FREEFORM = { x: 50, y: 50, width: 400, height: 200 };
 

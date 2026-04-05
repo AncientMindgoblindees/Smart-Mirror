@@ -1,4 +1,4 @@
-import type { UserSettingsOut } from './api/backendTypes';
+import type { UserSettingsOut } from '@/api/backendTypes';
 
 export function applyUserSettings(settings: UserSettingsOut): void {
   const root = document.documentElement;

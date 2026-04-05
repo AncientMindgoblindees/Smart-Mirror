@@ -1,5 +1,22 @@
-/* Smart Mirror Dashboard — global entry */
-@import url('./App.css');
+@import './styles/tokens.css';
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--color-bg-deep);
+  color: var(--color-text-primary);
+  font-family: var(--font-main);
+  height: 100dvh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+}
 
 body.mirror-display-dimmed {
   filter: brightness(0.35) contrast(1.05);

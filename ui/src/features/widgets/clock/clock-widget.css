@@ -1,0 +1,11 @@
+.clock-widget .time {
+  font-size: var(--fs-display);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.clock-widget .date {
+  font-size: 1.1em;
+  color: var(--color-text-secondary);
+  margin-top: 0.5em;
+}

@@ -1,0 +1,13 @@
+:root {
+  --color-bg-deep: #06080c;
+  --color-bg: #0a0d12;
+  --color-text-primary: #e8eaef;
+  --color-text-secondary: #94a3b8;
+  --color-accent: #5ee1d9;
+  --fs-display: clamp(2.75rem, 7.5vw, 5.75rem);
+  --glass-bg: rgba(10, 13, 18, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --radius: 20px;
+  --font-main: system-ui, -apple-system, sans-serif;
+  --grid-gap: 30px;
+}

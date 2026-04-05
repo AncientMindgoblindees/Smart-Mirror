@@ -1,7 +1,8 @@
 import React, { useRef } from 'react';
-import { WidgetConfig } from '../types';
-import { getWidgetMetadata, UnknownWidget } from '../registry';
 import { GripVertical } from 'lucide-react';
+import type { WidgetConfig } from './types';
+import { getWidgetMetadata, UnknownWidget } from './registry';
+import './widget-frame.css';
 
 interface Props {
   config: WidgetConfig;

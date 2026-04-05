@@ -1,0 +1,16 @@
+.weather-widget .weather-main {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+}
+
+.weather-widget .temp {
+  font-size: 2.5em;
+  font-weight: 600;
+}
+
+.weather-widget .weather-label {
+  margin-top: 0.8em;
+  color: var(--color-text-secondary);
+  font-size: 1em;
+}

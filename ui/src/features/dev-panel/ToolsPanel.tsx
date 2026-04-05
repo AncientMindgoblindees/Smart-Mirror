@@ -1,7 +1,8 @@
 import React from 'react';
-import { WidgetConfig } from '../types';
-import { getWidgetMetadata } from '../registry';
 import { Camera, Moon, Power, Check } from 'lucide-react';
+import type { WidgetConfig } from '@/features/widgets/types';
+import { getWidgetMetadata } from '@/features/widgets/registry';
+import './tools-panel.css';
 
 interface Props {
   onToggleCamera: () => void;
