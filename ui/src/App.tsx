@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { WidgetConfig, LayoutMode } from './types';
+import { WidgetConfig } from './types';
 import { WidgetFrame } from './components/WidgetFrame';
 import { ToolsPanel } from './components/ToolsPanel';
 import { CameraOverlay } from './components/CameraOverlay';
@@ -11,7 +11,6 @@ import './App.css';
 
 const STORAGE_KEY = 'mirror_dashboard_config';
 const DEV_PANEL_STORAGE_KEY = 'mirror_show_dev_panel';
-const MODES: LayoutMode[] = ['freeform', 'grid', 'focus', 'split'];
 
 const INITIAL_WIDGETS: WidgetConfig[] = [
   {
@@ -37,17 +36,6 @@ const INITIAL_WIDGETS: WidgetConfig[] = [
   },
 ];
 
-const useMediaQuery = (query: string) => {
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const listener = (e: MediaQueryListEvent) => setMatches(e.matches);
-    media.addEventListener('change', listener);
-    return () => media.removeEventListener('change', listener);
-  }, [query]);
-  return matches;
-};
-
 function readDevPanelInitial(): boolean {
   try {
     const v = localStorage.getItem(DEV_PANEL_STORAGE_KEY);
@@ -60,7 +48,6 @@ function readDevPanelInitial(): boolean {
 
 export default function App() {
   const [widgets, setWidgets] = useState<WidgetConfig[]>(INITIAL_WIDGETS);
-  const [modeIndex, setModeIndex] = useState(1);
   const [showCamera, setShowCamera] = useState(false);
   const [displayDimmed, setDisplayDimmed] = useState(false);
   const [sleepMode, setSleepMode] = useState(false);
@@ -73,9 +60,6 @@ export default function App() {
   const lastPutSig = useRef<string>('');
   const sleepModeRef = useRef(false);
   sleepModeRef.current = sleepMode;
-
-  const isPortrait = useMediaQuery('(orientation: portrait)');
-  const currentMode = MODES[modeIndex];
 
   useEffect(() => {
     document.body.classList.toggle('mirror-display-dimmed', displayDimmed && !sleepMode);
@@ -103,12 +87,11 @@ export default function App() {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           try {
-            const parsed = JSON.parse(raw) as { widgets?: WidgetConfig[]; modeIndex?: number };
+            const parsed = JSON.parse(raw) as { widgets?: WidgetConfig[] };
             if (Array.isArray(parsed.widgets) && parsed.widgets.length > 0) {
               setWidgets(parsed.widgets);
               lastPutSig.current = JSON.stringify(parsed.widgets.map(widgetToBackend));
             }
-            if (typeof parsed.modeIndex === 'number') setModeIndex(parsed.modeIndex);
           } catch {
             /* ignore */
           }
@@ -124,8 +107,8 @@ export default function App() {
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ widgets, modeIndex }));
-  }, [widgets, modeIndex, ready]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ widgets }));
+  }, [widgets, ready]);
 
   useEffect(() => {
     if (!ready || !serverConnected) return;
@@ -153,32 +136,6 @@ export default function App() {
     return () => window.removeEventListener('resize', updateRect);
   }, []);
 
-  const cycleLayout = useCallback(() => {
-    setModeIndex((prev) => {
-      const nextIndex = (prev + 1) % MODES.length;
-      const nextMode = MODES[nextIndex];
-      const rect = canvasRef.current?.getBoundingClientRect() ?? null;
-
-      if (nextMode === 'freeform' && rect) {
-        setWidgets((p) =>
-          p.map((w) => {
-            if (w.freeform.width > 0 && w.freeform.height > 0) return w;
-            return {
-              ...w,
-              freeform: {
-                x: (w.grid.col - 1) * (rect.width / 4),
-                y: (w.grid.row - 1) * (rect.height / 4),
-                width: w.grid.colSpan * (rect.width / 4) - 20,
-                height: w.grid.rowSpan * (rect.height / 4) - 20,
-              },
-            };
-          })
-        );
-      }
-      return nextIndex;
-    });
-  }, []);
-
   const toggleDevPanel = useCallback(() => {
     setShowDevPanel((v) => {
       const next = !v;
@@ -200,7 +157,6 @@ export default function App() {
   }, []);
 
   useMirrorInput({
-    cycleLayout,
     toggleDim,
     toggleSleep,
     toggleDevPanel,
@@ -215,59 +171,18 @@ export default function App() {
     setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)));
   };
 
-  const activeWidgets = useMemo(() => {
-    const enabled = widgets.filter((w) => w.enabled);
-
-    if (currentMode === 'focus') {
-      return enabled.slice(0, 1).map((w) => ({
-        ...w,
-        grid: isPortrait
-          ? { row: 2, col: 1, rowSpan: 3, colSpan: 2 }
-          : { row: 2, col: 2, rowSpan: 2, colSpan: 2 },
-      }));
-    }
-
-    if (currentMode === 'split') {
-      return enabled.slice(0, 2).map((w, i) => ({
-        ...w,
-        grid: isPortrait
-          ? { row: i === 0 ? 1 : 4, col: 1, rowSpan: 3, colSpan: 2 }
-          : { row: 1, col: i === 0 ? 1 : 3, rowSpan: 4, colSpan: 2 },
-      }));
-    }
-
-    if (currentMode === 'grid' && isPortrait) {
-      return enabled.map((w, i) => {
-        const row = Math.floor(i / 2) * 2 + 1;
-        const col = (i % 2) + 1;
-        return {
-          ...w,
-          grid: { row, col, rowSpan: 2, colSpan: 1 },
-        };
-      });
-    }
-
-    return enabled;
-  }, [widgets, currentMode, isPortrait]);
+  const visibleWidgets = useMemo(() => widgets.filter((w) => w.enabled), [widgets]);
 
   return (
     <div className="mirror-shell">
-      <div ref={canvasRef} className={`mirror-canvas mode-${currentMode}`}>
-        {activeWidgets.map((w) => (
-          <WidgetFrame
-            key={w.id}
-            config={w}
-            layoutMode={currentMode}
-            onUpdate={updateWidget}
-            canvasRect={canvasRect}
-          />
+      <div ref={canvasRef} className="mirror-canvas mirror-canvas-freeform">
+        {visibleWidgets.map((w) => (
+          <WidgetFrame key={w.id} config={w} onUpdate={updateWidget} canvasRect={canvasRect} />
         ))}
       </div>
 
       {showDevPanel && (
         <ToolsPanel
-          modeIndex={modeIndex}
-          onCycleLayout={cycleLayout}
           onToggleCamera={() => setShowCamera((v) => !v)}
           onToggleDim={toggleDim}
           onToggleSleep={toggleSleep}

@@ -1,7 +1,5 @@
 import React from 'react';
 
-export type LayoutMode = 'freeform' | 'grid' | 'focus' | 'split';
-
 export interface WidgetConfig {
   /** Stable client id (includes backend id when synced: `w-<dbId>`). */
   id: string;
@@ -27,5 +25,5 @@ export interface WidgetMetadata {
   title: string;
   defaultGrid: { rowSpan: number; colSpan: number };
   minSize: { width: number; height: number };
-  Component: React.ComponentType<{ config: WidgetConfig; layoutMode: LayoutMode }>;
+  Component: React.ComponentType<{ config: WidgetConfig }>;
 }

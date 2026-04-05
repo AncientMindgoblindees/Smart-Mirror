@@ -1,11 +1,9 @@
 import React from 'react';
-import { LayoutMode, WidgetConfig } from '../types';
+import { WidgetConfig } from '../types';
 import { getWidgetMetadata } from '../registry';
-import { Camera, Layout as LayoutIcon, Moon, Power, Check } from 'lucide-react';
+import { Camera, Moon, Power, Check } from 'lucide-react';
 
 interface Props {
-  modeIndex: number;
-  onCycleLayout: () => void;
   onToggleCamera: () => void;
   onToggleDim: () => void;
   onToggleSleep: () => void;
@@ -13,11 +11,7 @@ interface Props {
   onToggleWidget: (id: string) => void;
 }
 
-const MODES: LayoutMode[] = ['freeform', 'grid', 'focus', 'split'];
-
 export const ToolsPanel: React.FC<Props> = ({
-  modeIndex,
-  onCycleLayout,
   onToggleCamera,
   onToggleDim,
   onToggleSleep,
@@ -29,16 +23,10 @@ export const ToolsPanel: React.FC<Props> = ({
       <div className="tools-header">TOOLS</div>
 
       <div className="tools-section">
-        <div className="mode-indicator">
-          Mode: <span className="highlight">{MODES[modeIndex].toUpperCase()}</span>
-        </div>
         <p className="tools-shortcuts" aria-label="Keyboard shortcuts">
-          Keys: <kbd>d</kbd> panel · <kbd>1</kbd> layout · <kbd>2</kbd> dim · <kbd>3</kbd> sleep
+          Keys: <kbd>d</kbd> panel · <kbd>2</kbd> dim · <kbd>3</kbd> sleep
         </p>
         <div className="button-group">
-          <button type="button" className="tool-btn" onClick={onCycleLayout}>
-            <LayoutIcon size={18} /> Cycle Layout
-          </button>
           <button type="button" className="tool-btn" onClick={onToggleCamera}>
             <Camera size={18} /> Camera Feed
           </button>

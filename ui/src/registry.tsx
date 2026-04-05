@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud } from 'lucide-react';
-import { WidgetMetadata, WidgetConfig, LayoutMode } from './types';
+import { WidgetMetadata, WidgetConfig } from './types';
 
 const ClockWidget: WidgetMetadata['Component'] = () => {
   const [time, setTime] = useState(new Date());
@@ -76,12 +76,7 @@ export function getWidgetMetadata(type: string): WidgetMetadata | undefined {
 /**
  * To add a widget: register it in WIDGET_REGISTRY; no changes required to App layout logic.
  */
-export const UnknownWidget: WidgetMetadata['Component'] = ({
-  config,
-}: {
-  config: WidgetConfig;
-  layoutMode: LayoutMode;
-}) => (
+export const UnknownWidget: WidgetMetadata['Component'] = ({ config }: { config: WidgetConfig }) => (
   <div className="widget-content">
     <p style={{ color: 'var(--color-text-secondary)' }}>Unknown widget type: {config.type}</p>
   </div>

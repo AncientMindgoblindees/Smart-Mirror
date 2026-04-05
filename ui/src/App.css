@@ -51,18 +51,12 @@ body {
 }
 
 @media (orientation: portrait) {
-  .mirror-canvas:not(.mode-freeform) {
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: repeat(6, 1fr);
-    gap: 20px;
-  }
-
   .mirror-shell {
     padding: 20px;
   }
 }
 
-.mirror-canvas.mode-freeform {
+.mirror-canvas.mirror-canvas-freeform {
   display: block;
 }
 
@@ -92,11 +86,11 @@ body {
   user-select: none;
 }
 
-.mode-freeform .widget-header {
+.widget-frame-freeform .widget-header {
   cursor: grab;
 }
 
-.mode-freeform .widget-header:active {
+.widget-frame-freeform .widget-header:active {
   cursor: grabbing;
 }
 
@@ -219,11 +213,6 @@ body {
     font-size: 0.8rem;
   }
 
-  .mode-indicator {
-    margin-bottom: 0;
-    font-size: 0.7rem;
-    white-space: nowrap;
-  }
 }
 
 .frosted {
@@ -242,16 +231,6 @@ body {
 
 .tools-section {
   margin-bottom: 24px;
-}
-
-.mode-indicator {
-  font-size: 0.85rem;
-  margin-bottom: 12px;
-}
-
-.highlight {
-  color: var(--color-accent);
-  font-weight: 700;
 }
 
 .button-group {
@@ -346,19 +325,46 @@ body {
   gap: 20px;
 }
 
-.video-placeholder {
+.camera-video-wrap {
+  position: relative;
   aspect-ratio: 16/9;
   background: #111;
   border: 2px solid #222;
   border-radius: 10px;
+  overflow: hidden;
+}
+
+.camera-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scaleX(-1);
+  z-index: 0;
+}
+
+.camera-status {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  text-align: center;
+  padding: 1rem;
+  z-index: 1;
+  font-size: 1.05rem;
+  pointer-events: none;
 }
 
-.status-line {
-  color: #555;
-  font-size: 1.2rem;
+.camera-status-loading {
+  color: var(--color-text-secondary);
+}
+
+.camera-status-error {
+  color: #f87171;
+  background: rgba(0, 0, 0, 0.55);
 }
 
 .exit-btn {
