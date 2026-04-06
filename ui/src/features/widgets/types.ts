@@ -13,12 +13,20 @@ export interface WidgetConfig {
     rowSpan: number;
     colSpan: number;
   };
+  /**
+   * Freeform layout as fraction of the mirror canvas (0–100).
+   * x,y = top-left; width,height = size; all in percent of canvas width/height.
+   */
   freeform: {
     x: number;
     y: number;
     width: number;
     height: number;
   };
+  /** Custom `custom:*` content from `config_json` (config app). */
+  title?: string;
+  text?: string;
+  templateId?: string;
 }
 
 export interface WidgetMetadata {

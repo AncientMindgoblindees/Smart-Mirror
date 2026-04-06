@@ -1,0 +1,17 @@
+.reminders-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  text-align: center;
+}
+
+.reminders-placeholder {
+  font-size: 1.25em;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.reminders-hint {
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+}

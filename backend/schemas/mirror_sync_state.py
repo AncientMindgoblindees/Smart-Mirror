@@ -61,7 +61,7 @@ class SyncStateInbound(BaseModel):
 
     type: str
     widgets: List[SyncWidgetItem] = Field(default_factory=list)
-    action: Optional[str] = None
+    action: Optional[Any] = None
     meta: Optional[Dict[str, Any]] = None
     protocol_version: Optional[int] = None
 

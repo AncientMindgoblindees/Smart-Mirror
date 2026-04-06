@@ -10,31 +10,46 @@ interface Props {
   canvasRect: DOMRect | null;
 }
 
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
+}
+
 export const WidgetFrame: React.FC<Props> = ({ config, onUpdate, canvasRect }) => {
   const metadata = getWidgetMetadata(config.type);
   const Body = metadata?.Component ?? UnknownWidget;
-  const title = metadata?.title ?? config.type;
+  const title = config.type.startsWith('custom:')
+    ? (config.title?.trim() || 'Custom')
+    : (metadata?.title ?? config.type);
   const minSize = metadata?.minSize ?? { width: 200, height: 150 };
   const frameRef = useRef<HTMLDivElement>(null);
 
   const handlePointerDown = (e: React.PointerEvent, type: 'drag' | 'resize') => {
     if (!canvasRect) return;
+    const cw = canvasRect.width;
+    const ch = canvasRect.height;
+    if (cw <= 0 || ch <= 0) return;
+
     e.preventDefault();
     const startX = e.clientX;
     const startY = e.clientY;
     const startRect = { ...config.freeform };
 
+    const minWPct = Math.min(100, (minSize.width / cw) * 100);
+    const minHPct = Math.min(100, (minSize.height / ch) * 100);
+
     const handleMove = (moveEvent: PointerEvent) => {
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
+      const dXPct = (dx / cw) * 100;
+      const dYPct = (dy / ch) * 100;
 
       if (type === 'drag') {
-        const newX = Math.max(0, Math.min(canvasRect.width - startRect.width, startRect.x + dx));
-        const newY = Math.max(0, Math.min(canvasRect.height - startRect.height, startRect.y + dy));
+        const newX = clamp(startRect.x + dXPct, 0, 100 - startRect.width);
+        const newY = clamp(startRect.y + dYPct, 0, 100 - startRect.height);
         onUpdate(config.id, { freeform: { ...startRect, x: newX, y: newY } });
       } else {
-        const newW = Math.max(minSize.width, Math.min(canvasRect.width - startRect.x, startRect.width + dx));
-        const newH = Math.max(minSize.height, Math.min(canvasRect.height - startRect.y, startRect.height + dy));
+        const newW = clamp(startRect.width + dXPct, minWPct, 100 - startRect.x);
+        const newH = clamp(startRect.height + dYPct, minHPct, 100 - startRect.y);
         onUpdate(config.id, { freeform: { ...startRect, width: newW, height: newH } });
       }
     };
@@ -48,19 +63,23 @@ export const WidgetFrame: React.FC<Props> = ({ config, onUpdate, canvasRect }) =
     window.addEventListener('pointerup', handleUp);
   };
 
-  const width = config.freeform.width;
-  const height = config.freeform.height;
-  const baseArea = 300 * 200;
-  const currentArea = width * height;
-  const scale = Math.sqrt(currentArea / baseArea);
+  const { x, y, width, height } = config.freeform;
+  const baseAreaPct = 28 * 20;
+  const currentAreaPct = width * height;
+  const scale = Math.sqrt(currentAreaPct / baseAreaPct);
   const clampedScale = Math.min(2.5, Math.max(0.6, scale));
+
+  const pxLeft = canvasRect ? (x / 100) * canvasRect.width : 0;
+  const pxTop = canvasRect ? (y / 100) * canvasRect.height : 0;
+  const pxW = canvasRect ? (width / 100) * canvasRect.width : 0;
+  const pxH = canvasRect ? (height / 100) * canvasRect.height : 0;
 
   const style: React.CSSProperties = {
     position: 'absolute',
-    left: config.freeform.x,
-    top: config.freeform.y,
-    width: config.freeform.width,
-    height: config.freeform.height,
+    left: pxLeft,
+    top: pxTop,
+    width: pxW,
+    height: pxH,
     zIndex: 10,
   };
 

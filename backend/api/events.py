@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from backend.database.session import get_db
-from backend.services import button_service
+from backend.database.session import SessionLocal, get_db
+from backend.schemas.mirror_sync_state import SyncStateInbound
+from backend.services import button_service, widget_service
 from hardware.gpio.config import ButtonId
 from hardware.gpio.events import ButtonAction
 
@@ -76,4 +77,33 @@ async def dev_button_event(button_id: str, action: str) -> Any:
 
     button_service.emit_dev_event(bid, act)
     return {"status": "ok"}
+
+
+@router.websocket("/ws/control")
+async def ws_control(websocket: WebSocket) -> None:
+    """
+    Config app layout sync: accepts JSON with type SYNC_STATE and persists widgets via DB.
+    """
+    await websocket.accept()
+    try:
+        while True:
+            raw: Dict[str, Any] = await websocket.receive_json()
+            if raw.get("type") != "SYNC_STATE":
+                continue
+            try:
+                sync = SyncStateInbound.model_validate(raw)
+            except Exception as exc:  # noqa: BLE001
+                await websocket.send_json({"type": "SYNC_ERROR", "message": str(exc)})
+                continue
+            db = SessionLocal()
+            try:
+                updates = widget_service.updates_from_sync_state(db, sync)
+                widget_service.replace_widgets(db, updates)
+                await websocket.send_json({"type": "SYNC_APPLIED", "count": len(updates)})
+            except Exception as exc:  # noqa: BLE001
+                await websocket.send_json({"type": "SYNC_ERROR", "message": str(exc)})
+            finally:
+                db.close()
+    except WebSocketDisconnect:
+        pass
 

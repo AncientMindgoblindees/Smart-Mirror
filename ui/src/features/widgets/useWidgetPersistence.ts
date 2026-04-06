@@ -1,9 +1,12 @@
-import { useState, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react';
 import { getUserSettings, getWidgets, putWidgets } from '@/api/mirrorApi';
-import { widgetFromBackend, widgetToBackend } from '@/api/transforms';
+import type { WidgetConfigOut } from '@/api/backendTypes';
+import { widgetFromBackend, widgetToBackend, normalizeWidgetConfig } from '@/api/transforms';
 import { applyUserSettings } from '@/userSettings';
 import type { WidgetConfig } from './types';
 import { INITIAL_WIDGETS, WIDGET_STORAGE_KEY } from './constants';
+
+const POLL_MS = 5000;
 
 export function useWidgetPersistence(): {
   widgets: WidgetConfig[];
@@ -15,6 +18,28 @@ export function useWidgetPersistence(): {
   const [ready, setReady] = useState(false);
   const [serverConnected, setServerConnected] = useState(false);
   const lastPutSig = useRef('');
+  const pendingPushTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const applyRemoteWidgetRows = useCallback((list: WidgetConfigOut[]) => {
+    const mapped = list.map(widgetFromBackend);
+    const sig = JSON.stringify(mapped.map(widgetToBackend));
+    if (sig === lastPutSig.current) return;
+    if (pendingPushTimerRef.current !== undefined) {
+      clearTimeout(pendingPushTimerRef.current);
+      pendingPushTimerRef.current = undefined;
+    }
+    lastPutSig.current = sig;
+    setWidgets(mapped);
+  }, []);
+
+  const pullWidgetsFromServer = useCallback(async () => {
+    try {
+      const list = await getWidgets();
+      applyRemoteWidgetRows(list);
+    } catch {
+      /* ignore */
+    }
+  }, [applyRemoteWidgetRows]);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,8 +59,9 @@ export function useWidgetPersistence(): {
           try {
             const parsed = JSON.parse(raw) as { widgets?: WidgetConfig[] };
             if (Array.isArray(parsed.widgets) && parsed.widgets.length > 0) {
-              setWidgets(parsed.widgets);
-              lastPutSig.current = JSON.stringify(parsed.widgets.map(widgetToBackend));
+              const normalized = parsed.widgets.map((w) => normalizeWidgetConfig(w as WidgetConfig));
+              setWidgets(normalized);
+              lastPutSig.current = JSON.stringify(normalized.map(widgetToBackend));
             }
           } catch {
             /* ignore */
@@ -59,7 +85,9 @@ export function useWidgetPersistence(): {
     if (!ready || !serverConnected) return;
     const sig = JSON.stringify(widgets.map(widgetToBackend));
     if (sig === lastPutSig.current) return;
-    const timer = window.setTimeout(async () => {
+    if (pendingPushTimerRef.current !== undefined) clearTimeout(pendingPushTimerRef.current);
+    pendingPushTimerRef.current = window.setTimeout(async () => {
+      pendingPushTimerRef.current = undefined;
       try {
         const out = await putWidgets(widgets.map(widgetToBackend));
         const mapped = out.map(widgetFromBackend);
@@ -69,8 +97,36 @@ export function useWidgetPersistence(): {
         console.warn('Failed to sync widgets to server', e);
       }
     }, 600);
-    return () => window.clearTimeout(timer);
+    return () => {
+      if (pendingPushTimerRef.current !== undefined) {
+        clearTimeout(pendingPushTimerRef.current);
+        pendingPushTimerRef.current = undefined;
+      }
+    };
   }, [widgets, ready, serverConnected]);
+
+  useEffect(() => {
+    if (!ready || !serverConnected) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void pullWidgetsFromServer();
+    }, POLL_MS);
+    return () => window.clearInterval(id);
+  }, [ready, serverConnected, pullWidgetsFromServer]);
+
+  useEffect(() => {
+    if (!ready || !serverConnected) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void pullWidgetsFromServer();
+    };
+    const onFocus = () => void pullWidgetsFromServer();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [ready, serverConnected, pullWidgetsFromServer]);
 
   return { widgets, setWidgets, ready, serverConnected };
 }
