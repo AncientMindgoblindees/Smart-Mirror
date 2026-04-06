@@ -5,12 +5,14 @@ import { useEffect, useRef } from 'react';
  *
  * Keys (when focus is not in an input):
  * - d: toggle tools / dev panel
+ * - 1: cycle layout (matches GPIO LAYOUT click → cycle_layout)
  * - 2: toggle dim (matches GPIO DISPLAY click → toggle_dim)
  * - 3: toggle screen off / sleep (matches GPIO DISPLAY long-press → toggle_sleep)
  *
  * When sleep is on, the next key press wakes the mirror (no other action).
  */
 export type MirrorInputActions = {
+  cycleLayout: () => void;
   toggleDim: () => void;
   toggleSleep: () => void;
   toggleDevPanel: () => void;
@@ -36,6 +38,11 @@ export function useMirrorInput(actions: MirrorInputActions) {
       if (k === 'd' || k === 'D') {
         e.preventDefault();
         ref.current.toggleDevPanel();
+        return;
+      }
+      if (k === '1') {
+        e.preventDefault();
+        ref.current.cycleLayout();
         return;
       }
       if (k === '2') {
@@ -73,6 +80,9 @@ export function useMirrorInput(actions: MirrorInputActions) {
         try {
           const data = JSON.parse(ev.data as string) as { effect?: string };
           switch (data.effect) {
+            case 'cycle_layout':
+              ref.current.cycleLayout();
+              break;
             case 'toggle_dim':
               ref.current.toggleDim();
               break;

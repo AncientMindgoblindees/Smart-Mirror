@@ -1,16 +1,16 @@
 .widget-frame {
   position: relative;
   background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+  transition: opacity 280ms ease, transform 280ms ease;
   font-size: calc(1rem * var(--widget-scale, 1));
 }
 
@@ -21,7 +21,7 @@
   align-items: center;
   gap: 0.5em;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   cursor: default;
   user-select: none;
   min-width: 0;
@@ -37,15 +37,15 @@
 
 .widget-header .drag-handle {
   flex-shrink: 0;
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 .widget-title {
-  font-size: 0.7em;
+  font-size: 0.72em;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
-  color: var(--color-text-secondary);
+  color: var(--color-text-label);
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -57,8 +57,7 @@
 .widget-body {
   flex: 1 1 auto;
   min-height: 0;
-  padding: 1.5em;
-  /* Keep last lines scrollable above the corner resize handle (~30px). */
+  padding: 1.4em;
   padding-bottom: 2.25rem;
   display: flex;
   flex-direction: column;
@@ -74,7 +73,7 @@
 }
 
 .widget-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.18);
   border-radius: 3px;
 }
 
@@ -101,11 +100,28 @@
 .resize-icon {
   width: 12px;
   height: 12px;
-  border-right: 2px solid var(--color-accent);
-  border-bottom: 2px solid var(--color-accent);
+  border-right: 2px solid rgba(255, 255, 255, 0.8);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.8);
   opacity: 0.5;
 }
 
 .resize-handle:hover .resize-icon {
   opacity: 1;
+}
+
+
+.widget-frame-enter {
+  animation: widgetEnter 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--enter-delay, 0ms);
+}
+
+@keyframes widgetEnter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--enter-offset-y, 20px));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

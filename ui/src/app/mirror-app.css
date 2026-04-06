@@ -2,25 +2,21 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 40px;
+  padding: clamp(1rem, 3vh, 2.3rem) clamp(1rem, 4vw, 2.6rem);
   position: relative;
-  background: radial-gradient(circle at center, var(--color-bg) 0%, var(--color-bg-deep) 100%);
+  background: #000;
 }
 
 @media (orientation: portrait) {
   .mirror-shell {
-    padding: 20px;
+    padding: 1rem;
   }
 }
 
 .mirror-canvas {
   flex: 1;
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(4, 1fr);
-  gap: var(--grid-gap);
-  transition: all 0.3s ease;
+  display: block;
 }
 
 .mirror-canvas.mirror-canvas-freeform {

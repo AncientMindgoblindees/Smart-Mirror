@@ -1,10 +1,12 @@
 import React from 'react';
-import { Camera, Moon, Power, Check } from 'lucide-react';
+import { Camera, Layout, Moon, Power, Check } from 'lucide-react';
 import type { WidgetConfig } from '@/features/widgets/types';
 import { getWidgetMetadata } from '@/features/widgets/registry';
 import './tools-panel.css';
 
 interface Props {
+  layoutModeIndex: number;
+  onCycleLayout: () => void;
   onToggleCamera: () => void;
   onToggleDim: () => void;
   onToggleSleep: () => void;
@@ -13,6 +15,8 @@ interface Props {
 }
 
 export const ToolsPanel: React.FC<Props> = ({
+  layoutModeIndex,
+  onCycleLayout,
   onToggleCamera,
   onToggleDim,
   onToggleSleep,
@@ -25,9 +29,13 @@ export const ToolsPanel: React.FC<Props> = ({
 
       <div className="tools-section">
         <p className="tools-shortcuts" aria-label="Keyboard shortcuts">
-          Keys: <kbd>d</kbd> panel · <kbd>2</kbd> dim · <kbd>3</kbd> sleep
+          Keys: <kbd>d</kbd> panel · <kbd>1</kbd> layout · <kbd>2</kbd> dim · <kbd>3</kbd> sleep
         </p>
+        <p className="layout-mode-label">Layout preset: {layoutModeIndex + 1}</p>
         <div className="button-group">
+          <button type="button" className="tool-btn" onClick={onCycleLayout}>
+            <Layout size={18} /> Cycle layout
+          </button>
           <button type="button" className="tool-btn" onClick={onToggleCamera}>
             <Camera size={18} /> Camera Feed
           </button>

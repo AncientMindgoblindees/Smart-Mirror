@@ -69,6 +69,8 @@ export const WidgetFrame: React.FC<Props> = ({ config, onUpdate, canvasRect }) =
   const currentAreaPct = width * height;
   const scale = Math.sqrt(currentAreaPct / baseAreaPct);
   const clampedScale = Math.min(2.5, Math.max(0.6, scale));
+  const enterOffset = y < 45 ? -20 : 20;
+  const enterDelay = ((x + y) % 8) * 35;
 
   const pxLeft = canvasRect ? (x / 100) * canvasRect.width : 0;
   const pxTop = canvasRect ? (y / 100) * canvasRect.height : 0;
@@ -87,8 +89,13 @@ export const WidgetFrame: React.FC<Props> = ({ config, onUpdate, canvasRect }) =
   return (
     <div
       ref={frameRef}
-      className="widget-frame widget-frame-freeform"
-      style={{ ...style, ['--widget-scale' as string]: clampedScale }}
+      className="widget-frame widget-frame-freeform widget-frame-enter"
+      style={{
+        ...style,
+        ['--widget-scale' as string]: clampedScale,
+        ['--enter-offset-y' as string]: `${enterOffset}px`,
+        ['--enter-delay' as string]: `${enterDelay}ms`,
+      }}
     >
       <div className="widget-header" onPointerDown={(e) => handlePointerDown(e, 'drag')}>
         <span className="widget-title">{title}</span>
