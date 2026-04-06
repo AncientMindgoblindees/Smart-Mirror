@@ -1,5 +1,12 @@
 import React from 'react';
 
+export interface WidgetIntegrationConfig {
+  provider?: string;
+  model?: string;
+  endpoint?: string;
+  feature?: string;
+}
+
 export interface WidgetConfig {
   /** Stable client id (includes backend id when synced: `w-<dbId>`). */
   id: string;
@@ -27,6 +34,7 @@ export interface WidgetConfig {
   title?: string;
   text?: string;
   templateId?: string;
+  integration?: WidgetIntegrationConfig;
 }
 
 export interface WidgetMetadata {

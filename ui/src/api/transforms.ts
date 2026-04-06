@@ -1,11 +1,28 @@
 import type { WidgetConfigOut, WidgetConfigUpdate } from './backendTypes';
 import type { WidgetConfig } from '@/features/widgets/types';
 
-/** Default freeform: percents of canvas (0–100). */
-const DEFAULT_FREEFORM: WidgetConfig['freeform'] = { x: 4, y: 6, width: 33, height: 25 };
+const DEFAULTS_BY_TYPE: Record<string, WidgetConfig['freeform']> = {
+  clock: { x: 3, y: 4, width: 32, height: 18 },
+  weather: { x: 67, y: 4, width: 30, height: 18 },
+  news: { x: 3, y: 70, width: 45, height: 24 },
+  calendar: { x: 56, y: 68, width: 41, height: 26 },
+  virtual_try_on: { x: 39, y: 41, width: 22, height: 16 },
+};
 
 /** Legacy layouts stored pixel coords against this reference before percent migration. */
 const LEGACY_REF = { width: 1280, height: 720 };
+
+function baseType(type: string): string {
+  const raw = (type || '').trim().toLowerCase();
+  const idx = raw.indexOf(':');
+  return idx > 0 ? raw.slice(0, idx) : raw;
+}
+
+function defaultFreeformForType(type: string): WidgetConfig['freeform'] {
+  const key = baseType(type);
+  const fallback = DEFAULTS_BY_TYPE[key] ?? { x: 8, y: 8, width: 32, height: 20 };
+  return { ...fallback };
+}
 
 function looksLikeLegacyPixel(f: { x: number; y: number; width: number; height: number }): boolean {
   return f.x > 100 || f.y > 100 || f.width > 100 || f.height > 100;
@@ -28,36 +45,41 @@ function legacyPixelsToPercent(f: WidgetConfig['freeform']): WidgetConfig['freef
   });
 }
 
-/**
- * Normalize freeform from storage/API: percent 0–100 of canvas, or migrate old pixel values.
- */
-export function normalizeFreeform(raw: Record<string, unknown> | undefined | null): WidgetConfig['freeform'] {
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_FREEFORM };
+/** Normalize freeform from storage/API: percent 0–100 of canvas, or migrate old pixel values. */
+export function normalizeFreeform(
+  raw: Record<string, unknown> | undefined | null,
+  fallback: WidgetConfig['freeform']
+): WidgetConfig['freeform'] {
+  if (!raw || typeof raw !== 'object') return { ...fallback };
   const o = raw as Record<string, unknown>;
-  const num = (k: string, d: number) => (typeof o[k] === 'number' && Number.isFinite(o[k] as number) ? (o[k] as number) : d);
+  const num = (k: string, d: number) =>
+    typeof o[k] === 'number' && Number.isFinite(o[k] as number) ? (o[k] as number) : d;
   const f = {
-    x: num('x', DEFAULT_FREEFORM.x),
-    y: num('y', DEFAULT_FREEFORM.y),
-    width: num('width', DEFAULT_FREEFORM.width),
-    height: num('height', DEFAULT_FREEFORM.height),
+    x: num('x', fallback.x),
+    y: num('y', fallback.y),
+    width: num('width', fallback.width),
+    height: num('height', fallback.height),
   };
   if (looksLikeLegacyPixel(f)) return legacyPixelsToPercent(f);
   return clampFreeform(f);
 }
 
 export function normalizeWidgetConfig(w: WidgetConfig): WidgetConfig {
-  return { ...w, freeform: normalizeFreeform(w.freeform as unknown as Record<string, unknown>) };
+  const fallback = defaultFreeformForType(w.type);
+  return {
+    ...w,
+    freeform: normalizeFreeform(w.freeform as unknown as Record<string, unknown>, fallback),
+  };
 }
 
-function readFreeform(configJson: Record<string, unknown> | null | undefined): WidgetConfig['freeform'] {
+function readFreeform(configJson: Record<string, unknown> | null | undefined, type: string): WidgetConfig['freeform'] {
   const raw = configJson?.freeform;
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_FREEFORM };
-  return normalizeFreeform(raw as Record<string, unknown>);
+  const fallback = defaultFreeformForType(type);
+  if (!raw || typeof raw !== 'object') return fallback;
+  return normalizeFreeform(raw as Record<string, unknown>, fallback);
 }
 
-/**
- * Lowercase; strip trailing `:digits` except for `custom:*` (unique custom instances).
- */
+/** Lowercase; strip trailing `:digits` except for `custom:*` (unique custom instances). */
 export function normalizeWidgetTypeId(widgetId: string): string {
   const s = widgetId.trim();
   const colon = s.indexOf(':');
@@ -87,10 +109,15 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
   const title = typeof cj.title === 'string' ? cj.title : undefined;
   const text = typeof cj.text === 'string' ? cj.text : undefined;
   const templateId = typeof cj.templateId === 'string' ? cj.templateId : undefined;
+  const integration =
+    cj.integration && typeof cj.integration === 'object'
+      ? (cj.integration as WidgetConfig['integration'])
+      : undefined;
+  const normalizedType = normalizeWidgetTypeId(w.widget_id);
   return {
     id: `w-${w.id}`,
     backendId: w.id,
-    type: normalizeWidgetTypeId(w.widget_id),
+    type: normalizedType,
     enabled: w.enabled,
     grid: {
       row: w.position_row,
@@ -98,10 +125,11 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
       rowSpan: w.size_rows,
       colSpan: w.size_cols,
     },
-    freeform: readFreeform(w.config_json),
+    freeform: readFreeform(w.config_json, normalizedType),
     ...(title !== undefined ? { title } : {}),
     ...(text !== undefined ? { text } : {}),
     ...(templateId !== undefined ? { templateId } : {}),
+    ...(integration !== undefined ? { integration } : {}),
   };
 }
 
@@ -112,6 +140,7 @@ export function widgetToBackend(w: WidgetConfig): WidgetConfigUpdate {
   if (w.title !== undefined) config_json.title = w.title;
   if (w.text !== undefined) config_json.text = w.text;
   if (w.templateId !== undefined) config_json.templateId = w.templateId;
+  if (w.integration !== undefined) config_json.integration = w.integration;
   return {
     id: w.backendId ?? undefined,
     widget_id: normalizeWidgetTypeId(w.type),

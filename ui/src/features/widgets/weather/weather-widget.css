@@ -6,17 +6,19 @@
 .weather-widget .weather-main {
   display: flex;
   align-items: center;
-  gap: 1em;
+  gap: 0.75em;
   flex-wrap: wrap;
 }
 
 .weather-widget .temp {
-  font-size: 2.5em;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-family: var(--font-display);
   font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .weather-widget .weather-label {
-  margin-top: 0.8em;
+  margin-top: 0.55em;
   color: var(--color-text-secondary);
-  font-size: 1em;
+  font-size: 0.98em;
 }

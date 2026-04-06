@@ -4,14 +4,29 @@
 }
 
 .clock-widget .time {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  line-height: 1;
+  font-family: var(--font-display);
+  letter-spacing: -0.025em;
+}
+
+.clock-widget .time .hhmm {
   font-size: var(--fs-display);
-  font-weight: 700;
-  line-height: 1.1;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.clock-widget .time .seconds {
+  font-size: clamp(1.35rem, 2.1vw, 2.1rem);
+  font-weight: 300;
+  color: var(--color-text-secondary);
 }
 
 .clock-widget .date {
-  font-size: 1.1em;
+  font-size: 1.02em;
   color: var(--color-text-secondary);
-  margin-top: 0.5em;
+  margin-top: 0.44em;
   line-height: 1.3;
 }

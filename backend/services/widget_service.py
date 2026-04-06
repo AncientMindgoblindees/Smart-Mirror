@@ -9,8 +9,8 @@ from backend.schemas.widget import WidgetConfigUpdate
 
 def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
     """
-    Insert a minimal default layout if no widgets exist yet.
-    This ensures the UI is not blank on first run.
+    Insert a mirror-first peripheral default layout if no widgets exist yet.
+    This keeps center reflection clear and edge information visible on first run.
     """
     defaults = [
         WidgetConfig(
@@ -18,24 +18,59 @@ def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
             enabled=True,
             position_row=1,
             position_col=1,
-            size_rows=2,
+            size_rows=1,
             size_cols=2,
+            config_json={"freeform": {"x": 3, "y": 4, "width": 32, "height": 18}},
         ),
         WidgetConfig(
             widget_id="weather",
             enabled=True,
             position_row=1,
             position_col=3,
+            size_rows=1,
+            size_cols=1,
+            config_json={"freeform": {"x": 67, "y": 4, "width": 30, "height": 18}},
+        ),
+        WidgetConfig(
+            widget_id="news",
+            enabled=True,
+            position_row=3,
+            position_col=1,
             size_rows=2,
             size_cols=2,
+            config_json={
+                "freeform": {"x": 3, "y": 70, "width": 45, "height": 24},
+                "integration": {
+                    "feature": "news",
+                    "provider": "gemini",
+                    "model": "gemini-3-flash",
+                    "endpoint": "/api/integrations/news",
+                },
+            },
         ),
         WidgetConfig(
             widget_id="calendar",
             enabled=True,
             position_row=3,
-            position_col=1,
+            position_col=3,
             size_rows=2,
-            size_cols=3,
+            size_cols=2,
+            config_json={"freeform": {"x": 56, "y": 68, "width": 41, "height": 26}},
+        ),
+        WidgetConfig(
+            widget_id="virtual_try_on",
+            enabled=True,
+            position_row=2,
+            position_col=2,
+            size_rows=1,
+            size_cols=1,
+            config_json={
+                "freeform": {"x": 39, "y": 41, "width": 22, "height": 16},
+                "integration": {
+                    "feature": "virtual_try_on",
+                    "endpoint": "/api/integrations/try-on",
+                },
+            },
         ),
     ]
     db.add_all(defaults)
@@ -130,4 +165,3 @@ def updates_from_sync_state(db: Session, sync: SyncStateInbound) -> List[WidgetC
         )
 
     return out
-

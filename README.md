@@ -112,6 +112,22 @@ Then use `scripts/start-mirror-app.sh` as before.
 
 The previous vanilla JS layout adapter (`layoutAdjustmentsProvider`) has been replaced by the React UI, which talks to the backend via `/api/widgets/` and `/api/user/settings`. For external hook concepts, see `docs/EXTERNAL-INTEGRATION-HOOKS.md` (some paths refer to the old `ui/js` tree and may need updating).
 
+## Mirror default layout + scaffolded AI widgets
+
+Current mirror-first default composition uses these widget ids:
+
+- `clock` (top-left)
+- `weather` (top-right)
+- `news` (bottom-left)
+- `calendar` (bottom-right)
+- `virtual_try_on` (center action button)
+
+Notes:
+
+- Layout is freeform and persisted through `/api/widgets/` (`config_json.freeform`), so companion apps can reposition widgets at runtime.
+- Keyboard/GPIO mapping: `d` toggle tools panel, `1` cycle layout preset, `2` dim, `3` sleep.
+- `news` and `virtual_try_on` are scaffolded with integration entry points in `ui/src/features/ai/entrypoints.ts` (mock data/stub responses only for now).
+
 ## How to: Version Control with Git
 ### Cloning the repo in VSCode:
 In GitHub, go to the SmartMirror repository in the main branch. In the top right corner you will see the green "<> Code" button. Copy the HTTPS link that appears in the dropdown. Now you can open VSCode. 

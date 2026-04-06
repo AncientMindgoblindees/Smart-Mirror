@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { WidgetFrame, useWidgetPersistence, DEV_PANEL_STORAGE_KEY } from '@/features/widgets';
+import {
+  WidgetFrame,
+  useWidgetPersistence,
+  DEV_PANEL_STORAGE_KEY,
+  LAYOUT_MODE_STORAGE_KEY,
+  LAYOUT_PRESETS,
+} from '@/features/widgets';
 import type { WidgetConfig } from '@/features/widgets/types';
 import { ToolsPanel } from '@/features/dev-panel';
 import { CameraOverlay } from '@/features/camera';
@@ -16,12 +22,31 @@ function readDevPanelInitial(): boolean {
   return true;
 }
 
+function readLayoutModeInitial(): number {
+  try {
+    const raw = localStorage.getItem(LAYOUT_MODE_STORAGE_KEY);
+    if (!raw) return 0;
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= 0) return n % Math.max(1, LAYOUT_PRESETS.length);
+  } catch {
+    /* ignore */
+  }
+  return 0;
+}
+
+function baseType(type: string): string {
+  const raw = (type || '').trim().toLowerCase();
+  const idx = raw.indexOf(':');
+  return idx > 0 ? raw.slice(0, idx) : raw;
+}
+
 export default function MirrorApp() {
   const { widgets, setWidgets } = useWidgetPersistence();
   const [showCamera, setShowCamera] = useState(false);
   const [displayDimmed, setDisplayDimmed] = useState(false);
   const [sleepMode, setSleepMode] = useState(false);
   const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
+  const [layoutModeIndex, setLayoutModeIndex] = useState(readLayoutModeInitial);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
@@ -37,6 +62,14 @@ export default function MirrorApp() {
     document.body.classList.toggle('mirror-sleep', sleepMode);
     return () => document.body.classList.remove('mirror-sleep');
   }, [sleepMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAYOUT_MODE_STORAGE_KEY, String(layoutModeIndex));
+    } catch {
+      /* ignore */
+    }
+  }, [layoutModeIndex]);
 
   useEffect(() => {
     const updateRect = () => {
@@ -67,7 +100,22 @@ export default function MirrorApp() {
     setSleepMode((s) => !s);
   }, []);
 
+  const cycleLayout = useCallback(() => {
+    setLayoutModeIndex((prev) => {
+      const next = (prev + 1) % Math.max(1, LAYOUT_PRESETS.length);
+      const preset = LAYOUT_PRESETS[next];
+      setWidgets((list) =>
+        list.map((w) => {
+          const p = preset[baseType(w.type)];
+          return p ? { ...w, freeform: { ...p } } : w;
+        })
+      );
+      return next;
+    });
+  }, [setWidgets]);
+
   useMirrorInput({
+    cycleLayout,
     toggleDim,
     toggleSleep,
     toggleDevPanel,
@@ -94,6 +142,8 @@ export default function MirrorApp() {
 
       {showDevPanel && (
         <ToolsPanel
+          layoutModeIndex={layoutModeIndex}
+          onCycleLayout={cycleLayout}
           onToggleCamera={() => setShowCamera((v) => !v)}
           onToggleDim={toggleDim}
           onToggleSleep={toggleSleep}
