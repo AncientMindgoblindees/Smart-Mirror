@@ -41,3 +41,18 @@ class UserSettings(Base):
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
+
+class WardrobeItem(Base):
+    __tablename__ = "wardrobe_item"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(64), nullable=False, index=True, default="local-dev")
+    name = Column(String(128), nullable=False)
+    category = Column(String(64), nullable=True)
+    image_url = Column(String(512), nullable=False)
+
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+

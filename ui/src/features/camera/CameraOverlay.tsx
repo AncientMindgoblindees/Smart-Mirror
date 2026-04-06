@@ -3,7 +3,10 @@ import { X } from 'lucide-react';
 import { useCameraStream } from './useCameraStream';
 import './camera-overlay.css';
 
-export const CameraOverlay: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+export const CameraOverlay: React.FC<{ onClose: () => void; countdown?: number | null }> = ({
+  onClose,
+  countdown = null,
+}) => {
   const { camera, videoRef, stopTracks } = useCameraStream();
 
   const handleClose = () => {
@@ -28,6 +31,9 @@ export const CameraOverlay: React.FC<{ onClose: () => void }> = ({ onClose }) =>
           )}
           {camera.status === 'error' && (
             <div className="camera-status camera-status-error">{camera.message}</div>
+          )}
+          {typeof countdown === 'number' && countdown > 0 && (
+            <div className="camera-status camera-status-loading">Capture in {countdown}…</div>
           )}
         </div>
         <button type="button" className="camera-exit-btn" onClick={handleClose}>

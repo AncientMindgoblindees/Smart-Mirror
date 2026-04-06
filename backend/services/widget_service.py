@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List
 
 from sqlalchemy.orm import Session
@@ -165,3 +166,16 @@ def updates_from_sync_state(db: Session, sync: SyncStateInbound) -> List[WidgetC
         )
 
     return out
+
+
+def get_layout_revision(db: Session) -> str:
+    """
+    Lightweight revision token for optimistic UI merges.
+    Uses max(updated_at) timestamp + row count.
+    """
+    rows = db.query(WidgetConfig.updated_at).all()
+    count = len(rows)
+    if not rows:
+        return "0-0"
+    latest: datetime = max(r[0] for r in rows if r[0] is not None)  # type: ignore[assignment]
+    return f"{int(latest.timestamp())}-{count}"

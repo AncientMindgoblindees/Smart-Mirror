@@ -2,7 +2,7 @@
   position: absolute;
   top: 1rem;
   right: 1rem;
-  width: min(320px, 36vw);
+  width: auto;
   padding: 0.9rem;
   border-radius: 14px;
   z-index: 100;
@@ -28,8 +28,7 @@
 
   .tools-header,
   .tools-label,
-  .section-label,
-  .widget-list {
+  .section-label {
     display: none;
   }
 
@@ -57,22 +56,13 @@
   -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
-.tools-header {
-  font-size: 0.68rem;
-  letter-spacing: 0.18em;
-  font-weight: 600;
-  color: var(--color-text-label);
-  margin-bottom: 0.75rem;
-  text-transform: uppercase;
-}
-
 .tools-section {
-  margin-bottom: 0.95rem;
+  margin-bottom: 0.65rem;
 }
 
 .button-group {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 0.55rem;
 }
 
@@ -85,45 +75,26 @@
   border-radius: 10px;
   display: flex;
   align-items: center;
-  gap: 0.62rem;
+  gap: 0;
   cursor: pointer;
   font-size: 0.88rem;
   transition: background 0.2s ease;
+}
+
+.tool-btn.icon-only {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  justify-content: center;
 }
 
 .tool-btn:hover {
   background: rgba(255, 255, 255, 0.16);
 }
 
-.tools-shortcuts {
-  font-size: 0.7rem;
-  color: var(--color-text-secondary);
-  margin-bottom: 0.55rem;
-  line-height: 1.4;
-}
-
-.tools-shortcuts kbd {
-  display: inline-block;
-  padding: 0.08em 0.35em;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(0, 0, 0, 0.35);
-  font-size: 0.84em;
-  font-family: inherit;
-}
-
-.section-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--color-text-label);
-  margin-bottom: 0.55rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
 .widget-list {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 0.45rem;
 }
 
@@ -141,15 +112,16 @@
   font-size: 0.83rem;
 }
 
+.widget-toggle.icon-only {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  justify-content: center;
+}
+
 .widget-toggle.active {
   border-color: rgba(255, 255, 255, 0.26);
   color: var(--color-text-primary);
   background: rgba(255, 255, 255, 0.1);
-}
-
-
-.layout-mode-label {
-  color: var(--color-text-label);
-  font-size: 0.72rem;
-  margin-bottom: 0.5rem;
 }

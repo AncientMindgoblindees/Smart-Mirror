@@ -1,4 +1,6 @@
 import type {
+  CameraCaptureRequest,
+  CameraStatusOut,
   UserSettingsOut,
   UserSettingsUpdate,
   WidgetConfigOut,
@@ -41,5 +43,16 @@ export function putUserSettings(updates: UserSettingsUpdate): Promise<UserSettin
   return jsonRequest<UserSettingsOut>('/user/settings', {
     method: 'PUT',
     body: JSON.stringify(updates),
+  });
+}
+
+export function getCameraStatus(): Promise<CameraStatusOut> {
+  return jsonRequest<CameraStatusOut>('/camera/status');
+}
+
+export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ status: string }> {
+  return jsonRequest<{ status: string }>('/camera/capture', {
+    method: 'POST',
+    body: JSON.stringify(req),
   });
 }

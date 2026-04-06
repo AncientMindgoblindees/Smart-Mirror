@@ -38,3 +38,26 @@ export interface UserSettingsUpdate {
   primary_font_size?: number;
   accent_color?: string;
 }
+
+export interface CameraStatusOut {
+  active: boolean;
+  countdown_remaining: number;
+  last_capture_id?: string | null;
+  last_capture_at?: string | null;
+}
+
+export interface CameraCaptureRequest {
+  countdown_seconds?: number;
+  source?: string;
+  session_id?: string;
+}
+
+export interface WardrobeItemOut {
+  id: number;
+  user_id: string;
+  name: string;
+  category?: string | null;
+  image_url: string;
+  created_at: string;
+  updated_at: string;
+}

@@ -1,17 +1,17 @@
 .calendar-widget {
   display: flex;
   flex-direction: column;
-  gap: 0.6em;
+  gap: 0.45em;
   overflow-wrap: anywhere;
   word-break: break-word;
   flex: 1 1 auto;
   min-height: 0;
-  padding-bottom: 0.25em;
+  overflow: hidden;
 }
 
 .calendar-widget .calendar-item:last-child {
   border-bottom: none;
-  padding-bottom: 0.2em;
+  padding-bottom: 0.15em;
 }
 
 .calendar-item {
@@ -19,9 +19,9 @@
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.72em;
-  padding: 0.28em 0 0.62em 0.7em;
+  padding: 0.2em 0 0.45em 0.7em;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 0.92em;
+  font-size: 0.88em;
 }
 
 .calendar-item::before {
@@ -55,4 +55,27 @@
 
 .calendar-item .event {
   color: var(--color-text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.calendar-widget .pager-dots {
+  margin-top: 0.15rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.calendar-widget .pager-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  transition: background 220ms ease;
+}
+
+.calendar-widget .pager-dot.active {
+  background: rgba(255, 255, 255, 0.75);
 }

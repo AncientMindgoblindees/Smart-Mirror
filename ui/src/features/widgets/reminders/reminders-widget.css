@@ -1,19 +1,70 @@
 .reminders-widget {
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
-  text-align: center;
+  gap: 0.45em;
+  justify-content: space-between;
+  height: 100%;
   overflow-wrap: anywhere;
   word-break: break-word;
+  overflow: hidden;
 }
 
-.reminders-placeholder {
-  font-size: 1.25em;
-  font-weight: 600;
+.reminders-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45em;
+}
+
+.reminders-list li {
   color: var(--color-text-primary);
+  font-weight: 500;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.reminders-hint {
-  font-size: 0.85em;
+.pager-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.pager-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.pager-dot.active {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.reminders-widget .pager-dots {
+  margin-top: 0.2rem;
+}
+
+.reminders-widget .pager-dot {
+  transform: scale(0.95);
+}
+
+.reminders-widget .pager-dot.active {
+  transform: scale(1.1);
+}
+
+.reminders-widget .pager-dots,
+.reminders-widget .pager-dot {
+  transition: all 220ms ease;
+}
+
+.reminders-widget small,
+.reminders-widget .hint {
+  display: none;
+}
+
+.reminders-widget .subtle {
   color: var(--color-text-secondary);
 }

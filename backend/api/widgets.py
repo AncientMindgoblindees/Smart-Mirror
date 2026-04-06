@@ -31,3 +31,11 @@ def put_widgets(
 ) -> List[WidgetConfigOut]:
     return widget_service.replace_widgets(db, payload)
 
+
+@router.get(
+    "/revision",
+    summary="Get layout revision token",
+)
+def get_widget_layout_revision(db: Session = Depends(get_db)) -> dict:
+    return {"revision": widget_service.get_layout_revision(db)}
+
