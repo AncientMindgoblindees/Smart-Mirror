@@ -1,7 +1,7 @@
 .calendar-widget {
   display: flex;
   flex-direction: column;
-  gap: 0.8em;
+  gap: 0.6em;
   overflow-wrap: anywhere;
   word-break: break-word;
   flex: 1 1 auto;
@@ -11,19 +11,48 @@
 
 .calendar-widget .calendar-item:last-child {
   border-bottom: none;
-  padding-bottom: 0.15em;
+  padding-bottom: 0.2em;
 }
 
 .calendar-item {
-  display: flex;
-  gap: 1em;
-  padding-bottom: 0.6em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  font-size: 0.9em;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.72em;
+  padding: 0.28em 0 0.62em 0.7em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.92em;
+}
+
+.calendar-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.18em;
+  bottom: 0.28em;
+  width: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.calendar-item:nth-child(1)::before {
+  background: #60a5fa;
+}
+
+.calendar-item:nth-child(2)::before {
+  background: #f59e0b;
+}
+
+.calendar-item:nth-child(3)::before {
+  background: #34d399;
 }
 
 .calendar-item .time {
-  color: var(--color-accent);
+  color: var(--color-text-secondary);
   font-weight: 600;
-  min-width: 4em;
+  min-width: 4.2em;
+}
+
+.calendar-item .event {
+  color: var(--color-text-primary);
 }
