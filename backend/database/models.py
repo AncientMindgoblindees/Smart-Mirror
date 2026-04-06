@@ -69,8 +69,20 @@ class ClothingImage(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     clothing_item_id = Column(Integer, ForeignKey("clothing_item.id"), nullable=False)
-    image_url = Column(String(255), nullable=False)
+    
+    storage_provider = Column(String(50), nullable=False, default="cloud")
+    storage_key = Column(String(255), nullable=False)
+    image_url = Column(String(500), nullable=False)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     clothing_item = relationship("ClothingItem", back_populates="images")
+
+class PersonImage(Base):
+    __tablename__ = "person_image"
+
+    id = Column(Integer, primary_key=True, index=True)
+    file_path = Column(String(255), nullable=False)
+    status = Column(String(50), nullable=False, default="uploaded")
+
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
