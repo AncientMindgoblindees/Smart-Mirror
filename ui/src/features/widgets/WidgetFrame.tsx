@@ -17,9 +17,10 @@ function clamp(n: number, lo: number, hi: number): number {
 export const WidgetFrame: React.FC<Props> = ({ config, onUpdate, canvasRect }) => {
   const metadata = getWidgetMetadata(config.type);
   const Body = metadata?.Component ?? UnknownWidget;
-  const title = config.type.startsWith('custom:')
-    ? (config.title?.trim() || 'Custom')
-    : (metadata?.title ?? config.type);
+  const title =
+    config.title?.trim() ||
+    (config.type.startsWith('custom:') ? 'Custom' : metadata?.title) ||
+    config.type;
   const minSize = metadata?.minSize ?? { width: 200, height: 150 };
   const frameRef = useRef<HTMLDivElement>(null);
 

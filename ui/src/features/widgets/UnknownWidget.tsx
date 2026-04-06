@@ -2,7 +2,7 @@ import React from 'react';
 import type { WidgetConfig } from './types';
 
 export const UnknownWidget: React.FC<{ config: WidgetConfig }> = ({ config }) => {
-  const isCustom = config.type.startsWith('custom:');
+  const isCustom = config.type.trim().toLowerCase().startsWith('custom:');
   if (isCustom && (config.text || config.title)) {
     return (
       <div className="widget-content">

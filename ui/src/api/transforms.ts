@@ -55,6 +55,33 @@ function readFreeform(configJson: Record<string, unknown> | null | undefined): W
   return normalizeFreeform(raw as Record<string, unknown>);
 }
 
+/**
+ * Lowercase; strip trailing `:digits` except for `custom:*` (unique custom instances).
+ */
+export function normalizeWidgetTypeId(widgetId: string): string {
+  const s = widgetId.trim();
+  const colon = s.indexOf(':');
+  if (colon > 0) {
+    const base = s.slice(0, colon).toLowerCase();
+    const rest = s.slice(colon + 1);
+    if (/^\d+$/.test(rest) && base !== 'custom') {
+      return base;
+    }
+    return `${base}:${rest}`;
+  }
+  return s.toLowerCase();
+}
+
+export function dedupeWidgetRows(rows: WidgetConfigOut[]): WidgetConfigOut[] {
+  const m = new Map<string, WidgetConfigOut>();
+  for (const r of rows) {
+    const k = normalizeWidgetTypeId(r.widget_id);
+    const ex = m.get(k);
+    if (!ex || r.id < ex.id) m.set(k, r);
+  }
+  return [...m.values()].sort((a, b) => a.id - b.id);
+}
+
 export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
   const cj = w.config_json ?? {};
   const title = typeof cj.title === 'string' ? cj.title : undefined;
@@ -63,7 +90,7 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
   return {
     id: `w-${w.id}`,
     backendId: w.id,
-    type: w.widget_id,
+    type: normalizeWidgetTypeId(w.widget_id),
     enabled: w.enabled,
     grid: {
       row: w.position_row,
@@ -87,7 +114,7 @@ export function widgetToBackend(w: WidgetConfig): WidgetConfigUpdate {
   if (w.templateId !== undefined) config_json.templateId = w.templateId;
   return {
     id: w.backendId ?? undefined,
-    widget_id: w.type,
+    widget_id: normalizeWidgetTypeId(w.type),
     enabled: w.enabled,
     position_row: w.grid.row,
     position_col: w.grid.col,

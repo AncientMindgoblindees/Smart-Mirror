@@ -1,7 +1,13 @@
+.weather-widget {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .weather-widget .weather-main {
   display: flex;
   align-items: center;
   gap: 1em;
+  flex-wrap: wrap;
 }
 
 .weather-widget .temp {
