@@ -29,11 +29,6 @@ class ClothingItemRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class ClothingImageCreate(BaseModel):
-    storage_provider: str = "cloud"
-    storage_key: str
-    image_url: str
-
 class ClothingImageRead(BaseModel):
     id: int
     clothing_item_id: int
