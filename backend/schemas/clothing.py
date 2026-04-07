@@ -1,10 +1,18 @@
 from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, ConfigDict
 
 class ClothingItemCreate(BaseModel):
     name: str
     category: str
+    color: Optional[str] = None
+    season: Optional[str] = None
+    notes: Optional[str] = None
+
+class ClothingItemUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
     color: Optional[str] = None
     season: Optional[str] = None
     notes: Optional[str] = None
