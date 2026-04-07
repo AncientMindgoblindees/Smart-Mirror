@@ -1,11 +1,10 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from backend.database.session import get_db
 from backend.schemas.clothing import (
-    ClothingImageCreate,
     ClothingImageRead,
     ClothingItemCreate,
     ClothingItemRead,
@@ -70,16 +69,16 @@ def list_clothing_images(item_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{item_id}/images", response_model=ClothingImageRead, status_code=201)
-def create_clothing_image(
+async def upload_clothing_image(
     item_id: int,
-    payload: ClothingImageCreate,
+    file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     item = clothing_service.get_clothing_item_by_id(db, item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Clothing item not found")
 
-    return clothing_service.create_clothing_image(db, item_id, payload)
+    return await clothing_service.upload_clothing_image_file(db, item, file)
 
 
 @router.delete("/{item_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
