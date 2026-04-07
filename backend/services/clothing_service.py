@@ -1,13 +1,17 @@
+import os
+import tempfile
+import uuid
 from typing import List, Optional
 
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from backend.database.models import ClothingImage, ClothingItem
-from backend.schemas.clothing import (
-    ClothingImageCreate,
-    ClothingItemCreate,
-    ClothingItemUpdate,
-)
+from backend.schemas.clothing import ClothingItemCreate, ClothingItemUpdate
+from backend.services import cloud_storage_service
+
+
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 def list_clothing_items(db: Session) -> List[ClothingItem]:
@@ -58,23 +62,6 @@ def list_clothing_images(db: Session, item_id: int) -> List[ClothingImage]:
     )
 
 
-def create_clothing_image(
-    db: Session,
-    item_id: int,
-    payload: ClothingImageCreate,
-) -> ClothingImage:
-    image = ClothingImage(
-        clothing_item_id=item_id,
-        storage_provider=payload.storage_provider,
-        storage_key=payload.storage_key,
-        image_url=payload.image_url,
-    )
-    db.add(image)
-    db.commit()
-    db.refresh(image)
-    return image
-
-
 def get_clothing_image_by_id(
     db: Session,
     item_id: int,
@@ -93,3 +80,54 @@ def get_clothing_image_by_id(
 def delete_clothing_image(db: Session, image: ClothingImage) -> None:
     db.delete(image)
     db.commit()
+
+
+async def upload_clothing_image_file(
+    db: Session,
+    item: ClothingItem,
+    file: UploadFile,
+) -> ClothingImage:
+    """
+    Accept an uploaded image file, send it to Cloudinary, then store the
+    returned metadata in the local SQLite database.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+
+    suffix = os.path.splitext(file.filename)[1].lower()
+    if suffix not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Use jpg, jpeg, png, or webp.",
+        )
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+            temp_file.write(contents)
+            temp_path = temp_file.name
+
+        upload_result = cloud_storage_service.upload_clothing_image(
+            temp_path,
+            public_id=f"{item.id}-{uuid.uuid4()}",
+        )
+
+        image = ClothingImage(
+            clothing_item_id=item.id,
+            storage_provider=upload_result["storage_provider"],
+            storage_key=upload_result["storage_key"],
+            image_url=upload_result["image_url"],
+        )
+
+        db.add(image)
+        db.commit()
+        db.refresh(image)
+        return image
+
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
