@@ -3,7 +3,9 @@
   flex-direction: column;
   gap: 0.45em;
   justify-content: space-between;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   overflow: hidden;
 }
 
@@ -11,7 +13,20 @@
   list-style: none;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  justify-content: flex-start;
   gap: 0.5em;
+}
+
+@supports (font-size: 1cqmin) {
+  .widget-body:has(.reminders-widget) .reminders-widget {
+    font-size: clamp(0.92rem, 6.5cqmin, 1.55rem);
+  }
+
+  .widget-body:has(.reminders-widget) .reminders-list {
+    gap: clamp(0.4em, 2.5cqmin, 0.75em);
+  }
 }
 
 .reminders-list li {
@@ -22,6 +37,19 @@
   line-height: 1.3;
   border-radius: var(--radius-sm);
   transition: background var(--duration-fast) ease;
+}
+
+.widget-frame[data-size='small'] .reminders-list {
+  gap: 0.32em;
+}
+
+.widget-frame[data-size='small'] .reminders-list li {
+  gap: 0.36em;
+  padding: 0.12em 0;
+}
+
+.widget-frame[data-size='small'] .reminder-text {
+  -webkit-line-clamp: 1;
 }
 
 .reminders-list li:hover {
@@ -55,7 +83,9 @@
 }
 
 .reminders-widget .pager-dots {
-  margin-top: 0.3em;
+  margin-top: auto;
+  padding-top: 0.35em;
+  flex-shrink: 0;
   display: flex;
   justify-content: center;
   gap: 0.3rem;

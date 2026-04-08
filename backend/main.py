@@ -1,17 +1,20 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from backend.api import camera, events, health, user, wardrobe, widgets
+from backend.api import camera, events, health, user, wardrobe, weather, widgets
 from backend.database.session import init_db
 from hardware.gpio import service as gpio_service
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 UI_DIST = BASE_DIR / "ui" / "dist"
+
+load_dotenv(BASE_DIR / ".env")
 
 
 def create_app() -> FastAPI:
@@ -28,6 +31,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(widgets.router, prefix="/api")
+    app.include_router(weather.router, prefix="/api")
     app.include_router(user.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(camera.router, prefix="/api")

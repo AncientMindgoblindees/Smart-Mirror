@@ -13,8 +13,9 @@ interface StatGauge {
 
 function getGaugeColor(value: number, max: number): string {
   const ratio = value / max;
-  if (ratio < 0.5) return 'var(--color-success)';
-  if (ratio < 0.8) return 'var(--color-warm)';
+  if (ratio < 0.4) return 'var(--color-accent)';
+  if (ratio < 0.7) return 'var(--color-success)';
+  if (ratio < 0.85) return 'var(--color-warm)';
   return 'var(--color-danger)';
 }
 
@@ -42,9 +43,9 @@ function CircularGauge({ label, value, unit, color, maxValue }: StatGauge) {
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: dashOffset }}
-          transition={{ type: 'spring', stiffness: 80, damping: 20 }}
+          transition={{ type: 'spring', stiffness: 120, damping: 25 }}
           transform="rotate(-90 36 36)"
-          style={{ filter: `drop-shadow(0 0 4px ${color})` }}
+          style={{ filter: `drop-shadow(0 0 8px ${color})` }}
         />
       </svg>
       <div className="gauge-label-group">

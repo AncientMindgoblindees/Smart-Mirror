@@ -52,6 +52,23 @@
   transition: background var(--duration-fast) ease;
 }
 
+.widget-frame[data-size='small'] .news-list {
+  gap: 0.28rem;
+}
+
+.widget-frame[data-size='small'] .news-list li {
+  gap: 0.35rem;
+  padding: 0.16em 0;
+}
+
+.widget-frame[data-size='small'] .news-title {
+  -webkit-line-clamp: 1;
+}
+
+.widget-frame[data-size='small'] .news-summary {
+  -webkit-line-clamp: 1;
+}
+
 .news-list li:hover {
   background: var(--glass-subtle-bg);
 }

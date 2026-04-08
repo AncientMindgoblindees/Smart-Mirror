@@ -1,12 +1,16 @@
 import type { WidgetConfigOut, WidgetConfigUpdate } from './backendTypes';
 import type { WidgetConfig } from '@/features/widgets/types';
+import {
+  inferWidgetSizePreset,
+  type WidgetSizePreset,
+} from '@/features/widgets/sizePresets';
 
 const DEFAULTS_BY_TYPE: Record<string, WidgetConfig['freeform']> = {
-  clock: { x: 3, y: 4, width: 32, height: 18 },
-  weather: { x: 67, y: 4, width: 30, height: 18 },
-  news: { x: 3, y: 70, width: 45, height: 24 },
-  calendar: { x: 56, y: 68, width: 41, height: 26 },
-  virtual_try_on: { x: 39, y: 41, width: 22, height: 16 },
+  clock: { x: 3, y: 4, width: 32, height: 20, sizePreset: 'medium' },
+  weather: { x: 67, y: 4, width: 32, height: 20, sizePreset: 'medium' },
+  news: { x: 3, y: 70, width: 44, height: 28, sizePreset: 'large' },
+  calendar: { x: 56, y: 68, width: 44, height: 28, sizePreset: 'large' },
+  virtual_try_on: { x: 39, y: 41, width: 22, height: 14, sizePreset: 'small' },
 };
 
 /** Legacy layouts stored pixel coords against this reference before percent migration. */
@@ -33,7 +37,9 @@ function clampFreeform(f: WidgetConfig['freeform']): WidgetConfig['freeform'] {
   const height = Math.min(100, Math.max(0.5, f.height));
   const x = Math.min(Math.max(0, f.x), 100 - width);
   const y = Math.min(Math.max(0, f.y), 100 - height);
-  return { x, y, width, height };
+  const sizePreset =
+    f.sizePreset ?? inferWidgetSizePreset(width, height);
+  return { x, y, width, height, sizePreset };
 }
 
 function legacyPixelsToPercent(f: WidgetConfig['freeform']): WidgetConfig['freeform'] {
@@ -59,6 +65,10 @@ export function normalizeFreeform(
     y: num('y', fallback.y),
     width: num('width', fallback.width),
     height: num('height', fallback.height),
+    sizePreset:
+      raw && typeof raw.sizePreset === 'string'
+        ? (raw.sizePreset as WidgetSizePreset)
+        : undefined,
   };
   if (looksLikeLegacyPixel(f)) return legacyPixelsToPercent(f);
   return clampFreeform(f);
@@ -113,6 +123,9 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
     cj.integration && typeof cj.integration === 'object'
       ? (cj.integration as WidgetConfig['integration'])
       : undefined;
+  const location = typeof cj.location === 'string' ? cj.location : undefined;
+  const unit =
+    cj.unit === 'imperial' || cj.unit === 'metric' ? (cj.unit as 'metric' | 'imperial') : undefined;
   const normalizedType = normalizeWidgetTypeId(w.widget_id);
   return {
     id: `w-${w.id}`,
@@ -130,17 +143,22 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
     ...(text !== undefined ? { text } : {}),
     ...(templateId !== undefined ? { templateId } : {}),
     ...(integration !== undefined ? { integration } : {}),
+    ...(location !== undefined ? { location } : {}),
+    ...(unit !== undefined ? { unit } : {}),
   };
 }
 
 export function widgetToBackend(w: WidgetConfig): WidgetConfigUpdate {
+  const clamped = clampFreeform(w.freeform);
   const config_json: Record<string, unknown> = {
-    freeform: clampFreeform(w.freeform),
+    freeform: clamped,
   };
   if (w.title !== undefined) config_json.title = w.title;
   if (w.text !== undefined) config_json.text = w.text;
   if (w.templateId !== undefined) config_json.templateId = w.templateId;
   if (w.integration !== undefined) config_json.integration = w.integration;
+  if (w.location !== undefined) config_json.location = w.location;
+  if (w.unit !== undefined) config_json.unit = w.unit;
   return {
     id: w.backendId ?? undefined,
     widget_id: normalizeWidgetTypeId(w.type),

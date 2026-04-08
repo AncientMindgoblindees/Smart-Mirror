@@ -8,15 +8,15 @@ export function computeDisplayScale(widthPct: number, heightPct: number): number
   const area = Math.max(1, widthPct * heightPct);
   const base = 28 * 20;
   const scale = Math.sqrt(area / base);
-  return clamp(scale, 0.72, 1.35);
+  return clamp(scale, 0.68, 1.12);
 }
 
 export function estimatePageSize(widthPct: number, heightPct: number): number {
   const area = Math.max(1, widthPct * heightPct);
-  if (area < 260) return 2;
-  if (area < 430) return 3;
-  if (area < 620) return 4;
-  return 5;
+  if (area < 260) return 1;
+  if (area < 430) return 2;
+  if (area < 620) return 3;
+  return 4;
 }
 
 export function useDisplayPagination<T>(

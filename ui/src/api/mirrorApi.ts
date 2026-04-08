@@ -3,6 +3,7 @@ import type {
   CameraStatusOut,
   UserSettingsOut,
   UserSettingsUpdate,
+  WeatherSnapshotOut,
   WidgetConfigOut,
   WidgetConfigUpdate,
 } from './backendTypes';
@@ -48,6 +49,17 @@ export function putUserSettings(updates: UserSettingsUpdate): Promise<UserSettin
 
 export function getCameraStatus(): Promise<CameraStatusOut> {
   return jsonRequest<CameraStatusOut>('/camera/status');
+}
+
+export function getWeather(opts?: {
+  q?: string;
+  units?: 'metric' | 'imperial';
+}): Promise<WeatherSnapshotOut> {
+  const sp = new URLSearchParams();
+  if (opts?.q) sp.set('q', opts.q);
+  if (opts?.units) sp.set('units', opts.units);
+  const qs = sp.toString();
+  return jsonRequest<WeatherSnapshotOut>(`/weather/${qs ? `?${qs}` : ''}`);
 }
 
 export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ status: string }> {

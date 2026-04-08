@@ -11,7 +11,7 @@ import { applyUserSettings } from '@/userSettings';
 import type { WidgetConfig } from './types';
 import { INITIAL_WIDGETS, WIDGET_STORAGE_KEY } from './constants';
 
-const POLL_MS = 4000;
+const POLL_MS = 1200;
 
 /** Stable fingerprint from raw API rows so companion edits are detected (avoids round-trip JSON mismatches). */
 function serverLayoutFingerprint(rows: WidgetConfigOut[]): string {
@@ -120,7 +120,7 @@ export function useWidgetPersistence(): {
       } catch (e) {
         console.warn('Failed to sync widgets to server', e);
       }
-    }, 600);
+    }, 250);
     return () => {
       if (pendingPushTimerRef.current !== undefined) {
         clearTimeout(pendingPushTimerRef.current);

@@ -2,7 +2,7 @@ import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Circle, CheckCircle2 } from 'lucide-react';
 import type { WidgetConfig } from '../types';
-import { computeDisplayScale, estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
+import { estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
 import './reminders-widget.css';
 
 type ReminderItem = { text: string; done?: boolean };
@@ -24,12 +24,11 @@ export const RemindersWidget: React.FC<{ config: WidgetConfig }> = React.memo(({
       .map((x) => (typeof x === 'string' ? { text: x } : null))
       .filter((x): x is ReminderItem => Boolean(x && x.text.trim())) || [];
   const list = items.length > 0 ? items : DEFAULT_ITEMS;
-  const scale = computeDisplayScale(config.freeform.width, config.freeform.height);
   const pageSize = estimatePageSize(config.freeform.width, config.freeform.height);
   const { pageItems, pageIndex, pageCount } = useDisplayPagination(list, pageSize, 7000);
 
   return (
-    <div className="widget-content reminders-widget" style={{ fontSize: `${scale}em` }}>
+    <div className="widget-content reminders-widget">
       <AnimatePresence mode="wait">
         <motion.ul
           key={pageIndex}

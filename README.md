@@ -108,6 +108,19 @@ cd /path/to/Smart-Mirror/ui && npm install && npm run build
 
 Then use `scripts/start-mirror-app.sh` as before.
 
+## Weather (WeatherAPI.com)
+
+The mirror loads weather through the backend at **`GET /api/weather/`**, which proxies [WeatherAPI.com](https://www.weatherapi.com/docs/) ([Swagger reference](https://app.swaggerhub.com/apis-docs/WeatherAPI.com/WeatherAPI/1.0.2)) so your API key is not exposed to the browser.
+
+1. Copy `.env.example` to `.env` in the repo root (`.env` is gitignored).
+2. Set `WEATHERAPI_KEY` to your key from the WeatherAPI dashboard.
+3. Optionally set `WEATHERAPI_Q` (default `San Francisco`) to any `q` supported by the API (city, lat/lon, zip code, etc.).
+4. Restart the backend so the environment variables are picked up.
+
+If the key is missing or the upstream request fails, the widget shows a short message (and a **Retry** button when the API is configured but a request fails). Responses are cached server-side for 5 minutes; the widget polls `/api/weather/` on the same interval so updates stay in sync without extra upstream calls.
+
+**Security:** Treat API keys like passwords. If a key was ever pasted into chat or committed, regenerate it in your WeatherAPI account.
+
 ## External integrations (legacy note)
 
 The previous vanilla JS layout adapter (`layoutAdjustmentsProvider`) has been replaced by the React UI, which talks to the backend via `/api/widgets/` and `/api/user/settings`. For external hook concepts, see `docs/EXTERNAL-INTEGRATION-HOOKS.md` (some paths refer to the old `ui/js` tree and may need updating).

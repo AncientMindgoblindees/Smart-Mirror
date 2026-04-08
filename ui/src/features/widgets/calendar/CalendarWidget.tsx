@@ -1,7 +1,7 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { WidgetConfig } from '../types';
-import { computeDisplayScale, estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
+import { estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
 import './calendar-widget.css';
 
 type CalendarEvent = { time: string; event: string };
@@ -30,12 +30,11 @@ function getRelativeLabel(timeStr: string): string | null {
 
 export const CalendarWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
   const events = DEFAULT_EVENTS;
-  const scale = computeDisplayScale(config.freeform.width, config.freeform.height);
   const pageSize = estimatePageSize(config.freeform.width, config.freeform.height);
   const { pageItems, pageIndex, pageCount } = useDisplayPagination(events, pageSize, 7000);
 
   return (
-    <div className="widget-content calendar-widget" style={{ fontSize: `${scale}em` }}>
+    <div className="widget-content calendar-widget">
       <AnimatePresence mode="wait">
         <motion.div
           key={pageIndex}

@@ -10,12 +10,12 @@ interface AmbientConfig {
 }
 
 const PERIOD_CONFIG: Record<TimePeriod, AmbientConfig> = {
-  night:     { hue: 230, saturation: 20, lightness: 4,  glowIntensity: 0.06 },
-  dawn:      { hue: 30,  saturation: 50, lightness: 10, glowIntensity: 0.14 },
-  morning:   { hue: 45,  saturation: 40, lightness: 12, glowIntensity: 0.16 },
-  afternoon: { hue: 200, saturation: 30, lightness: 10, glowIntensity: 0.12 },
-  dusk:      { hue: 15,  saturation: 55, lightness: 10, glowIntensity: 0.18 },
-  evening:   { hue: 260, saturation: 25, lightness: 6,  glowIntensity: 0.08 },
+  night:     { hue: 240, saturation: 25, lightness: 3,  glowIntensity: 0.08 },
+  dawn:      { hue: 320, saturation: 40, lightness: 8,  glowIntensity: 0.15 },
+  morning:   { hue: 190, saturation: 35, lightness: 10, glowIntensity: 0.12 },
+  afternoon: { hue: 210, saturation: 30, lightness: 10, glowIntensity: 0.10 },
+  dusk:      { hue: 20,  saturation: 50, lightness: 8,  glowIntensity: 0.20 },
+  evening:   { hue: 270, saturation: 30, lightness: 5,  glowIntensity: 0.12 },
 };
 
 function getPeriod(hour: number): TimePeriod {

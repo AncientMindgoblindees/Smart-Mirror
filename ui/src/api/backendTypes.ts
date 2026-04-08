@@ -52,6 +52,30 @@ export interface CameraCaptureRequest {
   session_id?: string;
 }
 
+/** GET /api/weather/ — WeatherAPI.com snapshot (proxied by backend). */
+export interface WeatherForecastDayOut {
+  weekday: string;
+  high: number;
+  low: number;
+  condition: string;
+}
+
+export interface WeatherSnapshotOut {
+  configured: boolean;
+  live: boolean;
+  location: string;
+  temperature_unit: 'celsius' | 'fahrenheit';
+  temp?: number | null;
+  feels_like?: number | null;
+  humidity_pct?: number | null;
+  wind_speed?: number | null;
+  wind_unit: 'kmh' | 'mph';
+  condition_text: string;
+  condition: string;
+  forecast: WeatherForecastDayOut[];
+  error?: string | null;
+}
+
 export interface WardrobeItemOut {
   id: number;
   user_id: string;

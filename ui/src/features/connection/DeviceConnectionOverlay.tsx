@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { AnimatePresence, motion, type Transition } from 'motion/react';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useParallax } from '@/hooks/useParallax';
+import { MorphingSquare } from '@/components/ui/morphing-square';
 import type { ConnectionState, ConnectionPhase } from './useDeviceConnectionState';
 import './device-connection-overlay.css';
 
@@ -467,23 +468,17 @@ export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
                 <AnimatePresence mode="wait">
                   {isIdle && (
                     <motion.div
-                      key="idle-dot"
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: '50%',
-                        background: 'var(--color-accent-dim)',
-                      }}
-                      animate={{
-                        scale: [1, 1.2, 1],
-                        opacity: [0.4, 0.65, 0.4],
-                      }}
-                      transition={{
-                        duration: 3,
-                        repeat: Infinity,
-                        ease: 'easeInOut',
-                      }}
-                    />
+                      key="idle-loader"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                      <MorphingSquare
+                        className="!w-8 !h-8 !bg-[var(--color-accent-dim)]/80"
+                        aria-label="Waiting for device"
+                      />
+                    </motion.div>
                   )}
                   {isConnected && (
                     <motion.div

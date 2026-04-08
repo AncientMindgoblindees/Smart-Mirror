@@ -15,6 +15,7 @@ import { useControlEvents } from '@/hooks/useControlEvents';
 import { useMirrorInput } from '@/hooks/useMirrorInput';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
 import { useParallax } from '@/hooks/useParallax';
+import { TooltipProvider } from '@/components/ui/Tooltip';
 import './mirror-app.css';
 
 function readDevPanelInitial(): boolean {
@@ -120,8 +121,9 @@ export default function MirrorApp() {
   const visibleWidgets = useMemo(() => widgets.filter((w) => w.enabled), [widgets]);
 
   return (
-    <div className="mirror-shell">
-      <div className="mirror-ambient-layer" aria-hidden="true" />
+    <TooltipProvider delayDuration={400}>
+      <div className="mirror-shell">
+        <div className="mirror-ambient-layer" aria-hidden="true" />
 
       <motion.div
         ref={canvasRef}
@@ -187,5 +189,6 @@ export default function MirrorApp() {
         )}
       </AnimatePresence>
     </div>
+    </TooltipProvider>
   );
 }

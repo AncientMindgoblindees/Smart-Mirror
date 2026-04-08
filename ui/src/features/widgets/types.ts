@@ -1,4 +1,5 @@
 import React from 'react';
+import type { WidgetSizePreset } from './sizePresets';
 
 export interface WidgetIntegrationConfig {
   provider?: string;
@@ -29,12 +30,16 @@ export interface WidgetConfig {
     y: number;
     width: number;
     height: number;
+    sizePreset?: WidgetSizePreset;
   };
   /** Custom `custom:*` content from `config_json` (config app). */
   title?: string;
   text?: string;
   templateId?: string;
   integration?: WidgetIntegrationConfig;
+  /** Weather widget: persisted in `config_json` by the companion app. */
+  location?: string;
+  unit?: 'metric' | 'imperial';
 }
 
 export interface WidgetMetadata {
