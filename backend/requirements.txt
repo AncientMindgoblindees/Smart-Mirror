@@ -5,3 +5,5 @@ python-multipart
 sqlalchemy
 alembic
 pydantic
+cloudinary
+python-dotenv

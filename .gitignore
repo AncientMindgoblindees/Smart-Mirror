@@ -9,3 +9,5 @@ build/
 .env
 data/
 node_modules/
+.venv/
+.env

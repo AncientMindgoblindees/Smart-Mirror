@@ -1,10 +1,18 @@
 from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, ConfigDict
 
 class ClothingItemCreate(BaseModel):
     name: str
     category: str
+    color: Optional[str] = None
+    season: Optional[str] = None
+    notes: Optional[str] = None
+
+class ClothingItemUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
     color: Optional[str] = None
     season: Optional[str] = None
     notes: Optional[str] = None
@@ -20,11 +28,6 @@ class ClothingItemRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
-
-class ClothingImageCreate(BaseModel):
-    storage_provider: str = "cloud"
-    storage_key: str
-    image_url: str
 
 class ClothingImageRead(BaseModel):
     id: int
