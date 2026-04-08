@@ -10,21 +10,34 @@
 .news-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
 }
 
 .news-header-label {
-  font-size: 0.76em;
-  letter-spacing: 0.08em;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-text-label);
+  font-weight: 500;
+}
+
+.news-header-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 0.4; box-shadow: 0 0 0 0 var(--color-accent-glow); }
+  50% { opacity: 1; box-shadow: 0 0 8px 2px var(--color-accent-glow); }
 }
 
 .news-list {
   list-style: none;
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 0.42rem;
   overflow: hidden;
 }
@@ -32,22 +45,30 @@
 .news-list li {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.45rem;
+  gap: 0.5rem;
   align-items: start;
+  padding: 0.25em 0;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast) ease;
+}
+
+.news-list li:hover {
+  background: var(--glass-subtle-bg);
 }
 
 .news-dot {
   width: 6px;
   height: 6px;
-  margin-top: 0.42rem;
+  margin-top: 0.45rem;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.7);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
 }
 
 .news-title {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-primary);
-  line-height: 1.22;
+  line-height: 1.25;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -57,7 +78,7 @@
 .news-meta {
   color: var(--color-text-label);
   font-size: 0.75em;
-  margin-top: 0.08rem;
+  margin-top: 0.12rem;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -69,13 +90,13 @@
 }
 
 .news-sep {
-  opacity: 0.55;
+  opacity: 0.35;
 }
 
 .news-summary {
-  margin-top: 0.12rem;
-  font-size: 0.76em;
-  line-height: 1.18;
+  margin-top: 0.15rem;
+  font-size: 0.78em;
+  line-height: 1.22;
   color: var(--color-text-secondary);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -85,52 +106,69 @@
 
 .news-state {
   color: var(--color-text-secondary);
-  font-size: 0.84em;
-  opacity: 0.92;
+  font-size: var(--fs-caption);
+  opacity: 0.85;
 }
 
+/* Skeleton loader */
+.news-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.skeleton-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.skeleton-dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 0.4rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.skeleton-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.skeleton-line {
+  height: 0.7em;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Pager */
 .news-widget .pager-dots {
-  margin-top: 0.1rem;
+  margin-top: 0.15rem;
   display: flex;
   justify-content: center;
-  gap: 0.25rem;
+  gap: 0.3rem;
 }
 
 .news-widget .pager-dot {
   width: 5px;
   height: 5px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.28);
-  transition: background 220ms ease;
+  background: rgba(255, 255, 255, 0.15);
+  transition: all var(--duration-normal) var(--ease-spring);
 }
 
 .news-widget .pager-dot.active {
-  background: rgba(255, 255, 255, 0.75);
-}
-
-@media (max-width: 900px) {
-  .news-list {
-    grid-template-columns: 1fr;
-  }
-}
-
-.magic-sparkle {
-  align-self: flex-start;
-  color: var(--color-text-secondary);
-  position: relative;
-  padding-left: 1.25rem;
-}
-
-.magic-sparkle::before {
-  content: '✦';
-  position: absolute;
-  left: 0;
-  top: -0.02rem;
-  animation: sparklePulse 1.5s ease-in-out infinite;
-}
-
-@keyframes sparklePulse {
-  0%,
-  100% { opacity: 0.45; transform: scale(0.85) rotate(0deg); }
-  50% { opacity: 1; transform: scale(1.05) rotate(18deg); }
+  background: var(--color-accent);
+  box-shadow: 0 0 6px var(--color-accent-glow);
+  width: 14px;
 }

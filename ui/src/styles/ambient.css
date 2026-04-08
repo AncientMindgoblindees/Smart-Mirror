@@ -1,0 +1,51 @@
+@layer base {
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        ellipse 80% 60% at 20% 20%,
+        hsla(var(--ambient-hue), var(--ambient-saturation), var(--ambient-lightness), 0.4) 0%,
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 60% 50% at 80% 80%,
+        hsla(calc(var(--ambient-hue) + 40), var(--ambient-saturation), calc(var(--ambient-lightness) * 0.8), 0.25) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 120% 80% at 50% 100%,
+        rgba(0, 0, 0, 0.6) 0%,
+        transparent 50%
+      );
+    opacity: 0.7;
+    animation: ambientShift 30s ease-in-out infinite alternate;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.5) 100%);
+  }
+}
+
+@keyframes ambientShift {
+  0% {
+    opacity: 0.5;
+    filter: hue-rotate(0deg);
+  }
+  50% {
+    opacity: 0.7;
+    filter: hue-rotate(8deg);
+  }
+  100% {
+    opacity: 0.55;
+    filter: hue-rotate(-5deg);
+  }
+}

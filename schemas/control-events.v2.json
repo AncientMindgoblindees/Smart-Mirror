@@ -15,7 +15,14 @@
         "CAMERA_COUNTDOWN_TICK",
         "CAMERA_CAPTURED",
         "CAMERA_ERROR",
-        "WARDROBE_UPDATED"
+        "WARDROBE_UPDATED",
+        "DEVICE_PAIR",
+        "DEVICE_SEARCHING",
+        "DEVICE_CONNECTING",
+        "DEVICE_CONNECTED",
+        "DEVICE_DISCONNECTING",
+        "DEVICE_DISCONNECTED",
+        "DEVICE_ERROR"
       ]
     },
     "version": {
@@ -33,5 +40,107 @@
       "type": "object"
     }
   },
-  "required": ["type", "version", "timestamp", "payload"]
+  "required": ["type", "version", "timestamp", "payload"],
+  "oneOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "DEVICE_SEARCHING" } }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "initiator": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "DEVICE_CONNECTING" } }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "device_id": { "type": "string" },
+              "display_name": { "type": ["string", "null"] }
+            },
+            "required": ["device_id"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "DEVICE_CONNECTED" } }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "device_id": { "type": "string" },
+              "display_name": { "type": ["string", "null"] }
+            },
+            "required": ["device_id"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "DEVICE_DISCONNECTING" } }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "device_id": { "type": "string" },
+              "reason": { "type": ["string", "null"] }
+            },
+            "required": ["device_id"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "DEVICE_DISCONNECTED" } }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "device_id": { "type": "string" }
+            },
+            "required": ["device_id"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "DEVICE_ERROR" } }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "device_id": { "type": ["string", "null"] },
+              "message": { "type": "string" },
+              "code": { "type": ["string", "null"] }
+            },
+            "required": ["message"]
+          }
+        }
+      }
+    }
+  ]
 }

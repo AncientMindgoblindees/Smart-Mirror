@@ -10,6 +10,7 @@ import { householdWidget } from './household';
 import { minimalTextWidget } from './minimal-text';
 import { newsWidget } from './news';
 import { virtualTryOnWidget } from './virtual-try-on';
+import { systemStatsWidget } from './system-stats';
 
 export const WIDGET_REGISTRY: Record<string, WidgetMetadata> = {
   clock: clockWidget,
@@ -23,6 +24,7 @@ export const WIDGET_REGISTRY: Record<string, WidgetMetadata> = {
   today_list: todayListWidget,
   household: householdWidget,
   minimal_text: minimalTextWidget,
+  system_stats: systemStatsWidget,
 };
 
 /**

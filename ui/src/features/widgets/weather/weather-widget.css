@@ -1,24 +1,100 @@
 .weather-widget {
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  overflow: hidden;
 }
 
-.weather-widget .weather-main {
+.weather-main {
   display: flex;
   align-items: center;
   gap: 0.75em;
-  flex-wrap: wrap;
 }
 
-.weather-widget .temp {
-  font-size: clamp(2rem, 5vw, 3.2rem);
+.weather-temp-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.weather-temp {
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
   font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--color-text-primary);
 }
 
-.weather-widget .weather-label {
-  margin-top: 0.55em;
+.weather-feels {
+  font-size: var(--fs-caption);
+  color: var(--color-text-label);
+  margin-top: 0.15em;
+}
+
+.weather-condition {
+  font-size: var(--fs-body);
   color: var(--color-text-secondary);
-  font-size: 0.98em;
+  font-weight: 400;
+}
+
+.weather-details {
+  display: flex;
+  gap: 1em;
+  margin-top: 0.15em;
+}
+
+.weather-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  font-size: var(--fs-caption);
+  color: var(--color-text-label);
+}
+
+.weather-forecast {
+  display: flex;
+  gap: 0.5em;
+  margin-top: 0.6em;
+  padding-top: 0.6em;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.forecast-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.5em 0.3em;
+  border-radius: var(--radius-sm);
+  background: var(--glass-subtle-bg);
+  border: 1px solid var(--glass-subtle-border);
+  transition: background var(--duration-fast) ease;
+}
+
+.forecast-card:hover {
+  background: var(--glass-bg);
+}
+
+.forecast-day {
+  font-size: var(--fs-micro);
+  color: var(--color-text-label);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+}
+
+.forecast-temps {
+  display: flex;
+  gap: 0.4em;
+  font-size: var(--fs-caption);
+}
+
+.forecast-high {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.forecast-low {
+  color: var(--color-text-label);
 }

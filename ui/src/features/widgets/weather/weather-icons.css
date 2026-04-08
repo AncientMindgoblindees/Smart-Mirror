@@ -1,0 +1,94 @@
+.weather-icon {
+  flex-shrink: 0;
+}
+
+/* Sun */
+.wi-sun .sun-core {
+  animation: sunGlow 4s ease-in-out infinite alternate;
+}
+
+.wi-sun .sun-ray {
+  transform-origin: 24px 24px;
+  animation: rayRotate 12s linear infinite;
+}
+
+@keyframes sunGlow {
+  0% { filter: drop-shadow(0 0 4px rgba(245, 166, 35, 0.3)); }
+  100% { filter: drop-shadow(0 0 12px rgba(245, 166, 35, 0.6)); }
+}
+
+@keyframes rayRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Cloud */
+.wi-cloud .cloud-body,
+.wi-partly-cloudy .cloud-body {
+  animation: cloudDrift 8s ease-in-out infinite alternate;
+}
+
+@keyframes cloudDrift {
+  0% { transform: translateX(-2px); }
+  100% { transform: translateX(2px); }
+}
+
+/* Rain */
+.rain-drop {
+  animation: rainFall 0.8s ease-in infinite;
+}
+
+@keyframes rainFall {
+  0% { opacity: 0; transform: translateY(-4px); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(6px); }
+}
+
+/* Snow */
+.snow-flake {
+  animation: snowFloat 2s ease-in-out infinite;
+}
+
+@keyframes snowFloat {
+  0% { opacity: 0.3; transform: translate(0, -3px); }
+  50% { opacity: 0.8; transform: translate(2px, 2px); }
+  100% { opacity: 0.3; transform: translate(-1px, 6px); }
+}
+
+/* Thunderstorm */
+.lightning-bolt {
+  animation: lightningFlash 3s ease-in-out infinite;
+}
+
+@keyframes lightningFlash {
+  0%, 85%, 100% { opacity: 0.2; }
+  88% { opacity: 1; }
+  91% { opacity: 0.3; }
+  94% { opacity: 0.9; }
+}
+
+/* Fog */
+.fog-line {
+  animation: fogShift 4s ease-in-out infinite alternate;
+}
+
+@keyframes fogShift {
+  0% { transform: translateX(-3px); opacity: 0.3; }
+  100% { transform: translateX(3px); opacity: 0.6; }
+}
+
+/* Wind */
+.wind-line {
+  animation: windBlow 2.5s ease-in-out infinite alternate;
+}
+
+@keyframes windBlow {
+  0% { transform: translateX(0); opacity: 0.5; }
+  100% { transform: translateX(4px); opacity: 0.8; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weather-icon * {
+    animation: none !important;
+  }
+}

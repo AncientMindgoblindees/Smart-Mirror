@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   WidgetFrame,
   useWidgetPersistence,
@@ -6,8 +7,14 @@ import {
 } from '@/features/widgets';
 import { ToolsPanel } from '@/features/dev-panel';
 import { CameraOverlay } from '@/features/camera';
+import {
+  DeviceConnectionOverlay,
+  useDeviceConnectionState,
+} from '@/features/connection';
 import { useControlEvents } from '@/hooks/useControlEvents';
 import { useMirrorInput } from '@/hooks/useMirrorInput';
+import { useTimeOfDay } from '@/hooks/useTimeOfDay';
+import { useParallax } from '@/hooks/useParallax';
 import './mirror-app.css';
 
 function readDevPanelInitial(): boolean {
@@ -32,6 +39,15 @@ export default function MirrorApp() {
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
   const sleepModeRef = useRef(false);
   sleepModeRef.current = sleepMode;
+
+  const {
+    connectionState,
+    handlers: deviceHandlers,
+    retry: retryConnection,
+  } = useDeviceConnectionState();
+
+  useTimeOfDay();
+  const parallax = useParallax();
 
   useEffect(() => {
     document.body.classList.toggle('mirror-display-dimmed', displayDimmed && !sleepMode);
@@ -94,6 +110,7 @@ export default function MirrorApp() {
     onCameraError: () => {
       setCameraCountdown(null);
     },
+    ...deviceHandlers,
   });
 
   const toggleWidget = (id: string) => {
@@ -104,11 +121,24 @@ export default function MirrorApp() {
 
   return (
     <div className="mirror-shell">
-      <div ref={canvasRef} className="mirror-canvas mirror-canvas-freeform">
-        {visibleWidgets.map((w) => (
-          <WidgetFrame key={w.id} config={w} canvasRect={canvasRect} />
-        ))}
-      </div>
+      <div className="mirror-ambient-layer" aria-hidden="true" />
+
+      <motion.div
+        ref={canvasRef}
+        className="mirror-canvas mirror-canvas-freeform"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+        style={{
+          transform: `translate3d(${parallax.x * 0.3}px, ${parallax.y * 0.3}px, 0)`,
+        }}
+      >
+        <AnimatePresence mode="popLayout">
+          {visibleWidgets.map((w) => (
+            <WidgetFrame key={w.id} config={w} canvasRect={canvasRect} />
+          ))}
+        </AnimatePresence>
+      </motion.div>
 
       {showDevPanel && (
         <ToolsPanel
@@ -130,11 +160,32 @@ export default function MirrorApp() {
         />
       )}
 
-      {sleepMode && (
-        <div className="mirror-sleep-overlay" aria-hidden="true">
-          <span className="mirror-sleep-hint">Sleep — press any key to wake</span>
-        </div>
-      )}
+      <DeviceConnectionOverlay
+        state={connectionState}
+        onRetry={retryConnection}
+      />
+
+      <AnimatePresence>
+        {sleepMode && (
+          <motion.div
+            className="mirror-sleep-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
+            aria-hidden="true"
+          >
+            <motion.span
+              className="mirror-sleep-hint"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.8, duration: 1, ease: [0.16, 1, 0.3, 1] }}
+            >
+              Sleep — tap or press any key to wake
+            </motion.span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

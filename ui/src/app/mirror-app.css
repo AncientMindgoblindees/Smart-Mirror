@@ -4,7 +4,8 @@
   height: 100%;
   padding: clamp(1rem, 3vh, 2.3rem) clamp(1rem, 4vw, 2.6rem);
   position: relative;
-  background: #000;
+  background: var(--color-mirror-bg);
+  isolation: isolate;
 }
 
 @media (orientation: portrait) {
@@ -13,12 +14,58 @@
   }
 }
 
+.mirror-ambient-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background:
+    radial-gradient(
+      ellipse 50% 40% at 15% 15%,
+      var(--ambient-glow-color) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse 40% 35% at 85% 85%,
+      hsla(calc(var(--ambient-hue) + 60), var(--ambient-saturation), 12%, 0.15) 0%,
+      transparent 100%
+    );
+  animation: breathingGlow 8s ease-in-out infinite alternate;
+}
+
+@keyframes breathingGlow {
+  0% { opacity: 0.35; transform: scale(1); }
+  100% { opacity: 0.55; transform: scale(1.03); }
+}
+
 .mirror-canvas {
   flex: 1;
   position: relative;
   display: block;
+  z-index: 1;
 }
 
 .mirror-canvas.mirror-canvas-freeform {
   display: block;
+}
+
+.mirror-sleep-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.mirror-sleep-hint {
+  color: rgba(255, 255, 255, 0.2);
+  font-size: var(--fs-body);
+  font-family: var(--font-sans);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  user-select: none;
 }
