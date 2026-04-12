@@ -41,3 +41,13 @@ Commands: npx tsc --noEmit (both UIs), npm run build (Smart-Mirror/ui) — OK.
 2026-04-12 — OAuth console setup documentation
 - Added docs/oauth-google-microsoft-setup.md (Google Web + TV client notes, Microsoft redirect URIs, checklist).
 - .env.example points to that doc; clarified that cloud registration is user-only.
+
+2026-04-12 — PR draft for react-iteration vs main
+- Commands: git branch --show-current (react-iteration); git diff main...HEAD --stat (167 files, +17466/-884).
+- Deliverable: comprehensive PR title + markdown body for GitHub/GitLab (features, backend/UI/deploy/docs, setup, testing notes).
+
+2026-04-12 — Create PR (GitHub)
+- Installed GitHub CLI via winget (GitHub.cli 2.89.0). `gh auth status`: not logged in; `gh pr create` requires `gh auth login` or GH_TOKEN.
+- `git push origin react-iteration`: already up to date.
+- Wrote PR body to C:\Users\tjmel\AppData\Local\Temp\smart-mirror-pr-body.md; copied full description to clipboard; opened browser: compare main...react-iteration with title query param.
+- User completes PR in browser (paste description) or runs `gh auth login` then `gh pr create --base main --head react-iteration --title "..." --body-file <that path>`.
