@@ -1,0 +1,116 @@
+.widget-frame {
+  position: relative;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate, 1.4));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate, 1.4));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  box-shadow: var(--glow-widget);
+  font-size: calc(1rem * var(--widget-scale, 1) * var(--widget-scale-multiplier, 1));
+  transition:
+    box-shadow var(--duration-normal) var(--ease-spring),
+    border-color var(--duration-normal) var(--ease-spring);
+  will-change: transform, opacity;
+  contain: layout style paint;
+}
+
+.widget-frame[data-size='small'] {
+  --widget-scale-multiplier: 0.82;
+}
+
+.widget-frame[data-size='medium'] {
+  --widget-scale-multiplier: 0.92;
+}
+
+.widget-frame[data-size='large'] {
+  --widget-scale-multiplier: 1;
+}
+
+.widget-frame:hover {
+  box-shadow: var(--glow-widget-hover);
+  border-color: var(--glass-strong-border);
+}
+
+.widget-glass-highlight {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.02) 40%,
+    transparent 100%
+  );
+  z-index: 1;
+}
+
+.widget-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--widget-body-padding, 1.4em);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  overflow: hidden;
+  touch-action: none;
+  position: relative;
+  z-index: 2;
+  container-type: size;
+  container-name: widget-body;
+}
+
+/* Apple-style widgets: content fills the padded frame (not a centered island) */
+.widget-body > .widget-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+
+.widget-frame[data-size='small'] .widget-body {
+  /* Tighter insets so type can read edge-to-edge like iOS small widgets */
+  --widget-body-padding: 0.62em;
+}
+
+.widget-frame[data-size='medium'] .widget-body {
+  --widget-body-padding: 1.1em;
+}
+
+.widget-frame[data-size='large'] .widget-body {
+  --widget-body-padding: 1.35em;
+}
+
+.widget-content {
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+.widget-frame[data-size='small'] .widget-content {
+  line-height: 1.35;
+}
+
+.widget-frame[data-size='large'] .widget-content {
+  line-height: 1.5;
+}
+
+@keyframes widgetFloat {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-2px); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .widget-frame {
+    animation: widgetFloat 6s ease-in-out infinite alternate;
+  }
+}

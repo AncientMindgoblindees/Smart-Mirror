@@ -1,0 +1,67 @@
+2026-04-12 — Pi tunnel install + runtime retries
+
+Actions:
+- Updated deploy/raspberry-pi/install-pi-launcher.sh: retry_run helper; SMART_MIRROR_INSTALL_RETRIES/DELAY and SMART_MIRROR_TUNNEL_SETUP_RETRIES/DELAY; parses --autostart, --tunnel-hostname, --tunnel-name, --tunnel-service-url; merges with SMART_MIRROR_TUNNEL_HOSTNAME / SMART_MIRROR_TUNNEL_NAME / MIRROR_PORT; runs install-cloudflared.sh with retries; runs setup-cloudflare-tunnel.sh with retries when hostname set; prints next-step line when hostname omitted.
+- Updated scripts/start-mirror-app.sh: MIRROR_TUNNEL_RESTART_DELAY_SEC (default 5); supervisor loop with TERM/INT trap killing cloudflared child; logs restarts to mirror-tunnel.log.
+
+Commands:
+- wsl bash -n /mnt/c/Cursor_Projects/Smart-Mirror/deploy/raspberry-pi/install-pi-launcher.sh — exit 0
+- wsl bash -n /mnt/c/Cursor_Projects/Smart-Mirror/scripts/start-mirror-app.sh — exit 0
+
+Notes:
+- First-time tunnel setup may still require interactive cloudflared tunnel login if ~/.cloudflared/cert.pem is missing; retries only help transient failures after auth.
+
+Follow-up:
+- Added header comment + --help via sed on first 20 lines; --help uses BASH_SOURCE[0].
+
+2026-04-12 — Default tunnel hostname
+- install-pi-launcher.sh: DEFAULT_TUNNEL_HOSTNAME=mirror.smart-mirror.tech; initial TUNNEL_HOSTNAME uses ${SMART_MIRROR_TUNNEL_HOSTNAME-$DEFAULT} so unset uses default, empty env skips setup; help text updated.
+- start-mirror-app.sh: setup hint uses mirror.smart-mirror.tech.
+
+2026-04-12 — Local cloudflared .deb + trixie apt fallback
+- scripts/install-cloudflared.sh: if cloudflared on PATH, exit 0; else if REPO_ROOT/cloudflared-linux-arm64.deb (or CLOUDFLARED_DEB) exists, dpkg -i + apt-get install -f, remove broken cloudflared.list when it targets trixie; else apt repo uses APT_CODENAME bookworm for trixie/sid/forky.
+
+2026-04-12 — Connection and UI Refactor (4 phases)
+Phase 1: DeviceConnectionOverlay split into full-screen (searching/connecting/disconnecting) + non-blocking status pill (idle/error). Mirror boots to widgets immediately.
+Phase 2: Companion App — extracted MirrorConnectionManager class (exponential backoff 1s→30s, single-socket, auto-reconnect) and connectionConfig (env-based dev/prod URLs). Replaced inline WS block in App.tsx.
+Phase 3: Mirror UI useControlEvents + useMirrorInput — replaced fixed 3s reconnect with exponential backoff (1s→30s), reset on successful open.
+Phase 4: MirrorApp.tsx canvas measurement via ResizeObserver instead of window.resize. widgetFloat animation gated behind @media (prefers-reduced-motion: no-preference).
+TypeScript: both Smart-Mirror/ui and smart-mirror-config pass tsc --noEmit with 0 errors.
+
+2026-04-12 — OAuth wiring (companion + mirror QR + browser sign-in)
+- backend/auth_manager.py: broadcast OAUTH_DEVICE_CODE after device code; store_tokens_from_web() for auth-code flow.
+- backend/api/oauth_web.py: GET /api/oauth/google|microsoft/start + /callback (authorization code); state CSRF in memory.
+- backend/api/auth.py: POST /api/auth/login/{provider}/cancel.
+- backend/main.py: include oauth_web router.
+- ui: useAuthState listens mirror:oauth_device_code, unified poll, cancelLogin; useControlEvents handles OAUTH_DEVICE_CODE; mirrorApi cancelLogin; ToolsPanel Accounts + CSS; MirrorApp wires auth.
+- smart-mirror-config: Accounts tab; mirrorApi auth helpers; QR + browser sign-in buttons.
+- .env.example: browser redirect URI notes.
+Commands: npx tsc --noEmit (both UIs), npm run build (Smart-Mirror/ui) — OK.
+
+2026-04-12 — OAuth console setup documentation
+- Added docs/oauth-google-microsoft-setup.md (Google Web + TV client notes, Microsoft redirect URIs, checklist).
+- .env.example points to that doc; clarified that cloud registration is user-only.
+
+2026-04-12 — PR draft for react-iteration vs main
+- Commands: git branch --show-current (react-iteration); git diff main...HEAD --stat (167 files, +17466/-884).
+- Deliverable: comprehensive PR title + markdown body for GitHub/GitLab (features, backend/UI/deploy/docs, setup, testing notes).
+
+2026-04-12 — Create PR (GitHub)
+- Installed GitHub CLI via winget (GitHub.cli 2.89.0). `gh auth status`: not logged in; `gh pr create` requires `gh auth login` or GH_TOKEN.
+- `git push origin react-iteration`: already up to date.
+- Wrote PR body to C:\Users\tjmel\AppData\Local\Temp\smart-mirror-pr-body.md; copied full description to clipboard; opened browser: compare main...react-iteration with title query param.
+- User completes PR in browser (paste description) or runs `gh auth login` then `gh pr create --base main --head react-iteration --title "..." --body-file <that path>`.
+
+2026-04-12 — Remove WardrobeItem; clothing-only model and API
+- Removed `WardrobeItem` from `backend/database/models.py`; added `ClothingItem.images` relationship (matches `ClothingImage.clothing_item`).
+- Deleted `backend/api/wardrobe.py` and `backend/schemas/wardrobe.py`; removed wardrobe router from `backend/main.py`.
+- `ui/src/api/backendTypes.ts`: replaced `WardrobeItemOut` with `ClothingItemRead` + `ClothingImageRead` (aligned with `/api/clothing`).
+- Command: `python -c "from backend.main import app"` — import ok. Note: existing SQLite `wardrobe_item` table remains on disk until manually migrated/dropped; app no longer maps it.
+
+2026-04-12 — Weather debug instrumentation (session ceea7f)
+- Added NDJSON file logs in `backend/api/weather.py` and `backend/services/weather_api.py` → `debug-ceea7f.log` (hypotheses A–E).
+- Added ingest POST logs from `ui/src/api/mirrorApi.ts` for weather fetches (hypothesis D).
+- Awaiting user repro before analyzing `debug-ceea7f.log`.
+
+2026-04-12 — Weather debug instrumentation removed (user confirmed fix)
+- Reverted `backend/api/weather.py`, `backend/services/weather_api.py`, `ui/src/api/mirrorApi.ts` to production-only code.

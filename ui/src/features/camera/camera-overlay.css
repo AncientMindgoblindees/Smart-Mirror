@@ -1,0 +1,73 @@
+.camera-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.camera-stage {
+  width: 80%;
+  max-width: 1000px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.camera-video-wrap {
+  position: relative;
+  aspect-ratio: 16/9;
+  background: #111;
+  border: 2px solid #222;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.camera-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scaleX(-1);
+  z-index: 0;
+}
+
+.camera-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem;
+  z-index: 1;
+  font-size: 1.05rem;
+  pointer-events: none;
+}
+
+.camera-status-loading {
+  color: var(--color-text-secondary);
+}
+
+.camera-status-error {
+  color: #f87171;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.camera-exit-btn {
+  align-self: center;
+  background: #fff;
+  color: #000;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 30px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}

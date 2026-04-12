@@ -96,6 +96,7 @@ All agents must follow these rules on every task.
 ##UI constraints
 
 - UI must be:
+    - Modular
     - Vertical navigation only (up/down interaction model)
     - Readable at a distance (large text, high contrast)
     - Responsive on low-power hardware

@@ -1,0 +1,119 @@
+import type {
+  AuthLoginStatus,
+  AuthProviderStatus,
+  CalendarEventsResponse,
+  CalendarTasksResponse,
+  CameraCaptureRequest,
+  CameraStatusOut,
+  DeviceCodeResponse,
+  UserSettingsOut,
+  UserSettingsUpdate,
+  WeatherSnapshotOut,
+  WidgetConfigOut,
+  WidgetConfigUpdate,
+} from './backendTypes';
+
+const API_BASE = '/api';
+
+async function jsonRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+  if (!res.ok) {
+    throw new Error(`Request failed: ${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export function getWidgets(): Promise<WidgetConfigOut[]> {
+  return jsonRequest<WidgetConfigOut[]>('/widgets/');
+}
+
+export function putWidgets(configs: WidgetConfigUpdate[]): Promise<WidgetConfigOut[]> {
+  return jsonRequest<WidgetConfigOut[]>('/widgets/', {
+    method: 'PUT',
+    body: JSON.stringify(configs),
+  });
+}
+
+export function getUserSettings(): Promise<UserSettingsOut> {
+  return jsonRequest<UserSettingsOut>('/user/settings');
+}
+
+export function putUserSettings(updates: UserSettingsUpdate): Promise<UserSettingsOut> {
+  return jsonRequest<UserSettingsOut>('/user/settings', {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+export function getCameraStatus(): Promise<CameraStatusOut> {
+  return jsonRequest<CameraStatusOut>('/camera/status');
+}
+
+export function getWeather(opts?: {
+  q?: string;
+  units?: 'metric' | 'imperial';
+}): Promise<WeatherSnapshotOut> {
+  const sp = new URLSearchParams();
+  if (opts?.q) sp.set('q', opts.q);
+  if (opts?.units) sp.set('units', opts.units);
+  const qs = sp.toString();
+  return jsonRequest<WeatherSnapshotOut>(`/weather/${qs ? `?${qs}` : ''}`);
+}
+
+export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ status: string }> {
+  return jsonRequest<{ status: string }>('/camera/capture', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+}
+
+// ── Auth ────────────────────────────────────────────────────────────
+
+export function getAuthProviders(): Promise<AuthProviderStatus[]> {
+  return jsonRequest<AuthProviderStatus[]>('/auth/providers');
+}
+
+export function startLogin(provider: string): Promise<DeviceCodeResponse> {
+  return jsonRequest<DeviceCodeResponse>(`/auth/login/${provider}`, { method: 'POST' });
+}
+
+export function getLoginStatus(provider: string): Promise<AuthLoginStatus> {
+  return jsonRequest<AuthLoginStatus>(`/auth/login/${provider}/status`);
+}
+
+export function logoutProvider(provider: string): Promise<{ status: string }> {
+  return jsonRequest<{ status: string }>(`/auth/logout/${provider}`, { method: 'DELETE' });
+}
+
+export function cancelLogin(provider: string): Promise<{ status: string }> {
+  return jsonRequest<{ status: string }>(`/auth/login/${provider}/cancel`, { method: 'POST' });
+}
+
+// ── Calendar ────────────────────────────────────────────────────────
+
+export function getCalendarEvents(opts?: {
+  days?: number;
+  provider?: string;
+}): Promise<CalendarEventsResponse> {
+  const sp = new URLSearchParams();
+  if (opts?.days) sp.set('days', String(opts.days));
+  if (opts?.provider) sp.set('provider', opts.provider);
+  const qs = sp.toString();
+  return jsonRequest<CalendarEventsResponse>(`/calendar/events${qs ? `?${qs}` : ''}`);
+}
+
+export function getCalendarTasks(opts?: {
+  provider?: string;
+}): Promise<CalendarTasksResponse> {
+  const sp = new URLSearchParams();
+  if (opts?.provider) sp.set('provider', opts.provider);
+  const qs = sp.toString();
+  return jsonRequest<CalendarTasksResponse>(`/calendar/tasks${qs ? `?${qs}` : ''}`);
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smart-mirror.local/schemas/sync-state.v1.json",
+  "title": "SYNC_STATE v1",
+  "description": "WebSocket message from config UI to mirror backend (/ws/control). See docs/mirror-sync-state.md.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "SYNC_STATE"
+    },
+    "protocol_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "action": {
+      "type": "string"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "widgets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "widget_id": { "type": "string" },
+          "name": {},
+          "type": {},
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "width": { "type": "number", "exclusiveMinimum": 0 },
+          "height": { "type": "number", "exclusiveMinimum": 0 },
+          "config": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  },
+  "required": ["type", "widgets"]
+}

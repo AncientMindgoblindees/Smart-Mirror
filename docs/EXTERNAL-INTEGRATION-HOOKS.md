@@ -2,9 +2,11 @@
 
 This document defines the UI contract for future external services (camera stack, remote controls, cloud integrations, and mobile clients).
 
+> **Note:** The mirror UI is now **React + TypeScript** (`ui/src/`, built to `ui/dist/`). References to `ui/js/services/externalHooks.js` and `layoutAdjustmentsProvider.js` describe the **legacy** vanilla ES-module UI. Re-implement equivalent hooks in React if you still need these events.
+
 ## Frontend hook events
 
-The UI now exposes internal hook names in `ui/js/services/externalHooks.js`.
+The legacy UI exposed internal hook names in `ui/js/services/externalHooks.js` (removed).
 
 - `camera_mode_changed`
   - Fired when the mirror enters/exits camera mode.
@@ -30,7 +32,7 @@ The UI now exposes internal hook names in `ui/js/services/externalHooks.js`.
 
 ## Layout adjustment provider contract
 
-The UI now supports a pluggable layout adapter in `ui/js/services/layoutAdjustmentsProvider.js`.
+The legacy UI supported a pluggable layout adapter in `ui/js/services/layoutAdjustmentsProvider.js` (removed).
 By default, it stores layout updates in local storage, but an external service can override behavior without changing core rendering logic.
 
 Provider methods:

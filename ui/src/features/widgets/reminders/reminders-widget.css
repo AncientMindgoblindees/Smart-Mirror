@@ -1,0 +1,106 @@
+.reminders-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45em;
+  justify-content: space-between;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.reminders-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  justify-content: flex-start;
+  gap: 0.5em;
+}
+
+@supports (font-size: 1cqmin) {
+  .widget-body:has(.reminders-widget) .reminders-widget {
+    font-size: clamp(0.92rem, 6.5cqmin, 1.55rem);
+  }
+
+  .widget-body:has(.reminders-widget) .reminders-list {
+    gap: clamp(0.4em, 2.5cqmin, 0.75em);
+  }
+}
+
+.reminders-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  padding: 0.2em 0;
+  line-height: 1.3;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast) ease;
+}
+
+.widget-frame[data-size='small'] .reminders-list {
+  gap: 0.32em;
+}
+
+.widget-frame[data-size='small'] .reminders-list li {
+  gap: 0.36em;
+  padding: 0.12em 0;
+}
+
+.widget-frame[data-size='small'] .reminder-text {
+  -webkit-line-clamp: 1;
+}
+
+.reminders-list li:hover {
+  background: var(--glass-subtle-bg);
+}
+
+.reminder-check {
+  flex-shrink: 0;
+  color: var(--color-text-label);
+  margin-top: 0.1em;
+  transition: color var(--duration-normal) ease;
+}
+
+.reminder-done .reminder-check {
+  color: var(--color-success);
+}
+
+.reminder-text {
+  color: var(--color-text-primary);
+  font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.reminder-done .reminder-text {
+  text-decoration: line-through;
+  color: var(--color-text-label);
+  opacity: 0.7;
+}
+
+.reminders-widget .pager-dots {
+  margin-top: auto;
+  padding-top: 0.35em;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.reminders-widget .pager-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  transition: all var(--duration-normal) var(--ease-spring);
+}
+
+.reminders-widget .pager-dot.active {
+  background: var(--color-accent);
+  box-shadow: 0 0 6px var(--color-accent-glow);
+  width: 14px;
+}

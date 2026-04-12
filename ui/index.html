@@ -1,58 +1,12 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" data-theme="mirror-dark">
   <head>
-    <meta charset="utf-8" />
-    <title>Smart Mirror</title>
+    <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="./css/base.css" />
-    <link rel="stylesheet" href="./css/layout.css" />
-    <link rel="stylesheet" href="./css/widgets.css" />
+    <title>Smart Mirror</title>
   </head>
   <body>
-    <div class="mirror-app">
-      <div class="mirror-ambient" aria-hidden="true"></div>
-      <aside class="mirror-tools" aria-label="Mirror tools" aria-hidden="false">
-        <div class="mirror-tools__header">Tools</div>
-        <button id="tool-toggle-camera" type="button" class="mirror-tools__btn">
-          Camera Feed
-        </button>
-        <button id="tool-cycle-layout" type="button" class="mirror-tools__btn">
-          Cycle Layout
-        </button>
-        <button id="tool-toggle-display" type="button" class="mirror-tools__btn">
-          Toggle Display
-        </button>
-        <div class="mirror-tools__section">
-          <div class="mirror-tools__section-label">Widgets</div>
-          <div id="tool-widget-list" class="mirror-tools__widget-list"></div>
-        </div>
-      </aside>
-      <div class="mirror-shell">
-        <section id="camera-stage" class="camera-stage" aria-hidden="true">
-          <video
-            id="camera-video"
-            class="camera-stage__video"
-            playsinline
-            muted
-            autoplay
-          ></video>
-          <div class="camera-stage__hud">
-            <span id="camera-status" class="camera-stage__status">Camera offline</span>
-            <button id="camera-close" type="button" class="camera-stage__close">
-              Exit camera
-            </button>
-          </div>
-        </section>
-        <div
-          id="mirror-grid"
-          class="mirror-grid"
-          data-layout="0"
-          role="main"
-          aria-label="Smart mirror information grid"
-        ></div>
-      </div>
-    </div>
-
-    <script type="module" src="./js/app.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
