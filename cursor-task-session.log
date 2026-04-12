@@ -17,3 +17,6 @@ Follow-up:
 2026-04-12 — Default tunnel hostname
 - install-pi-launcher.sh: DEFAULT_TUNNEL_HOSTNAME=mirror.smart-mirror.tech; initial TUNNEL_HOSTNAME uses ${SMART_MIRROR_TUNNEL_HOSTNAME-$DEFAULT} so unset uses default, empty env skips setup; help text updated.
 - start-mirror-app.sh: setup hint uses mirror.smart-mirror.tech.
+
+2026-04-12 — Local cloudflared .deb + trixie apt fallback
+- scripts/install-cloudflared.sh: if cloudflared on PATH, exit 0; else if REPO_ROOT/cloudflared-linux-arm64.deb (or CLOUDFLARED_DEB) exists, dpkg -i + apt-get install -f, remove broken cloudflared.list when it targets trixie; else apt repo uses APT_CODENAME bookworm for trixie/sid/forky.
