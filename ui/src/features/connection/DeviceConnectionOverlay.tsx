@@ -258,6 +258,50 @@ function bloomFilter(phase: ConnectionPhase): string {
   }
 }
 
+/* ── status pill (non-blocking indicator for idle/error) ── */
+
+function ConnectionStatusPill({
+  phase,
+  errorMessage,
+  onRetry,
+}: {
+  phase: ConnectionPhase;
+  errorMessage: string | null;
+  onRetry?: () => void;
+}) {
+  const isError = phase === 'error';
+  return (
+    <motion.div
+      className="connection-pill"
+      initial={{ opacity: 0, y: 20, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+      transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+    >
+      <motion.div
+        className={`connection-pill-dot ${isError ? 'connection-pill-dot--error' : ''}`}
+        animate={isError ? { scale: 1, opacity: 1 } : { scale: [1, 1.3, 1], opacity: [0.5, 0.9, 0.5] }}
+        transition={
+          isError
+            ? { duration: 0.3 }
+            : { duration: 2, repeat: Infinity, ease: 'easeInOut' }
+        }
+      />
+      <span className="connection-pill-label">
+        {isError ? 'Connection failed' : 'No companion connected'}
+      </span>
+      {isError && errorMessage && (
+        <span className="connection-pill-detail">{errorMessage}</span>
+      )}
+      {isError && onRetry && (
+        <button type="button" className="connection-pill-retry" onClick={onRetry}>
+          Retry
+        </button>
+      )}
+    </motion.div>
+  );
+}
+
 /* ── main overlay ───────────────────────────────────── */
 
 type Props = {
@@ -277,7 +321,8 @@ export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
   const isConnected = phase === 'connected';
   const isError = phase === 'error';
   const isDisconnecting = phase === 'disconnecting';
-  const showOverlay = phase !== 'connected';
+  const showFullOverlay = isSearching || isConnecting || isDisconnecting;
+  const showStatusPill = isIdle || isError;
 
   React.useEffect(() => {
     onSoundCue?.(phase);
@@ -325,8 +370,19 @@ export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
   const pyNear = reduced ? 0 : parallax.y * 0.32;
 
   return (
+    <>
     <AnimatePresence>
-      {showOverlay && (
+      {showStatusPill && (
+        <ConnectionStatusPill
+          phase={phase}
+          errorMessage={state.errorMessage}
+          onRetry={onRetry}
+        />
+      )}
+    </AnimatePresence>
+
+    <AnimatePresence>
+      {showFullOverlay && (
         <motion.div
           className="connection-overlay"
           initial={{ opacity: 0 }}
@@ -628,5 +684,6 @@ export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
         </motion.div>
       )}
     </AnimatePresence>
+    </>
   );
 }

@@ -61,12 +61,13 @@ export default function MirrorApp() {
   }, [sleepMode]);
 
   useEffect(() => {
-    const updateRect = () => {
-      if (canvasRef.current) setCanvasRect(canvasRef.current.getBoundingClientRect());
-    };
+    const el = canvasRef.current;
+    if (!el) return;
+    const updateRect = () => setCanvasRect(el.getBoundingClientRect());
     updateRect();
-    window.addEventListener('resize', updateRect);
-    return () => window.removeEventListener('resize', updateRect);
+    const ro = new ResizeObserver(updateRect);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   const toggleDevPanel = useCallback(() => {

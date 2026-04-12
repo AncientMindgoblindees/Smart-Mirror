@@ -16,7 +16,6 @@
     border-color var(--duration-normal) var(--ease-spring);
   will-change: transform, opacity;
   contain: layout style paint;
-  animation: widgetFloat 6s ease-in-out infinite alternate;
 }
 
 .widget-frame[data-size='small'] {
@@ -110,8 +109,8 @@
   100% { transform: translateY(-2px); }
 }
 
-@media (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: no-preference) {
   .widget-frame {
-    animation: none;
+    animation: widgetFloat 6s ease-in-out infinite alternate;
   }
 }

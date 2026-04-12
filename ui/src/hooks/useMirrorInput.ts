@@ -59,15 +59,23 @@ export function useMirrorInput(actions: MirrorInputActions) {
     let ws: WebSocket | null = null;
     let closed = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    const BACKOFF_INITIAL = 1000;
+    const BACKOFF_MAX = 30_000;
+    let backoff = BACKOFF_INITIAL;
 
     const connect = () => {
       if (closed) return;
       try {
         ws = new WebSocket(wsUrl);
       } catch {
-        reconnectTimer = setTimeout(connect, 3000);
+        reconnectTimer = setTimeout(connect, backoff);
+        backoff = Math.min(backoff * 2, BACKOFF_MAX);
         return;
       }
+
+      ws.onopen = () => {
+        backoff = BACKOFF_INITIAL;
+      };
 
       ws.onmessage = (ev) => {
         try {
@@ -88,7 +96,10 @@ export function useMirrorInput(actions: MirrorInputActions) {
       };
 
       ws.onclose = () => {
-        if (!closed) reconnectTimer = setTimeout(connect, 3000);
+        if (!closed) {
+          reconnectTimer = setTimeout(connect, backoff);
+          backoff = Math.min(backoff * 2, BACKOFF_MAX);
+        }
       };
 
       ws.onerror = () => {
