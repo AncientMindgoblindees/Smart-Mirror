@@ -123,6 +123,11 @@ export function useControlEvents(handlers: ControlEventHandlers): void {
             case 'DEVICE_ERROR':
               ref.current.onDeviceError?.(parseDevicePayload(payload));
               break;
+            case 'OAUTH_DEVICE_CODE':
+              window.dispatchEvent(
+                new CustomEvent('mirror:oauth_device_code', { detail: payload }),
+              );
+              break;
             case 'AUTH_STATE_CHANGED':
               ref.current.onAuthStateChanged?.({
                 provider: String(payload.provider ?? ''),

@@ -27,3 +27,17 @@ Phase 2: Companion App — extracted MirrorConnectionManager class (exponential 
 Phase 3: Mirror UI useControlEvents + useMirrorInput — replaced fixed 3s reconnect with exponential backoff (1s→30s), reset on successful open.
 Phase 4: MirrorApp.tsx canvas measurement via ResizeObserver instead of window.resize. widgetFloat animation gated behind @media (prefers-reduced-motion: no-preference).
 TypeScript: both Smart-Mirror/ui and smart-mirror-config pass tsc --noEmit with 0 errors.
+
+2026-04-12 — OAuth wiring (companion + mirror QR + browser sign-in)
+- backend/auth_manager.py: broadcast OAUTH_DEVICE_CODE after device code; store_tokens_from_web() for auth-code flow.
+- backend/api/oauth_web.py: GET /api/oauth/google|microsoft/start + /callback (authorization code); state CSRF in memory.
+- backend/api/auth.py: POST /api/auth/login/{provider}/cancel.
+- backend/main.py: include oauth_web router.
+- ui: useAuthState listens mirror:oauth_device_code, unified poll, cancelLogin; useControlEvents handles OAUTH_DEVICE_CODE; mirrorApi cancelLogin; ToolsPanel Accounts + CSS; MirrorApp wires auth.
+- smart-mirror-config: Accounts tab; mirrorApi auth helpers; QR + browser sign-in buttons.
+- .env.example: browser redirect URI notes.
+Commands: npx tsc --noEmit (both UIs), npm run build (Smart-Mirror/ui) — OK.
+
+2026-04-12 — OAuth console setup documentation
+- Added docs/oauth-google-microsoft-setup.md (Google Web + TV client notes, Microsoft redirect URIs, checklist).
+- .env.example points to that doc; clarified that cloud registration is user-only.

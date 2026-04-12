@@ -59,6 +59,18 @@ class AuthManager:
         device_code_resp = await provider.request_device_code()
         self._pending_device_codes[provider_name] = device_code_resp
 
+        await control_registry.broadcast({
+            "type": "OAUTH_DEVICE_CODE",
+            "payload": {
+                "provider": provider_name,
+                "verification_uri": device_code_resp.verification_uri,
+                "user_code": device_code_resp.user_code,
+                "expires_in": device_code_resp.expires_in,
+                "interval": device_code_resp.interval,
+                "message": device_code_resp.message,
+            },
+        })
+
         task = asyncio.create_task(
             self._poll_and_store(provider_name, device_code_resp)
         )
@@ -129,6 +141,17 @@ class AuthManager:
             db.commit()
         finally:
             db.close()
+
+    async def store_tokens_from_web(self, provider_name: str, token: TokenResponse) -> None:
+        """Persist tokens from authorization-code (browser) flow and start sync."""
+        self._store_tokens(provider_name, token)
+        await control_registry.broadcast({
+            "type": "AUTH_STATE_CHANGED",
+            "payload": {"provider": provider_name, "status": "connected"},
+        })
+        from backend.services.sync_service import sync_manager
+
+        await sync_manager.start_provider_sync(provider_name)
 
     # ── Cancel / Logout ─────────────────────────────────────────────────
 

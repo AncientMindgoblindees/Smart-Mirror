@@ -48,7 +48,15 @@ export default function MirrorApp() {
     retry: retryConnection,
   } = useDeviceConnectionState();
 
-  const { pendingAuth, cancelPendingAuth, refresh: refreshAuth } = useAuthState();
+  const {
+    providers: authProviders,
+    pendingAuth,
+    initiateLogin,
+    cancelPendingAuth,
+    disconnectProvider,
+    refresh: refreshAuth,
+  } = useAuthState();
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useTimeOfDay();
   const parallax = useParallax();
@@ -156,6 +164,33 @@ export default function MirrorApp() {
           onToggleSleep={toggleSleep}
           widgets={widgets}
           onToggleWidget={toggleWidget}
+          authProviders={authProviders}
+          authPending={Boolean(pendingAuth)}
+          authError={authError}
+          onSignInGoogle={async () => {
+            setAuthError(null);
+            try {
+              await initiateLogin('google');
+            } catch (e) {
+              setAuthError(e instanceof Error ? e.message : 'Google sign-in failed');
+            }
+          }}
+          onSignInMicrosoft={async () => {
+            setAuthError(null);
+            try {
+              await initiateLogin('microsoft');
+            } catch (e) {
+              setAuthError(e instanceof Error ? e.message : 'Microsoft sign-in failed');
+            }
+          }}
+          onDisconnectGoogle={async () => {
+            setAuthError(null);
+            await disconnectProvider('google');
+          }}
+          onDisconnectMicrosoft={async () => {
+            setAuthError(null);
+            await disconnectProvider('microsoft');
+          }}
         />
       )}
 
@@ -176,7 +211,9 @@ export default function MirrorApp() {
 
       <AuthQROverlay
         pendingAuth={pendingAuth}
-        onCancel={cancelPendingAuth}
+        onCancel={() => {
+          void cancelPendingAuth();
+        }}
       />
 
       <AnimatePresence>

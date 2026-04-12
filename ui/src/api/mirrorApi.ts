@@ -92,6 +92,10 @@ export function logoutProvider(provider: string): Promise<{ status: string }> {
   return jsonRequest<{ status: string }>(`/auth/logout/${provider}`, { method: 'DELETE' });
 }
 
+export function cancelLogin(provider: string): Promise<{ status: string }> {
+  return jsonRequest<{ status: string }>(`/auth/login/${provider}/cancel`, { method: 'POST' });
+}
+
 // ── Calendar ────────────────────────────────────────────────────────
 
 export function getCalendarEvents(opts?: {

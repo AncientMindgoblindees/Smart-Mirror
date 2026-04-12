@@ -48,6 +48,14 @@ async def login_status(provider: str) -> Any:
     return auth_manager.get_login_status(provider)
 
 
+@router.post("/login/{provider}/cancel")
+async def cancel_login(provider: str) -> Any:
+    if provider not in auth_manager.supported_providers:
+        raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
+    auth_manager.cancel_login(provider)
+    return {"status": "ok", "provider": provider}
+
+
 @router.delete("/logout/{provider}")
 async def logout(provider: str) -> Any:
     if provider not in auth_manager.supported_providers:
