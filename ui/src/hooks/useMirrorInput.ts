@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 
+import { getWebSocketUrl } from '@/config/backendOrigin';
+
 /**
  * Keyboard (dev / kiosk testing) + WebSocket `/ws/buttons` (physical GPIO buttons).
  *
@@ -55,7 +57,7 @@ export function useMirrorInput(actions: MirrorInputActions) {
   }, []);
 
   useEffect(() => {
-    const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/buttons`;
+    const wsUrl = getWebSocketUrl('/ws/buttons');
     let ws: WebSocket | null = null;
     let closed = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;

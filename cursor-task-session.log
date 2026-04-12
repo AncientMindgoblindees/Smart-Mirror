@@ -46,6 +46,11 @@ Commands: npx tsc --noEmit (both UIs), npm run build (Smart-Mirror/ui) — OK.
 - Commands: git branch --show-current (react-iteration); git diff main...HEAD --stat (167 files, +17466/-884).
 - Deliverable: comprehensive PR title + markdown body for GitHub/GitLab (features, backend/UI/deploy/docs, setup, testing notes).
 
+2026-04-12 — Split-host UI: VITE_BACKEND_ORIGIN
+- Added ui/src/config/backendOrigin.ts (getApiBase, getWebSocketUrl); mirrorApi + useMirrorInput + useControlEvents use it.
+- ui/.env.example and ui/README note for mirror.* vs apex API. `npx tsc --noEmit` + `npm run build` in ui — OK.
+- Note: PUT 405 on smart-mirror.tech is still an origin/tunnel routing issue until apex points to FastAPI; env fix targets UI calling the correct API host from mirror subdomain.
+
 2026-04-12 — Create PR (GitHub)
 - Installed GitHub CLI via winget (GitHub.cli 2.89.0). `gh auth status`: not logged in; `gh pr create` requires `gh auth login` or GH_TOKEN.
 - `git push origin react-iteration`: already up to date.

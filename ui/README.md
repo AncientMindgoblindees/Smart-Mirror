@@ -27,3 +27,5 @@ npm run build
 ```
 
 Output is written to `ui/dist/`. The backend mounts static files from `ui/dist` at `/ui`.
+
+**Split hostname (UI on `mirror.*`, API on apex):** copy `ui/.env.example` to `ui/.env`, set `VITE_BACKEND_ORIGIN=https://your-api-host` (no path), then rebuild. REST calls and WebSockets use that origin; CORS must allow the UI origin on the backend (defaults in `main.py` are permissive).

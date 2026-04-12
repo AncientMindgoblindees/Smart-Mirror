@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 
+import { getWebSocketUrl } from '@/config/backendOrigin';
+
 export type DeviceEventPayload = {
   deviceId: string | null;
   displayName: string | null;
@@ -63,7 +65,7 @@ export function useControlEvents(handlers: ControlEventHandlers): void {
   ref.current = handlers;
 
   useEffect(() => {
-    const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/control`;
+    const wsUrl = getWebSocketUrl('/ws/control');
     let ws: WebSocket | null = null;
     let closed = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;

@@ -13,7 +13,9 @@ import type {
   WidgetConfigUpdate,
 } from './backendTypes';
 
-const API_BASE = '/api';
+import { getApiBase } from '@/config/backendOrigin';
+
+const API_BASE = getApiBase();
 
 async function jsonRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
