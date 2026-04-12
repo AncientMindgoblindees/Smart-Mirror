@@ -76,14 +76,26 @@ export interface WeatherSnapshotOut {
   error?: string | null;
 }
 
-export interface WardrobeItemOut {
+/** GET/POST /api/clothing/ — matches `ClothingItemRead`. */
+export interface ClothingItemRead {
   id: number;
-  user_id: string;
   name: string;
-  category?: string | null;
-  image_url: string;
+  category: string;
+  color?: string | null;
+  season?: string | null;
+  notes?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** GET /api/clothing/{id}/images — matches `ClothingImageRead`. */
+export interface ClothingImageRead {
+  id: number;
+  clothing_item_id: number;
+  storage_provider: string;
+  storage_key: string;
+  image_url: string;
+  created_at: string;
 }
 
 // ── Auth types ──────────────────────────────────────────────────────

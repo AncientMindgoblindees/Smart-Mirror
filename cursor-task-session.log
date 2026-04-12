@@ -51,3 +51,17 @@ Commands: npx tsc --noEmit (both UIs), npm run build (Smart-Mirror/ui) — OK.
 - `git push origin react-iteration`: already up to date.
 - Wrote PR body to C:\Users\tjmel\AppData\Local\Temp\smart-mirror-pr-body.md; copied full description to clipboard; opened browser: compare main...react-iteration with title query param.
 - User completes PR in browser (paste description) or runs `gh auth login` then `gh pr create --base main --head react-iteration --title "..." --body-file <that path>`.
+
+2026-04-12 — Remove WardrobeItem; clothing-only model and API
+- Removed `WardrobeItem` from `backend/database/models.py`; added `ClothingItem.images` relationship (matches `ClothingImage.clothing_item`).
+- Deleted `backend/api/wardrobe.py` and `backend/schemas/wardrobe.py`; removed wardrobe router from `backend/main.py`.
+- `ui/src/api/backendTypes.ts`: replaced `WardrobeItemOut` with `ClothingItemRead` + `ClothingImageRead` (aligned with `/api/clothing`).
+- Command: `python -c "from backend.main import app"` — import ok. Note: existing SQLite `wardrobe_item` table remains on disk until manually migrated/dropped; app no longer maps it.
+
+2026-04-12 — Weather debug instrumentation (session ceea7f)
+- Added NDJSON file logs in `backend/api/weather.py` and `backend/services/weather_api.py` → `debug-ceea7f.log` (hypotheses A–E).
+- Added ingest POST logs from `ui/src/api/mirrorApi.ts` for weather fetches (hypothesis D).
+- Awaiting user repro before analyzing `debug-ceea7f.log`.
+
+2026-04-12 — Weather debug instrumentation removed (user confirmed fix)
+- Reverted `backend/api/weather.py`, `backend/services/weather_api.py`, `ui/src/api/mirrorApi.ts` to production-only code.

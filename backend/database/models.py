@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, ForeignKey
+from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
 
 
@@ -52,6 +52,8 @@ class OAuthProvider(Base):
     token_expiry = Column(DateTime, nullable=True)
     scopes = Column(String(256), nullable=True)
     status = Column(String(16), nullable=False, default="active")
+
+
 class ClothingItem(Base):
     __tablename__ = "clothing_item"
 
@@ -65,6 +67,12 @@ class ClothingItem(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    images = relationship(
+        "ClothingImage",
+        back_populates="clothing_item",
+        cascade="all, delete-orphan",
     )
 
 
@@ -86,27 +94,6 @@ class CalendarEvent(Base):
     completed = Column(Boolean, default=False)
     metadata_json = Column(JSON, nullable=True)
     synced_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-
-
-class WardrobeItem(Base):
-    __tablename__ = "wardrobe_item"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(64), nullable=False, index=True, default="local-dev")
-    name = Column(String(128), nullable=False)
-    category = Column(String(64), nullable=True)
-    image_url = Column(String(512), nullable=False)
-
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-    images = relationship(
-        "ClothingImage",
-        back_populates="clothing_item",
-        cascade="all, delete-orphan"
-    )
 
 
 class ClothingImage(Base):
