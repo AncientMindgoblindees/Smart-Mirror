@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from backend.api import auth, calendar, camera, events, health, oauth_web, user, wardrobe, weather, widgets
+from backend.api import auth, calendar, camera, events, health, oauth_web, user, wardrobe, weather, widgets, tryon, clothing
 from backend.database.session import init_db
 from hardware.gpio import service as gpio_service
 
@@ -40,6 +40,8 @@ def create_app() -> FastAPI:
     app.include_router(oauth_web.router, prefix="/api")
     app.include_router(calendar.router, prefix="/api")
     app.include_router(events.router)
+    app.include_router(clothing.router, prefix="/api")
+    app.include_router(tryon.router, prefix="/api")
 
     # Serve built React UI under /ui (run: cd ui && npm install && npm run build)
     static_ui = StaticFiles(directory=str(UI_DIST), html=True)
