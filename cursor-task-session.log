@@ -1,0 +1,19 @@
+2026-04-12 — Pi tunnel install + runtime retries
+
+Actions:
+- Updated deploy/raspberry-pi/install-pi-launcher.sh: retry_run helper; SMART_MIRROR_INSTALL_RETRIES/DELAY and SMART_MIRROR_TUNNEL_SETUP_RETRIES/DELAY; parses --autostart, --tunnel-hostname, --tunnel-name, --tunnel-service-url; merges with SMART_MIRROR_TUNNEL_HOSTNAME / SMART_MIRROR_TUNNEL_NAME / MIRROR_PORT; runs install-cloudflared.sh with retries; runs setup-cloudflare-tunnel.sh with retries when hostname set; prints next-step line when hostname omitted.
+- Updated scripts/start-mirror-app.sh: MIRROR_TUNNEL_RESTART_DELAY_SEC (default 5); supervisor loop with TERM/INT trap killing cloudflared child; logs restarts to mirror-tunnel.log.
+
+Commands:
+- wsl bash -n /mnt/c/Cursor_Projects/Smart-Mirror/deploy/raspberry-pi/install-pi-launcher.sh — exit 0
+- wsl bash -n /mnt/c/Cursor_Projects/Smart-Mirror/scripts/start-mirror-app.sh — exit 0
+
+Notes:
+- First-time tunnel setup may still require interactive cloudflared tunnel login if ~/.cloudflared/cert.pem is missing; retries only help transient failures after auth.
+
+Follow-up:
+- Added header comment + --help via sed on first 20 lines; --help uses BASH_SOURCE[0].
+
+2026-04-12 — Default tunnel hostname
+- install-pi-launcher.sh: DEFAULT_TUNNEL_HOSTNAME=mirror.smart-mirror.tech; initial TUNNEL_HOSTNAME uses ${SMART_MIRROR_TUNNEL_HOSTNAME-$DEFAULT} so unset uses default, empty env skips setup; help text updated.
+- start-mirror-app.sh: setup hint uses mirror.smart-mirror.tech.
