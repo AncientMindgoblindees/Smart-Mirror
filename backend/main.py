@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from backend.api import camera, events, health, user, wardrobe, weather, widgets
+from backend.api import auth, calendar, camera, events, health, user, wardrobe, weather, widgets
 from backend.database.session import init_db
 from hardware.gpio import service as gpio_service
 
@@ -36,6 +36,8 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api")
     app.include_router(camera.router, prefix="/api")
     app.include_router(wardrobe.router, prefix="/api")
+    app.include_router(auth.router, prefix="/api")
+    app.include_router(calendar.router, prefix="/api")
     app.include_router(events.router)
 
     # Serve built React UI under /ui (run: cd ui && npm install && npm run build)
@@ -55,9 +57,15 @@ def create_app() -> FastAPI:
         if os.getenv("ENABLE_GPIO", "false").lower() == "true":
             gpio_service.start_button_service()
 
+        from backend.services.sync_service import sync_manager
+        await sync_manager.start_all()
+
     @app.on_event("shutdown")
     async def _shutdown() -> None:  # type: ignore[func-returns-value]
         gpio_service.stop_button_service()
+
+        from backend.services.sync_service import sync_manager
+        sync_manager.stop_all()
 
     return app
 

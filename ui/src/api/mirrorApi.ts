@@ -1,6 +1,11 @@
 import type {
+  AuthLoginStatus,
+  AuthProviderStatus,
+  CalendarEventsResponse,
+  CalendarTasksResponse,
   CameraCaptureRequest,
   CameraStatusOut,
+  DeviceCodeResponse,
   UserSettingsOut,
   UserSettingsUpdate,
   WeatherSnapshotOut,
@@ -67,4 +72,44 @@ export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ statu
     method: 'POST',
     body: JSON.stringify(req),
   });
+}
+
+// ── Auth ────────────────────────────────────────────────────────────
+
+export function getAuthProviders(): Promise<AuthProviderStatus[]> {
+  return jsonRequest<AuthProviderStatus[]>('/auth/providers');
+}
+
+export function startLogin(provider: string): Promise<DeviceCodeResponse> {
+  return jsonRequest<DeviceCodeResponse>(`/auth/login/${provider}`, { method: 'POST' });
+}
+
+export function getLoginStatus(provider: string): Promise<AuthLoginStatus> {
+  return jsonRequest<AuthLoginStatus>(`/auth/login/${provider}/status`);
+}
+
+export function logoutProvider(provider: string): Promise<{ status: string }> {
+  return jsonRequest<{ status: string }>(`/auth/logout/${provider}`, { method: 'DELETE' });
+}
+
+// ── Calendar ────────────────────────────────────────────────────────
+
+export function getCalendarEvents(opts?: {
+  days?: number;
+  provider?: string;
+}): Promise<CalendarEventsResponse> {
+  const sp = new URLSearchParams();
+  if (opts?.days) sp.set('days', String(opts.days));
+  if (opts?.provider) sp.set('provider', opts.provider);
+  const qs = sp.toString();
+  return jsonRequest<CalendarEventsResponse>(`/calendar/events${qs ? `?${qs}` : ''}`);
+}
+
+export function getCalendarTasks(opts?: {
+  provider?: string;
+}): Promise<CalendarTasksResponse> {
+  const sp = new URLSearchParams();
+  if (opts?.provider) sp.set('provider', opts.provider);
+  const qs = sp.toString();
+  return jsonRequest<CalendarTasksResponse>(`/calendar/tasks${qs ? `?${qs}` : ''}`);
 }

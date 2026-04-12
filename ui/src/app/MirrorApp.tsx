@@ -11,6 +11,7 @@ import {
   DeviceConnectionOverlay,
   useDeviceConnectionState,
 } from '@/features/connection';
+import { AuthQROverlay, useAuthState } from '@/features/auth';
 import { useControlEvents } from '@/hooks/useControlEvents';
 import { useMirrorInput } from '@/hooks/useMirrorInput';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
@@ -46,6 +47,8 @@ export default function MirrorApp() {
     handlers: deviceHandlers,
     retry: retryConnection,
   } = useDeviceConnectionState();
+
+  const { pendingAuth, cancelPendingAuth, refresh: refreshAuth } = useAuthState();
 
   useTimeOfDay();
   const parallax = useParallax();
@@ -113,6 +116,9 @@ export default function MirrorApp() {
       setCameraCountdown(null);
     },
     ...deviceHandlers,
+    onAuthStateChanged: () => {
+      refreshAuth();
+    },
   });
 
   const toggleWidget = (id: string) => {
@@ -166,6 +172,11 @@ export default function MirrorApp() {
       <DeviceConnectionOverlay
         state={connectionState}
         onRetry={retryConnection}
+      />
+
+      <AuthQROverlay
+        pendingAuth={pendingAuth}
+        onCancel={cancelPendingAuth}
       />
 
       <AnimatePresence>

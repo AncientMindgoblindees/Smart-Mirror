@@ -85,3 +85,55 @@ export interface WardrobeItemOut {
   created_at: string;
   updated_at: string;
 }
+
+// ── Auth types ──────────────────────────────────────────────────────
+
+export interface AuthProviderStatus {
+  provider: string;
+  connected: boolean;
+  status: string;
+  scopes?: string | null;
+  connected_at?: string | null;
+}
+
+export interface DeviceCodeResponse {
+  provider: string;
+  verification_uri: string;
+  user_code: string;
+  expires_in: number;
+  interval: number;
+  message?: string | null;
+}
+
+export interface AuthLoginStatus {
+  provider: string;
+  status: string;
+  message?: string | null;
+}
+
+// ── Calendar types ──────────────────────────────────────────────────
+
+export interface CalendarEventItem {
+  id: number;
+  type: string;
+  title: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  all_day: boolean;
+  source: string;
+  priority: string;
+  completed: boolean;
+  metadata: Record<string, unknown>;
+}
+
+export interface CalendarEventsResponse {
+  events: CalendarEventItem[];
+  providers: string[];
+  last_sync?: string | null;
+}
+
+export interface CalendarTasksResponse {
+  tasks: CalendarEventItem[];
+  providers: string[];
+  last_sync?: string | null;
+}

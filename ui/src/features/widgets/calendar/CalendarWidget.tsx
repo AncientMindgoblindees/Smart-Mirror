@@ -2,21 +2,14 @@ import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { WidgetConfig } from '../types';
 import { estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
+import { useCalendarEvents } from './useCalendarEvents';
+import type { CalendarEventDisplay } from './useCalendarEvents';
 import './calendar-widget.css';
-
-type CalendarEvent = { time: string; event: string };
-
-const DEFAULT_EVENTS: CalendarEvent[] = [
-  { time: '09:00', event: 'Morning Standup' },
-  { time: '13:00', event: 'Product Review' },
-  { time: '16:30', event: 'Design Sync' },
-  { time: '19:00', event: 'Gym Session' },
-  { time: '20:30', event: 'Family Dinner' },
-];
 
 const ACCENT_COLORS = ['#60a5fa', '#f5a623', '#34d399', '#a78bfa', '#f472b6'];
 
 function getRelativeLabel(timeStr: string): string | null {
+  if (timeStr === 'All day') return null;
   const now = new Date();
   const [h, m] = timeStr.split(':').map(Number);
   const eventDate = new Date(now);
@@ -28,10 +21,28 @@ function getRelativeLabel(timeStr: string): string | null {
   return null;
 }
 
+const EmptyState: React.FC = () => (
+  <div className="calendar-empty">
+    <span className="calendar-empty-text">No upcoming events</span>
+  </div>
+);
+
 export const CalendarWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
-  const events = DEFAULT_EVENTS;
+  const { events, loading } = useCalendarEvents();
   const pageSize = estimatePageSize(config.freeform.width, config.freeform.height);
-  const { pageItems, pageIndex, pageCount } = useDisplayPagination(events, pageSize, 7000);
+  const { pageItems, pageIndex, pageCount } = useDisplayPagination<CalendarEventDisplay>(
+    events,
+    pageSize,
+    7000,
+  );
+
+  if (!loading && events.length === 0) {
+    return (
+      <div className="widget-content calendar-widget">
+        <EmptyState />
+      </div>
+    );
+  }
 
   return (
     <div className="widget-content calendar-widget">

@@ -9,6 +9,19 @@ export type DeviceEventPayload = {
   initiator?: string;
 };
 
+export type AuthStatePayload = {
+  provider: string;
+  status: string;
+  message?: string;
+};
+
+export type CalendarUpdatedPayload = {
+  provider: string;
+  events_count: number;
+  tasks_count: number;
+  synced_at: string;
+};
+
 type ControlEventHandlers = {
   onCameraCountdownStarted?: (countdownSeconds: number) => void;
   onCameraCountdownTick?: (remaining: number) => void;
@@ -21,6 +34,9 @@ type ControlEventHandlers = {
   onDeviceDisconnecting?: (payload: DeviceEventPayload) => void;
   onDeviceDisconnected?: (payload: DeviceEventPayload) => void;
   onDeviceError?: (payload: DeviceEventPayload) => void;
+
+  onAuthStateChanged?: (payload: AuthStatePayload) => void;
+  onCalendarUpdated?: (payload: CalendarUpdatedPayload) => void;
 };
 
 function readNumber(value: unknown, fallback: number): number {
@@ -106,6 +122,23 @@ export function useControlEvents(handlers: ControlEventHandlers): void {
               break;
             case 'DEVICE_ERROR':
               ref.current.onDeviceError?.(parseDevicePayload(payload));
+              break;
+            case 'AUTH_STATE_CHANGED':
+              ref.current.onAuthStateChanged?.({
+                provider: String(payload.provider ?? ''),
+                status: String(payload.status ?? ''),
+                message: typeof payload.message === 'string' ? payload.message : undefined,
+              });
+              window.dispatchEvent(new CustomEvent('mirror:auth_state_changed', { detail: payload }));
+              break;
+            case 'CALENDAR_UPDATED':
+              ref.current.onCalendarUpdated?.({
+                provider: String(payload.provider ?? ''),
+                events_count: typeof payload.events_count === 'number' ? payload.events_count : 0,
+                tasks_count: typeof payload.tasks_count === 'number' ? payload.tasks_count : 0,
+                synced_at: String(payload.synced_at ?? ''),
+              });
+              window.dispatchEvent(new CustomEvent('mirror:calendar_updated', { detail: payload }));
               break;
             default:
               break;
