@@ -25,6 +25,7 @@ class WidgetConfig(Base):
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    synced_at = Column(DateTime, nullable=True, default=None)
 
 
 class UserSettings(Base):
@@ -40,6 +41,7 @@ class UserSettings(Base):
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    synced_at = Column(DateTime, nullable=True, default=None)
 
 
 class OAuthProvider(Base):
@@ -68,6 +70,7 @@ class ClothingItem(Base):
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    synced_at = Column(DateTime, nullable=True, default=None)
 
     images = relationship(
         "ClothingImage",
@@ -107,6 +110,7 @@ class ClothingImage(Base):
     image_url = Column(String(500), nullable=False)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    synced_at = Column(DateTime, nullable=True, default=None)
 
     clothing_item = relationship("ClothingItem", back_populates="images")
 
@@ -118,3 +122,13 @@ class PersonImage(Base):
     status = Column(String(50), nullable=False, default="uploaded")
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class D1SyncCheckpoint(Base):
+    __tablename__ = "d1_sync_checkpoint"
+
+    table_name = Column(String(64), primary_key=True)
+    last_pull_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )

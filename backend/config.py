@@ -38,3 +38,8 @@ def get_sqlalchemy_database_url() -> str:
     # Use absolute path to avoid ambiguity when running from different cwd
     return f"sqlite:///{db_path.as_posix()}"
 
+
+D1_WORKER_URL = os.getenv("D1_WORKER_URL", "")
+MIRROR_SYNC_TOKEN = os.getenv("MIRROR_SYNC_TOKEN", "")
+D1_SYNC_INTERVAL_SEC = int(os.getenv("D1_SYNC_INTERVAL_SEC", "600"))
+

@@ -61,6 +61,8 @@ def create_app() -> FastAPI:
 
         from backend.services.sync_service import sync_manager
         await sync_manager.start_all()
+        from backend.services.d1_sync import d1_sync_service
+        await d1_sync_service.start()
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:  # type: ignore[func-returns-value]
@@ -68,6 +70,8 @@ def create_app() -> FastAPI:
 
         from backend.services.sync_service import sync_manager
         sync_manager.stop_all()
+        from backend.services.d1_sync import d1_sync_service
+        await d1_sync_service.stop()
 
     return app
 
