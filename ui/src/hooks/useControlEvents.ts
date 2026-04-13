@@ -24,11 +24,17 @@ export type CalendarUpdatedPayload = {
   synced_at: string;
 };
 
+type TryOnResultPayload = {
+  generation_id: string;
+  image_url: string;
+};
+
 type ControlEventHandlers = {
   onCameraCountdownStarted?: (countdownSeconds: number) => void;
   onCameraCountdownTick?: (remaining: number) => void;
   onCameraCaptured?: () => void;
   onCameraError?: (message: string) => void;
+  onTryOnResult?: (payload: TryOnResultPayload) => void;
 
   onDeviceSearching?: (payload: DeviceEventPayload) => void;
   onDeviceConnecting?: (payload: DeviceEventPayload) => void;
@@ -147,6 +153,15 @@ export function useControlEvents(handlers: ControlEventHandlers): void {
               });
               window.dispatchEvent(new CustomEvent('mirror:calendar_updated', { detail: payload }));
               break;
+            case 'TRYON_RESULT': {
+              const tryPayload: TryOnResultPayload = {
+                generation_id: String(payload.generation_id ?? ''),
+                image_url: String(payload.image_url ?? ''),
+              };
+              ref.current.onTryOnResult?.(tryPayload);
+              window.dispatchEvent(new CustomEvent('mirror:tryon_result', { detail: tryPayload }));
+              break;
+            }
             default:
               break;
           }

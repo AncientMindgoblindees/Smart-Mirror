@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from backend.database.session import get_db
@@ -16,8 +16,30 @@ router = APIRouter(prefix="/clothing", tags=["clothing"])
 
 
 @router.get("/", response_model=List[ClothingItemRead])
-def list_clothing(db: Session = Depends(get_db)):
-    return clothing_service.list_clothing_items(db)
+def list_clothing(
+    db: Session = Depends(get_db),
+    include_images: bool = Query(False, description="Include Cloudinary image rows per item"),
+):
+    items = clothing_service.list_clothing_items(db, include_images=include_images)
+    out: List[ClothingItemRead] = []
+    for item in items:
+        imgs = None
+        if include_images:
+            imgs = [ClothingImageRead.model_validate(img) for img in item.images]
+        out.append(
+            ClothingItemRead(
+                id=item.id,
+                name=item.name,
+                category=item.category,
+                color=item.color,
+                season=item.season,
+                notes=item.notes,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+                images=imgs,
+            )
+        )
+    return out
 
 
 @router.post("/", response_model=ClothingItemRead, status_code=201)
@@ -29,11 +51,28 @@ def create_clothing_item(
 
 
 @router.get("/{item_id}", response_model=ClothingItemRead)
-def get_clothing_item(item_id: int, db: Session = Depends(get_db)):
-    item = clothing_service.get_clothing_item_by_id(db, item_id)
+def get_clothing_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    include_images: bool = Query(False),
+):
+    item = clothing_service.get_clothing_item_by_id(db, item_id, include_images=include_images)
     if item is None:
         raise HTTPException(status_code=404, detail="Clothing item not found")
-    return item
+    imgs = None
+    if include_images:
+        imgs = [ClothingImageRead.model_validate(img) for img in item.images]
+    return ClothingItemRead(
+        id=item.id,
+        name=item.name,
+        category=item.category,
+        color=item.color,
+        season=item.season,
+        notes=item.notes,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        images=imgs,
+    )
 
 
 @router.put("/{item_id}", response_model=ClothingItemRead)

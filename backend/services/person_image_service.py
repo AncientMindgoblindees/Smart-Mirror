@@ -1,5 +1,6 @@
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -8,6 +9,31 @@ from backend.database.models import PersonImage
 
 PERSON_IMAGE_DIR = Path("data/person_images")
 PERSON_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _resolved_person_images_dir() -> Path:
+    return PERSON_IMAGE_DIR.resolve()
+
+
+def get_latest_person_image(db: Session) -> Optional[PersonImage]:
+    return db.query(PersonImage).order_by(PersonImage.created_at.desc()).first()
+
+
+def get_person_image_by_id(db: Session, image_id: int) -> Optional[PersonImage]:
+    return db.query(PersonImage).filter(PersonImage.id == image_id).first()
+
+
+def resolve_safe_image_path(record: PersonImage) -> Path:
+    raw = Path(record.file_path)
+    path = raw if raw.is_absolute() else (Path.cwd() / raw).resolve()
+    base = _resolved_person_images_dir()
+    try:
+        path.relative_to(base)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid image path") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Image file missing on disk")
+    return path
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 

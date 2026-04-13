@@ -86,6 +86,7 @@ export interface ClothingItemRead {
   notes?: string | null;
   created_at: string;
   updated_at: string;
+  images?: ClothingImageRead[] | null;
 }
 
 /** GET /api/clothing/{id}/images — matches `ClothingImageRead`. */

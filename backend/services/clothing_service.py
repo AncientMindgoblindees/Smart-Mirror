@@ -4,7 +4,7 @@ import uuid
 from typing import List, Optional
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from backend.database.models import ClothingImage, ClothingItem
 from backend.schemas.clothing import ClothingItemCreate, ClothingItemUpdate
@@ -14,8 +14,11 @@ from backend.services import cloud_storage_service
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
-def list_clothing_items(db: Session) -> List[ClothingItem]:
-    return db.query(ClothingItem).all()
+def list_clothing_items(db: Session, include_images: bool = False) -> List[ClothingItem]:
+    q = db.query(ClothingItem)
+    if include_images:
+        q = q.options(joinedload(ClothingItem.images))
+    return q.order_by(ClothingItem.updated_at.desc()).all()
 
 
 def create_clothing_item(db: Session, payload: ClothingItemCreate) -> ClothingItem:
@@ -32,8 +35,13 @@ def create_clothing_item(db: Session, payload: ClothingItemCreate) -> ClothingIt
     return item
 
 
-def get_clothing_item_by_id(db: Session, item_id: int) -> Optional[ClothingItem]:
-    return db.query(ClothingItem).filter(ClothingItem.id == item_id).first()
+def get_clothing_item_by_id(
+    db: Session, item_id: int, include_images: bool = False
+) -> Optional[ClothingItem]:
+    q = db.query(ClothingItem).filter(ClothingItem.id == item_id)
+    if include_images:
+        q = q.options(joinedload(ClothingItem.images))
+    return q.first()
 
 
 def update_clothing_item(
