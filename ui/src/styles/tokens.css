@@ -34,31 +34,48 @@
   --color-danger: #ef4444;
   --color-success: #34d399;
 
-  /* ── Glass Tiers ────────────────────────────────── */
-  --glass-subtle-bg: rgba(255, 255, 255, 0.04);
-  --glass-subtle-border: rgba(255, 255, 255, 0.08);
-  --glass-subtle-blur: 12px;
+  /* ── Glass Tiers (liquid material, mirror widgets) ─ */
+  --glass-subtle-bg: rgba(255, 255, 255, 0.055);
+  --glass-subtle-border: rgba(255, 255, 255, 0.1);
+  --glass-subtle-blur: 14px;
 
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --glass-blur: 32px;
-  --glass-saturate: 1.6;
+  --glass-bg: rgba(255, 255, 255, 0.09);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-blur: 44px;
+  --glass-saturate: 1.85;
 
-  --glass-strong-bg: rgba(255, 255, 255, 0.12);
-  --glass-strong-border: rgba(255, 255, 255, 0.18);
-  --glass-strong-blur: 40px;
+  --glass-strong-bg: rgba(255, 255, 255, 0.14);
+  --glass-strong-border: rgba(255, 255, 255, 0.22);
+  --glass-strong-blur: 48px;
+
+  /* Specular / wash stops (used in widget-frame highlight layer) */
+  --glass-liquid-highlight-top: rgba(255, 255, 255, 0.13);
+  --glass-liquid-highlight-mid: rgba(255, 255, 255, 0.04);
 
   /* ── Glow Effects ───────────────────────────────── */
   --glow-accent: 0 0 20px rgba(94, 225, 217, 0.15), 0 0 60px rgba(94, 225, 217, 0.05);
   --glow-accent-strong: 0 0 30px rgba(94, 225, 217, 0.25), 0 0 80px rgba(94, 225, 217, 0.1);
   --glow-warm: 0 0 20px rgba(245, 166, 35, 0.15), 0 0 60px rgba(245, 166, 35, 0.05);
   --glow-cool: 0 0 20px rgba(96, 165, 250, 0.15), 0 0 60px rgba(96, 165, 250, 0.05);
-  --glow-widget: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 0 20px rgba(255, 255, 255, 0.02);
-  --glow-widget-hover: 0 16px 64px rgba(0, 0, 0, 0.7), 0 0 40px rgba(94, 225, 217, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.15), inset 0 0 30px rgba(255, 255, 255, 0.05);
+  --glow-widget:
+    0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.28),
+    inset 1px 0 0 rgba(255, 255, 255, 0.06),
+    0 10px 36px rgba(0, 0, 0, 0.55),
+    0 2px 12px rgba(0, 0, 0, 0.35);
+  --glow-widget-hover:
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    0 16px 56px rgba(0, 0, 0, 0.62),
+    0 0 48px rgba(94, 225, 217, 0.12),
+    0 4px 16px rgba(0, 0, 0, 0.4);
 
   /* ── Radius ─────────────────────────────────────── */
-  --radius-sm: 10px;
-  --radius: 18px;
+  --radius-sm: 11px;
+  --radius: 20px;
   --radius-lg: 24px;
   --radius-xl: 32px;
 

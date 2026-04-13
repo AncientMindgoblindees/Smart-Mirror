@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { WidgetConfig } from '../types';
 import { getNewsHeadlinesPreview, type NewsHeadline } from '@/features/ai/entrypoints';
-import { computeDisplayScale, estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
+import { estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
 import './news-widget.css';
 
 function formatRelativeMinutes(iso: string): string {
@@ -50,7 +50,6 @@ export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ conf
 
   const summaryEnabled = Boolean(config?.integration?.provider);
   const itemLimit = Math.max(3, Math.min(8, Number((config as unknown as Record<string, unknown>)?.limit ?? 5)));
-  const scale = computeDisplayScale(config.freeform.width, config.freeform.height);
   const pageSize = estimatePageSize(config.freeform.width, config.freeform.height);
   const { pageItems, pageIndex, pageCount } = useDisplayPagination(headlines, pageSize, 8000);
 
@@ -84,7 +83,7 @@ export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ conf
   }, [itemLimit, summaryEnabled]);
 
   return (
-    <div className="widget-content news-widget" style={{ fontSize: `${scale}em` }}>
+    <div className="widget-content news-widget">
       <div className="news-header">
         <span className="news-header-label">Live Briefing</span>
         <span className="news-header-pulse" aria-hidden="true" />

@@ -1,8 +1,11 @@
 .widget-frame {
   position: relative;
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate, 1.4));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate, 1.4));
+  background:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.08) 0%, transparent 46%),
+    linear-gradient(305deg, rgba(255, 255, 255, 0.035) 0%, transparent 52%),
+    var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate, 1.85));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate, 1.85));
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   display: flex;
@@ -10,10 +13,10 @@
   min-height: 0;
   overflow: hidden;
   box-shadow: var(--glow-widget);
-  font-size: calc(1rem * var(--widget-scale, 1) * var(--widget-scale-multiplier, 1));
   transition:
     box-shadow var(--duration-normal) var(--ease-spring),
-    border-color var(--duration-normal) var(--ease-spring);
+    border-color var(--duration-normal) var(--ease-spring),
+    background var(--duration-normal) var(--ease-spring);
   will-change: transform, opacity;
   contain: layout style paint;
 }
@@ -40,12 +43,24 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.08) 0%,
-    rgba(255, 255, 255, 0.02) 40%,
-    transparent 100%
-  );
+  background:
+    repeating-linear-gradient(
+      -22deg,
+      rgba(255, 255, 255, 0.012) 0px,
+      transparent 1px,
+      transparent 3px
+    ),
+    radial-gradient(
+      ellipse 120% 85% at 50% -18%,
+      var(--glass-liquid-highlight-top) 0%,
+      transparent 55%
+    ),
+    linear-gradient(
+      135deg,
+      var(--glass-liquid-highlight-top) 0%,
+      var(--glass-liquid-highlight-mid) 36%,
+      transparent 68%
+    );
   z-index: 1;
 }
 
@@ -87,6 +102,44 @@
   --widget-body-padding: 1.35em;
 }
 
+/* Fluid type + insets from the widget’s own box (container: .widget-body) */
+@supports (font-size: 1cqmin) {
+  .widget-frame {
+    font-size: 1rem;
+  }
+
+  .widget-body {
+    padding: clamp(0.26rem, 3.2cqmin, 1.05rem);
+  }
+
+  .widget-frame[data-size='small'] .widget-body {
+    padding: clamp(0.22rem, 2.6cqmin, 0.75rem);
+  }
+
+  .widget-frame[data-size='medium'] .widget-body {
+    padding: clamp(0.26rem, 3cqmin, 0.95rem);
+  }
+
+  .widget-frame[data-size='large'] .widget-body {
+    padding: clamp(0.3rem, 3.5cqmin, 1.15rem);
+  }
+
+  .widget-body > .widget-content {
+    font-size: clamp(0.65rem, calc(0.35rem + 3.1cqw + 2.65cqh), 3rem);
+    line-height: 1.3;
+  }
+
+  .widget-frame[data-size='large'] .widget-body > .widget-content {
+    line-height: 1.38;
+  }
+}
+
+@supports not (font-size: 1cqmin) {
+  .widget-frame {
+    font-size: calc(1rem * var(--widget-scale, 1) * var(--widget-scale-multiplier, 1));
+  }
+}
+
 .widget-content {
   width: 100%;
   max-width: 100%;
@@ -96,12 +149,14 @@
   overflow: hidden;
 }
 
-.widget-frame[data-size='small'] .widget-content {
-  line-height: 1.35;
-}
+@supports not (font-size: 1cqmin) {
+  .widget-frame[data-size='small'] .widget-content {
+    line-height: 1.35;
+  }
 
-.widget-frame[data-size='large'] .widget-content {
-  line-height: 1.5;
+  .widget-frame[data-size='large'] .widget-content {
+    line-height: 1.5;
+  }
 }
 
 @keyframes widgetFloat {
@@ -112,5 +167,27 @@
 @media (prefers-reduced-motion: no-preference) {
   .widget-frame {
     animation: widgetFloat 6s ease-in-out infinite alternate;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .widget-frame {
+    backdrop-filter: blur(12px) saturate(1.15);
+    -webkit-backdrop-filter: blur(12px) saturate(1.15);
+    background: rgba(22, 22, 26, 0.94);
+    box-shadow:
+      0 8px 28px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+
+  .widget-frame:hover {
+    box-shadow:
+      0 12px 36px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .widget-glass-highlight {
+    opacity: 0.4;
   }
 }
