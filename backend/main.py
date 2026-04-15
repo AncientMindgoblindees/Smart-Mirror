@@ -2,6 +2,12 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+# Load repo .env before any backend.* import. Otherwise `backend.config` reads
+# MIRROR_SYNC_TOKEN / D1_WORKER_URL at import time while they are still unset.
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -11,10 +17,7 @@ from backend.api import auth, calendar, camera, events, health, oauth_web, user,
 from backend.database.session import init_db
 from hardware.gpio import service as gpio_service
 
-BASE_DIR = Path(__file__).resolve().parent.parent
 UI_DIST = BASE_DIR / "ui" / "dist"
-
-load_dotenv(BASE_DIR / ".env")
 
 
 def create_app() -> FastAPI:
@@ -61,6 +64,8 @@ def create_app() -> FastAPI:
 
         from backend.services.sync_service import sync_manager
         await sync_manager.start_all()
+        from backend.services.d1_sync import d1_sync_service
+        await d1_sync_service.start()
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:  # type: ignore[func-returns-value]
@@ -68,6 +73,8 @@ def create_app() -> FastAPI:
 
         from backend.services.sync_service import sync_manager
         sync_manager.stop_all()
+        from backend.services.d1_sync import d1_sync_service
+        await d1_sync_service.stop()
 
     return app
 

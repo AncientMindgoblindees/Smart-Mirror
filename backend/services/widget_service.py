@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -102,28 +102,48 @@ def replace_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[Widg
     """
     Replace widget configurations from client payload.
     Upserts incoming configs and deletes any rows not present in the list.
+
+    Clients sometimes omit database ``id`` (companion before GET /widgets returns,
+    cache-only bootstrap, or WebSocket-only flows). In that case we match by
+    ``widget_id`` using the lowest existing row id as canonical so we update in
+    place instead of inserting duplicate placements.
     """
-    existing_by_id = {w.id: w for w in db.query(WidgetConfig).all()}
-    seen_ids = set()
+    initial_rows = list(db.query(WidgetConfig).all())
+    existing_by_id = {w.id: w for w in initial_rows}
+    existing_by_widget_id: dict[str, WidgetConfig] = {}
+    for w in sorted(initial_rows, key=lambda r: r.id):
+        if w.widget_id not in existing_by_widget_id:
+            existing_by_widget_id[w.widget_id] = w
+
+    seen_ids: set[int] = set()
 
     for cfg in configs:
         data = cfg.model_dump(exclude_unset=True)
-        wid = data.pop("id", None)
+        row_id = data.pop("id", None)
 
-        if wid is not None and wid in existing_by_id:
-            obj = existing_by_id[wid]
-            for field, value in data.items():
-                setattr(obj, field, value)
-        else:
+        obj: Optional[WidgetConfig] = None
+        if row_id is not None and row_id in existing_by_id:
+            obj = existing_by_id[row_id]
+        if obj is None:
+            wgid = data.get("widget_id")
+            if isinstance(wgid, str) and wgid in existing_by_widget_id:
+                obj = existing_by_widget_id[wgid]
+
+        if obj is None:
             obj = WidgetConfig(**data)
             db.add(obj)
             db.flush()
+            existing_by_id[obj.id] = obj
+            existing_by_widget_id[obj.widget_id] = obj
+        else:
+            for field, value in data.items():
+                setattr(obj, field, value)
+
         seen_ids.add(obj.id)
 
-    # Delete rows not present in the incoming list (true PUT/replace semantics).
-    for obj in existing_by_id.values():
-        if obj.id not in seen_ids:
-            db.delete(obj)
+    for row in initial_rows:
+        if row.id not in seen_ids:
+            db.delete(row)
 
     db.commit()
     return get_all_widgets(db)

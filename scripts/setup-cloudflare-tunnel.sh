@@ -4,6 +4,11 @@ set -euo pipefail
 # Creates/updates a named Cloudflare Tunnel for Smart Mirror.
 # Usage:
 #   bash scripts/setup-cloudflare-tunnel.sh --hostname mirror.example.com
+# Multiple hostnames (apex + mirror) to the same FastAPI service:
+#   bash scripts/setup-cloudflare-tunnel.sh \
+#     --hostname smart-mirror.tech \
+#     --hostname mirror.smart-mirror.tech \
+#     --service-url http://127.0.0.1:8002
 #
 # Optional:
 #   --tunnel-name smart-mirror-ui
@@ -12,7 +17,7 @@ set -euo pipefail
 
 TUNNEL_NAME="smart-mirror-ui"
 SERVICE_URL="http://127.0.0.1:8000"
-HOSTNAME=""
+HOSTNAMES=()
 INSTALL_SERVICE="0"
 
 while [[ $# -gt 0 ]]; do
@@ -22,7 +27,11 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --hostname)
-      HOSTNAME="${2:-}"
+      if [[ -z "${2:-}" ]]; then
+        echo "error: --hostname requires a value." >&2
+        exit 1
+      fi
+      HOSTNAMES+=("$2")
       shift 2
       ;;
     --service-url)
@@ -34,7 +43,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      sed -n '1,30p' "$0"
+      sed -n '1,40p' "$0"
       exit 0
       ;;
     *)
@@ -44,8 +53,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${HOSTNAME}" ]]; then
-  echo "error: --hostname is required (example: --hostname mirror.example.com)." >&2
+if [[ ${#HOSTNAMES[@]} -eq 0 ]]; then
+  echo "error: at least one --hostname is required (example: --hostname mirror.example.com)." >&2
+  echo "Use multiple --hostname flags to route apex and mirror subdomain to the same service." >&2
   exit 1
 fi
 
@@ -83,18 +93,22 @@ if [[ ! -f "${CRED_FILE}" ]]; then
 fi
 
 mkdir -p "${CONF_DIR}"
-cat >"${CONF_FILE}" <<EOF
-tunnel: ${TUNNEL_ID}
-credentials-file: ${CRED_FILE}
+{
+  echo "tunnel: ${TUNNEL_ID}"
+  echo "credentials-file: ${CRED_FILE}"
+  echo ""
+  echo "ingress:"
+  for h in "${HOSTNAMES[@]}"; do
+    echo "  - hostname: ${h}"
+    echo "    service: ${SERVICE_URL}"
+  done
+  echo "  - service: http_status:404"
+} >"${CONF_FILE}"
 
-ingress:
-  - hostname: ${HOSTNAME}
-    service: ${SERVICE_URL}
-  - service: http_status:404
-EOF
-
-echo "Routing DNS '${HOSTNAME}' -> tunnel '${TUNNEL_NAME}'..."
-cloudflared tunnel route dns "${TUNNEL_NAME}" "${HOSTNAME}"
+for h in "${HOSTNAMES[@]}"; do
+  echo "Routing DNS '${h}' -> tunnel '${TUNNEL_NAME}'..."
+  cloudflared tunnel route dns "${TUNNEL_NAME}" "${h}"
+done
 
 if [[ "${INSTALL_SERVICE}" == "1" ]]; then
   echo "Installing cloudflared as system service..."
@@ -106,7 +120,7 @@ fi
 echo
 echo "Cloudflare tunnel is configured."
 echo "Config: ${CONF_FILE}"
-echo "Public UI URL: https://${HOSTNAME}/ui/"
+echo "Public UI (first hostname): https://${HOSTNAMES[0]}/ui/"
 if [[ "${INSTALL_SERVICE}" != "1" ]]; then
   echo "Run now with:"
   echo "  cloudflared tunnel run ${TUNNEL_NAME}"

@@ -99,6 +99,8 @@ if [[ "${MIRROR_ENABLE_TUNNEL}" == "1" ]]; then
     echo "Cloudflare tunnel not started (missing cloudflared or ~/.cloudflared/config.yml)."
     echo "Setup command:"
     echo "  bash ${ROOT_DIR}/scripts/setup-cloudflare-tunnel.sh --hostname mirror.smart-mirror.tech --service-url http://127.0.0.1:${PORT}"
+    echo "Apex + mirror both to API (PUT /api, /ui on same app):"
+    echo "  bash ${ROOT_DIR}/scripts/setup-cloudflare-tunnel.sh --hostname smart-mirror.tech --hostname mirror.smart-mirror.tech --service-url http://127.0.0.1:${PORT}"
   fi
 fi
 

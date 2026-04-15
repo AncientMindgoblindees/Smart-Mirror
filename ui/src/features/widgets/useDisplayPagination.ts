@@ -1,16 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
-}
-
-export function computeDisplayScale(widthPct: number, heightPct: number): number {
-  const area = Math.max(1, widthPct * heightPct);
-  const base = 28 * 20;
-  const scale = Math.sqrt(area / base);
-  return clamp(scale, 0.68, 1.12);
-}
-
 export function estimatePageSize(widthPct: number, heightPct: number): number {
   const area = Math.max(1, widthPct * heightPct);
   if (area < 260) return 1;

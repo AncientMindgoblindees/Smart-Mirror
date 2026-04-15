@@ -2,10 +2,11 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-load_dotenv()  # Load environment variables from .env file if it exists
-
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Repo .env first (works no matter what cwd is when uvicorn imports this module).
+load_dotenv(BASE_DIR / ".env")
+load_dotenv()  # optional: cwd .env overrides for local dev
 
 
 def get_db_path() -> Path:
@@ -37,4 +38,9 @@ def get_sqlalchemy_database_url() -> str:
     db_path = get_db_path()
     # Use absolute path to avoid ambiguity when running from different cwd
     return f"sqlite:///{db_path.as_posix()}"
+
+
+D1_WORKER_URL = os.getenv("D1_WORKER_URL", "")
+MIRROR_SYNC_TOKEN = os.getenv("MIRROR_SYNC_TOKEN", "")
+D1_SYNC_INTERVAL_SEC = int(os.getenv("D1_SYNC_INTERVAL_SEC", "600"))
 
