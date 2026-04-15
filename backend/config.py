@@ -2,10 +2,11 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-load_dotenv()  # Load environment variables from .env file if it exists
-
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Repo .env first (works no matter what cwd is when uvicorn imports this module).
+load_dotenv(BASE_DIR / ".env")
+load_dotenv()  # optional: cwd .env overrides for local dev
 
 
 def get_db_path() -> Path:

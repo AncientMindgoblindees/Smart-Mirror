@@ -78,6 +78,9 @@ Commands: npx tsc --noEmit (both UIs), npm run build (Smart-Mirror/ui) — OK.
 2026-04-14 — Clothing upload path (user: why POST to mirror not Cloudinary)
 - Explained: companion `uploadClothingImage` POSTs to FastAPI `/api/clothing/{id}/images`; backend `upload_clothing_image_file` writes temp file then `cloud_storage_service.upload_clothing_image` (Cloudinary Python SDK). Browser never holds Cloudinary secret; 500 is server-side after receipt.
 
+2026-04-14 — D1 401 while curl works: import-order bug
+- `main.py` imported `backend.api` before `load_dotenv(BASE_DIR/.env)`; `config.MIRROR_SYNC_TOKEN` was captured empty at import → D1 sync sent `Bearer ` with wrong/empty token. Fixed: `load_dotenv(BASE_DIR/.env)` at top of `main.py` before backend imports; `config.py` loads `BASE_DIR/.env` first then cwd.
+
 2026-04-14 — Worker hardening (token + D1 errors)
 - `deploy/worker/src/index.ts`: Bearer = full remainder after `Bearer ` + trim; compare trimmed secret (avoids subtle 401s). Pull `all` / push `run` check `success === false` and return 500 JSON with `d1_query_failed` / `d1_upsert_failed`; try/catch push. `wrangler deploy --dry-run` OK.
 
