@@ -1,10 +1,18 @@
 type RowRecord = Record<string, unknown>;
 
+/** Subset of Cloudflare D1Result used for error checks. */
+type D1ExecOutcome = {
+  success?: boolean;
+  error?: unknown;
+  meta?: unknown;
+  results?: unknown;
+};
+
 type D1PreparedStatement = {
   bind: (...values: unknown[]) => D1PreparedStatement;
   first: <T = RowRecord>() => Promise<T | null>;
-  all: <T = RowRecord>() => Promise<{ results?: T[] }>;
-  run: () => Promise<unknown>;
+  all: <T = RowRecord>() => Promise<{ results?: T[] } & D1ExecOutcome>;
+  run: () => Promise<D1ExecOutcome>;
 };
 
 type D1DatabaseLike = {
@@ -93,19 +101,21 @@ function parseBearerToken(authHeader: string | null): string {
   if (!authHeader) {
     return "";
   }
-  const [scheme, token] = authHeader.split(" ");
-  if ((scheme || "").toLowerCase() !== "bearer") {
+  const h = authHeader.trim();
+  if (!/^Bearer\s+/i.test(h)) {
     return "";
   }
-  return token || "";
+  // Everything after "Bearer " (avoids split bugs with multi-space or secrets that contain spaces).
+  return h.replace(/^Bearer\s+/i, "").trim();
 }
 
 function isAuthorized(request: Request, env: Env): boolean {
   const token = parseBearerToken(request.headers.get("Authorization"));
-  if (!token || !env.MIRROR_SYNC_TOKEN) {
+  const expected = String(env.MIRROR_SYNC_TOKEN ?? "").trim();
+  if (!token || !expected) {
     return false;
   }
-  return token === env.MIRROR_SYNC_TOKEN;
+  return token === expected;
 }
 
 function sanitizeRow(input: unknown, schema: TableSchema): RowRecord {
@@ -144,6 +154,16 @@ async function pullRows(env: Env, table: string, since: string): Promise<Respons
   }
   const query = `SELECT * FROM ${table} WHERE ${schema.orderColumn} > ? ORDER BY ${schema.orderColumn} ASC`;
   const result = await env.MIRROR_DB.prepare(query).bind(new Date(sinceTs).toISOString()).all<RowRecord>();
+  if (result.success === false) {
+    return json(
+      {
+        error: "d1_query_failed",
+        table,
+        detail: result.error ?? result.meta ?? result,
+      },
+      500,
+    );
+  }
   return json({
     table,
     rows: result.results ?? [],
@@ -171,42 +191,64 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
   let insertedOrUpdated = 0;
   let skipped = 0;
 
-  for (const rawRow of rows) {
-    const row = sanitizeRow(rawRow, schema);
-    const id = Number(row.id);
-    if (!Number.isFinite(id)) {
-      continue;
-    }
-    row.id = id;
-
-    const existing = await env.MIRROR_DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<RowRecord>();
-    if (existing) {
-      const incomingChangedAt = row.updated_at ?? row.created_at;
-      const existingChangedAt = existing.updated_at ?? existing.created_at;
-      const cmp = compareTimestamp(incomingChangedAt, existingChangedAt);
-      if (cmp < 0) {
-        skipped += 1;
-        conflicts.push({
-          id,
-          winner: "remote",
-          incoming_updated_at: incomingChangedAt,
-          remote_updated_at: existingChangedAt,
-        });
+  try {
+    for (const rawRow of rows) {
+      const row = sanitizeRow(rawRow, schema);
+      const id = Number(row.id);
+      if (!Number.isFinite(id)) {
         continue;
       }
-      if (cmp > 0) {
-        conflicts.push({
-          id,
-          winner: "incoming",
-          incoming_updated_at: incomingChangedAt,
-          remote_updated_at: existingChangedAt,
-        });
-      }
-    }
+      row.id = id;
 
-    const values = schema.columns.map((column) => row[column] ?? null);
-    await env.MIRROR_DB.prepare(upsertSql).bind(...values).run();
-    insertedOrUpdated += 1;
+      const existing = await env.MIRROR_DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<RowRecord>();
+      if (existing) {
+        const incomingChangedAt = row.updated_at ?? row.created_at;
+        const existingChangedAt = existing.updated_at ?? existing.created_at;
+        const cmp = compareTimestamp(incomingChangedAt, existingChangedAt);
+        if (cmp < 0) {
+          skipped += 1;
+          conflicts.push({
+            id,
+            winner: "remote",
+            incoming_updated_at: incomingChangedAt,
+            remote_updated_at: existingChangedAt,
+          });
+          continue;
+        }
+        if (cmp > 0) {
+          conflicts.push({
+            id,
+            winner: "incoming",
+            incoming_updated_at: incomingChangedAt,
+            remote_updated_at: existingChangedAt,
+          });
+        }
+      }
+
+      const values = schema.columns.map((column) => row[column] ?? null);
+      const runResult = await env.MIRROR_DB.prepare(upsertSql).bind(...values).run();
+      if (runResult.success === false) {
+        return json(
+          {
+            error: "d1_upsert_failed",
+            table,
+            id,
+            detail: runResult.error ?? runResult.meta ?? runResult,
+          },
+          500,
+        );
+      }
+      insertedOrUpdated += 1;
+    }
+  } catch (err) {
+    return json(
+      {
+        error: "d1_push_exception",
+        table,
+        detail: String(err),
+      },
+      500,
+    );
   }
 
   return json({

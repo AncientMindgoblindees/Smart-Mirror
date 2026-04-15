@@ -5,6 +5,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Type
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import or_
@@ -60,7 +61,8 @@ class D1SyncService:
         self._load_checkpoints()
         self._stop_event.clear()
         self._task = asyncio.create_task(self._sync_loop())
-        logger.info("D1 sync loop started")
+        host = urlparse(self.worker_url).netloc or self.worker_url
+        logger.info("D1 sync loop started (worker host: %s)", host)
 
     async def stop(self) -> None:
         task = self._task
@@ -212,10 +214,16 @@ class D1SyncService:
         headers = {"Authorization": f"Bearer {self.sync_token}"}
         url = f"{self.worker_url}{path}"
         try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 return await client.request(method, url, params=params, json=json_body, headers=headers)
         except Exception as exc:
-            logger.warning("D1 %s %s request exception: %s", method, path, exc)
+            logger.warning(
+                "D1 %s %s request exception (%s): %s",
+                method,
+                path,
+                urlparse(url).netloc or "?",
+                exc,
+            )
             return None
 
     def _serialize_row(self, table_name: str, row: Any) -> Dict[str, Any]:

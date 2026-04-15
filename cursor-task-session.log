@@ -78,6 +78,16 @@ Commands: npx tsc --noEmit (both UIs), npm run build (Smart-Mirror/ui) — OK.
 2026-04-14 — Clothing upload path (user: why POST to mirror not Cloudinary)
 - Explained: companion `uploadClothingImage` POSTs to FastAPI `/api/clothing/{id}/images`; backend `upload_clothing_image_file` writes temp file then `cloud_storage_service.upload_clothing_image` (Cloudinary Python SDK). Browser never holds Cloudinary secret; 500 is server-side after receipt.
 
+2026-04-14 — Worker hardening (token + D1 errors)
+- `deploy/worker/src/index.ts`: Bearer = full remainder after `Bearer ` + trim; compare trimmed secret (avoids subtle 401s). Pull `all` / push `run` check `success === false` and return 500 JSON with `d1_query_failed` / `d1_upsert_failed`; try/catch push. `wrangler deploy --dry-run` OK.
+
+2026-04-14 — D1 failing on Pi (diagnostics)
+- Added `GET /api/health/d1` (httpx → worker `GET /health` with bearer); explains 401 token mismatch vs worker secret.
+- `d1_sync`: `follow_redirects=True`, timeout 30s, log worker host on loop start + host in request exception.
+- `.env.example`: D1 URL must be base only; `curl /api/health/d1` note.
+
+2026-04-14 — User ask: view logs on Pi — `scripts/start-mirror-app.sh` appends backend to `data/mirror-backend.log`, cloudflared loop to `data/mirror-tunnel.log` under repo root; `tail -f` those files.
+
 2026-04-14 — User ask: rewrite SQL DB on Pi — default SQLite `data/mirror.db` (or `MIRROR_DB_PATH`); stop backend, remove `.db` (+ `-wal`/`-shm` if present), restart → `create_all` recreates empty schema.
 
 2026-04-14 — D1 sync: duplicate widget rows + clothing metadata
