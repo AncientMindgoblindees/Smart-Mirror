@@ -46,6 +46,10 @@ Commands: npx tsc --noEmit (both UIs), npm run build (Smart-Mirror/ui) — OK.
 - Commands: git branch --show-current (react-iteration); git diff main...HEAD --stat (167 files, +17466/-884).
 - Deliverable: comprehensive PR title + markdown body for GitHub/GitLab (features, backend/UI/deploy/docs, setup, testing notes).
 
+2026-04-12 — smart-mirror-config: App.tsx mirror HTTP default uses getMirrorHttpBase() when localStorage empty (production → https://mirror.smart-mirror.tech), not same-host :8002 when app is on smart-mirror.tech Pages. npx tsc --noEmit OK.
+
+2026-04-12 — setup-cloudflare-tunnel.sh: multiple --hostname for same SERVICE_URL (apex + mirror → FastAPI); start-mirror-app.sh hint updated.
+
 2026-04-12 — Split-host UI: VITE_BACKEND_ORIGIN
 - Added ui/src/config/backendOrigin.ts (getApiBase, getWebSocketUrl); mirrorApi + useMirrorInput + useControlEvents use it.
 - ui/.env.example and ui/README note for mirror.* vs apex API. `npx tsc --noEmit` + `npm run build` in ui — OK.
@@ -70,3 +74,13 @@ Commands: npx tsc --noEmit (both UIs), npm run build (Smart-Mirror/ui) — OK.
 
 2026-04-12 — Weather debug instrumentation removed (user confirmed fix)
 - Reverted `backend/api/weather.py`, `backend/services/weather_api.py`, `ui/src/api/mirrorApi.ts` to production-only code.
+
+2026-04-14 — Clothing upload path (user: why POST to mirror not Cloudinary)
+- Explained: companion `uploadClothingImage` POSTs to FastAPI `/api/clothing/{id}/images`; backend `upload_clothing_image_file` writes temp file then `cloud_storage_service.upload_clothing_image` (Cloudinary Python SDK). Browser never holds Cloudinary secret; 500 is server-side after receipt.
+
+2026-04-14 — User ask: rewrite SQL DB on Pi — default SQLite `data/mirror.db` (or `MIRROR_DB_PATH`); stop backend, remove `.db` (+ `-wal`/`-shm` if present), restart → `create_all` recreates empty schema.
+
+2026-04-14 — D1 sync: duplicate widget rows + clothing metadata
+- Root cause (widgets): `replace_widgets` only matched by DB `id`; companion/mirror clients often PUT without `id` (GET race, cache-only load) → new SQLite row per save → multiple D1 rows per `widget_id` (upsert is by `id` only).
+- Fix: `backend/services/widget_service.py` `replace_widgets` — fall back to match by `widget_id` (canonical lowest existing `id`), then delete initial rows not in `seen_ids`.
+- Clothing: D1 only mirrors what exists on the Pi SQLite after successful upload + `d1_sync` push (`clothing_item` then `clothing_image`); failed Cloudinary/missing `CLOUDINARY_URL` means no `clothing_image` rows to sync. Check Pi logs for `D1 push failed for clothing_image`. Old duplicate `widget_config` rows in D1 may remain until manually removed or DB reset.
