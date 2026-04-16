@@ -6,6 +6,8 @@ import {
   logoutProvider,
   cancelLogin,
 } from '@/api/mirrorApi';
+import { useIntervalWhen } from '@/hooks/infra/useIntervalWhen';
+import { useWindowEvent } from '@/hooks/infra/useWindowEvent';
 
 export type ProviderStatus = {
   provider: string;
@@ -57,9 +59,9 @@ export function useAuthState() {
 
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, 10_000);
-    return () => clearInterval(id);
   }, [refresh]);
+
+  useIntervalWhen(() => void refresh(), 10_000, true);
 
   const startPollForProvider = useCallback(
     (provider: string, intervalSec: number) => {
@@ -105,14 +107,9 @@ export function useAuthState() {
     [startPollForProvider],
   );
 
-  useEffect(() => {
-    const onDeviceCode = (e: Event) => {
-      const ce = e as CustomEvent<Record<string, unknown>>;
-      applyDeviceCodePayload(ce.detail ?? {});
-    };
-    window.addEventListener('mirror:oauth_device_code', onDeviceCode);
-    return () => window.removeEventListener('mirror:oauth_device_code', onDeviceCode);
-  }, [applyDeviceCodePayload]);
+  useWindowEvent<Record<string, unknown>>('mirror:oauth_device_code', (detail) => {
+    applyDeviceCodePayload(detail ?? {});
+  });
 
   const initiateLogin = useCallback(
     async (provider: string) => {

@@ -17,6 +17,9 @@ import { useMirrorInput } from '@/hooks/useMirrorInput';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
 import { useParallax } from '@/hooks/useParallax';
 import { TooltipProvider } from '@/components/ui/Tooltip';
+import { useMirrorDisplayMode } from './hooks/useMirrorDisplayMode';
+import { useAuthActions } from './hooks/useAuthActions';
+import { useOverlayState } from './hooks/useOverlayState';
 import './mirror-app.css';
 
 function readDevPanelInitial(): boolean {
@@ -31,16 +34,12 @@ function readDevPanelInitial(): boolean {
 
 export default function MirrorApp() {
   const { widgets, setWidgets } = useWidgetPersistence();
-  const [showCamera, setShowCamera] = useState(false);
-  const [cameraCountdown, setCameraCountdown] = useState<number | null>(null);
-  const [displayDimmed, setDisplayDimmed] = useState(false);
-  const [sleepMode, setSleepMode] = useState(false);
+  const { showCamera, setShowCamera, cameraCountdown, setCameraCountdown } = useOverlayState();
   const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
-  const sleepModeRef = useRef(false);
-  sleepModeRef.current = sleepMode;
+  const { sleepMode, sleepModeRef, toggleDim, toggleSleep } = useMirrorDisplayMode();
 
   const {
     connectionState,
@@ -56,20 +55,16 @@ export default function MirrorApp() {
     disconnectProvider,
     refresh: refreshAuth,
   } = useAuthState();
-  const [authError, setAuthError] = useState<string | null>(null);
+  const {
+    authError,
+    signInGoogle,
+    signInMicrosoft,
+    disconnectGoogle,
+    disconnectMicrosoft,
+  } = useAuthActions(initiateLogin, disconnectProvider);
 
   useTimeOfDay();
   const parallax = useParallax();
-
-  useEffect(() => {
-    document.body.classList.toggle('mirror-display-dimmed', displayDimmed && !sleepMode);
-    return () => document.body.classList.remove('mirror-display-dimmed');
-  }, [displayDimmed, sleepMode]);
-
-  useEffect(() => {
-    document.body.classList.toggle('mirror-sleep', sleepMode);
-    return () => document.body.classList.remove('mirror-sleep');
-  }, [sleepMode]);
 
   useEffect(() => {
     const el = canvasRef.current;
@@ -91,14 +86,6 @@ export default function MirrorApp() {
       }
       return next;
     });
-  }, []);
-
-  const toggleDim = useCallback(() => {
-    setDisplayDimmed((d) => !d);
-  }, []);
-
-  const toggleSleep = useCallback(() => {
-    setSleepMode((s) => !s);
   }, []);
 
   useMirrorInput({
@@ -167,30 +154,10 @@ export default function MirrorApp() {
           authProviders={authProviders}
           authPending={Boolean(pendingAuth)}
           authError={authError}
-          onSignInGoogle={async () => {
-            setAuthError(null);
-            try {
-              await initiateLogin('google');
-            } catch (e) {
-              setAuthError(e instanceof Error ? e.message : 'Google sign-in failed');
-            }
-          }}
-          onSignInMicrosoft={async () => {
-            setAuthError(null);
-            try {
-              await initiateLogin('microsoft');
-            } catch (e) {
-              setAuthError(e instanceof Error ? e.message : 'Microsoft sign-in failed');
-            }
-          }}
-          onDisconnectGoogle={async () => {
-            setAuthError(null);
-            await disconnectProvider('google');
-          }}
-          onDisconnectMicrosoft={async () => {
-            setAuthError(null);
-            await disconnectProvider('microsoft');
-          }}
+          onSignInGoogle={signInGoogle}
+          onSignInMicrosoft={signInMicrosoft}
+          onDisconnectGoogle={disconnectGoogle}
+          onDisconnectMicrosoft={disconnectMicrosoft}
         />
       )}
 

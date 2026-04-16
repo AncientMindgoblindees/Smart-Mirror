@@ -4,26 +4,12 @@ import { Droplets, Wind, Thermometer, MapPin } from 'lucide-react';
 import type { WidgetConfig } from '../types';
 import { inferWidgetSizePreset } from '../sizePresets';
 import { WeatherIcon } from './WeatherIcons';
-import type { WeatherCondition } from './WeatherIcons';
 import { getWeather } from '@/api/mirrorApi';
 import type { WeatherSnapshotOut } from '@/api/backendTypes';
+import { asWeatherCondition, tempSuffix } from '@/api/transforms/weather';
 import './weather-widget.css';
 
 const POLL_MS = 5 * 60 * 1000;
-
-function asCondition(s: string): WeatherCondition {
-  const allowed: WeatherCondition[] = [
-    'sunny',
-    'partly-cloudy',
-    'cloudy',
-    'rain',
-    'thunderstorm',
-    'snow',
-    'fog',
-    'wind',
-  ];
-  return (allowed.includes(s as WeatherCondition) ? s : 'partly-cloudy') as WeatherCondition;
-}
 
 function tempBarStyle(
   low: number,
@@ -59,10 +45,6 @@ function fetchErrorSnapshot(message: string): WeatherSnapshotOut {
   };
 }
 
-function tempSuffix(unit: WeatherSnapshotOut['temperature_unit']): string {
-  return unit === 'fahrenheit' ? '°F' : '°C';
-}
-
 export const WeatherWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
   const preset = config.freeform.sizePreset ?? inferWidgetSizePreset(config.freeform.width, config.freeform.height);
   const isLarge = preset === 'large' && config.freeform.height >= 26;
@@ -92,7 +74,7 @@ export const WeatherWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ c
     return () => window.clearInterval(id);
   }, [load]);
 
-  const forecast = snap?.forecast ?? [];
+  const forecast = useMemo(() => snap?.forecast ?? [], [snap?.forecast]);
   const globalMin = useMemo(
     () => (forecast.length ? Math.min(...forecast.map((f) => f.low)) : 0),
     [forecast]
@@ -148,7 +130,7 @@ export const WeatherWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ c
     );
   }
 
-  const mainCondition = asCondition(snap.condition);
+  const mainCondition = asWeatherCondition(snap.condition);
   const deg = tempSuffix(snap.temperature_unit);
 
   return (
@@ -233,7 +215,7 @@ export const WeatherWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ c
                 transition={{ delay: 0.5 + i * 0.1, type: 'spring', stiffness: 200, damping: 25 }}
               >
                 <span className="forecast-day">{f.weekday}</span>
-                <WeatherIcon condition={asCondition(f.condition)} size={24} />
+                <WeatherIcon condition={asWeatherCondition(f.condition)} size={24} />
                 <div className="forecast-range">
                   <span className="high">
                     {Math.round(f.high)}

@@ -1,18 +1,21 @@
-import React, { useMemo } from 'react';
-import { AnimatePresence, motion, type Transition } from 'motion/react';
+import React from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useParallax } from '@/hooks/useParallax';
 import { MorphingSquare } from '@/components/ui/morphing-square';
 import type { ConnectionState, ConnectionPhase } from './useDeviceConnectionState';
+import {
+  overlayBloomFilter,
+  overlayGlowColor,
+  useConnectionOverlayViewModel,
+} from './connectionOverlayViewModel';
+import { SPRING_SNAPPY, SPRING_SOFT } from './motionPresets';
 import './device-connection-overlay.css';
 
 /* ── sound hook stub (optional integration point) ─── */
 export type SoundCueCallback = (phase: ConnectionPhase) => void;
 
 /* ── shared motion helpers ──────────────────────────── */
-
-const SPRING_SOFT: Transition = { type: 'spring', stiffness: 120, damping: 18, mass: 1 };
-const SPRING_SNAPPY: Transition = { type: 'spring', stiffness: 300, damping: 24, mass: 0.8 };
 
 const PARTICLES = Array.from({ length: 18 }, (_, i) => ({
   id: i,
@@ -228,36 +231,6 @@ function DataStream({ active }: { active: boolean }) {
   );
 }
 
-/* ── glow colour per phase ──────────────────────────── */
-
-function glowColor(phase: ConnectionPhase): string {
-  switch (phase) {
-    case 'searching':
-      return 'rgba(94, 225, 217, 0.12)';
-    case 'connecting':
-      return 'rgba(94, 225, 217, 0.22)';
-    case 'connected':
-      return 'rgba(52, 211, 153, 0.25)';
-    case 'error':
-      return 'rgba(245, 166, 35, 0.18)';
-    default:
-      return 'rgba(94, 225, 217, 0.06)';
-  }
-}
-
-function bloomFilter(phase: ConnectionPhase): string {
-  switch (phase) {
-    case 'connecting':
-      return 'blur(1px) brightness(1.05)';
-    case 'connected':
-      return 'blur(0px) brightness(1.15)';
-    case 'error':
-      return 'blur(0px) brightness(1)';
-    default:
-      return 'blur(0px) brightness(1)';
-  }
-}
-
 /* ── status pill (non-blocking indicator for idle/error) ── */
 
 function ConnectionStatusPill({
@@ -328,33 +301,7 @@ export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
     onSoundCue?.(phase);
   }, [phase, onSoundCue]);
 
-  const statusLabel = useMemo(() => {
-    switch (phase) {
-      case 'idle': return 'Awaiting Connection';
-      case 'searching': return 'Scanning for device';
-      case 'connecting': return 'Establishing link';
-      case 'connected': return 'Connected';
-      case 'disconnecting': return 'Disconnecting';
-      case 'error': return 'Connection failed';
-      default: return 'Waiting for device';
-    }
-  }, [phase]);
-
-  const statusDetail = useMemo(() => {
-    if (isIdle) {
-      return 'Connect a companion device to continue';
-    }
-    if (isConnecting && state.pendingDevice?.displayName) {
-      return state.pendingDevice.displayName;
-    }
-    if (isConnected && state.activeDevice?.displayName) {
-      return state.activeDevice.displayName;
-    }
-    if (isError && state.errorMessage) {
-      return state.errorMessage;
-    }
-    return null;
-  }, [phase, state, isIdle, isConnecting, isConnected, isError]);
+  const { statusLabel, statusDetail } = useConnectionOverlayViewModel(phase, state);
 
   const focusRingBorder = isError
     ? 'rgba(245, 166, 35, 0.35)'
@@ -390,7 +337,7 @@ export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           style={
-            { '--conn-glow-color': glowColor(phase) } as React.CSSProperties
+            { '--conn-glow-color': overlayGlowColor(phase) } as React.CSSProperties
           }
         >
           {/* Far parallax layer: ambient glow + particles */}
@@ -399,7 +346,7 @@ export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
             animate={{
               x: pxFar,
               y: pyFar,
-              filter: bloomFilter(phase),
+                filter: overlayBloomFilter(phase),
             }}
             transition={SPRING_SOFT}
           >
