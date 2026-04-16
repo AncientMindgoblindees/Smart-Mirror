@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from backend.schemas.camera import CameraCaptureRequest, CameraStatusOut
 from backend.services.camera_service import camera_state
@@ -21,3 +21,12 @@ async def post_camera_capture(req: CameraCaptureRequest) -> dict:
     if not result.get("accepted"):
         raise HTTPException(status_code=409, detail=result.get("reason", "capture busy"))
     return {"status": "accepted"}
+
+
+@router.get("/preview.jpg", summary="Fetch a live preview frame from Pi camera")
+async def get_camera_preview() -> Response:
+    try:
+        data = await camera_state.capture_preview_bytes()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"Preview unavailable: {exc}") from exc
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})

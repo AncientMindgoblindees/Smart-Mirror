@@ -1,63 +1,28 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { getCameraErrorMessage } from './cameraErrors';
+import { useEffect, useMemo, useState } from 'react';
 
-export type CameraStreamState =
-  | { status: 'loading' }
-  | { status: 'live'; stream: MediaStream }
-  | { status: 'error'; message: string };
+import { getApiBase } from '@/config/backendOrigin';
 
 export function useCameraStream() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [camera, setCamera] = useState<CameraStreamState>({ status: 'loading' });
+  const [tick, setTick] = useState(0);
+  const [hasError, setHasError] = useState(false);
+  const [loadedOnce, setLoadedOnce] = useState(false);
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          setCamera({
-            status: 'error',
-            message: 'Camera API not available (use HTTPS or localhost).',
-          });
-          return;
-        }
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'user' } },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        setCamera({ status: 'live', stream });
-      } catch (e) {
-        if (!cancelled) setCamera({ status: 'error', message: getCameraErrorMessage(e) });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (stream) stream.getTracks().forEach((t) => t.stop());
-    };
+    const id = window.setInterval(() => setTick((v) => v + 1), 450);
+    return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el || camera.status !== 'live') return;
-    el.srcObject = camera.stream;
-    void el.play().catch(() => {});
-    return () => {
-      el.srcObject = null;
-    };
-  }, [camera]);
+  const frameSrc = useMemo(() => `${getApiBase()}/camera/preview.jpg?t=${tick}`, [tick]);
 
-  const stopTracks = useCallback(() => {
-    if (camera.status === 'live') {
-      camera.stream.getTracks().forEach((t) => t.stop());
-    }
-  }, [camera]);
-
-  return { camera, videoRef, stopTracks };
+  return {
+    frameSrc,
+    status: hasError ? 'error' : loadedOnce ? 'live' : 'loading',
+    markLoaded: () => {
+      setLoadedOnce(true);
+      setHasError(false);
+    },
+    markError: () => {
+      setHasError(true);
+    },
+  } as const;
 }

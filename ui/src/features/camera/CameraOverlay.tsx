@@ -7,36 +7,32 @@ export const CameraOverlay: React.FC<{ onClose: () => void; countdown?: number |
   onClose,
   countdown = null,
 }) => {
-  const { camera, videoRef, stopTracks } = useCameraStream();
-
-  const handleClose = () => {
-    stopTracks();
-    onClose();
-  };
+  const { frameSrc, status, markLoaded, markError } = useCameraStream();
 
   return (
     <div className="camera-overlay">
       <div className="camera-stage">
         <div className="camera-video-wrap">
-          <video
-            ref={videoRef}
+          <img
+            src={frameSrc}
             className="camera-video"
-            playsInline
-            muted
-            autoPlay
             aria-label="Camera preview"
+            onLoad={markLoaded}
+            onError={markError}
           />
-          {camera.status === 'loading' && (
+          {status === 'loading' && (
             <div className="camera-status camera-status-loading">Starting camera…</div>
           )}
-          {camera.status === 'error' && (
-            <div className="camera-status camera-status-error">{camera.message}</div>
+          {status === 'error' && (
+            <div className="camera-status camera-status-error">
+              Mirror camera preview unavailable.
+            </div>
           )}
           {typeof countdown === 'number' && countdown > 0 && (
             <div className="camera-status camera-status-loading">Capture in {countdown}…</div>
           )}
         </div>
-        <button type="button" className="camera-exit-btn" onClick={handleClose}>
+        <button type="button" className="camera-exit-btn" onClick={onClose}>
           <X size={20} /> Exit Camera
         </button>
       </div>

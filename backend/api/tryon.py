@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -10,7 +10,12 @@ from backend.database.models import PersonImage
 from backend.database.session import get_db
 from backend.schemas.person_image import PersonImageRead, PersonImageUpdate
 from backend.schemas.tryon_outfit import OutfitGenerateRequest, OutfitGenerateResponse
-from backend.services import leonardo_service, person_image_service, tryon_outfit_service
+from backend.services import (
+    leonardo_service,
+    person_image_service,
+    tryon_outfit_service,
+    tryon_result_service,
+)
 from backend.services.realtime import control_registry
 
 router = APIRouter(prefix="/tryon", tags=["tryon"])
@@ -31,6 +36,12 @@ def get_person_image_file_by_id(image_id: int, db: Session = Depends(get_db)):
     if record is None:
         raise HTTPException(status_code=404, detail="Person image not found")
     path = person_image_service.resolve_safe_image_path(record)
+    return FileResponse(path)
+
+
+@router.get("/generated/{filename}", name="get_generated_tryon_image")
+def get_generated_tryon_image(filename: str):
+    path = tryon_result_service.resolve_generated_image_path(filename)
     return FileResponse(path)
 
 
@@ -83,6 +94,7 @@ def delete_person_image(image_id: int, db: Session = Depends(get_db)):
 @router.post("/outfit-generate", response_model=OutfitGenerateResponse)
 async def outfit_generate(
     payload: OutfitGenerateRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     if not config.LEONARDO_API_KEY.strip():
@@ -99,12 +111,16 @@ async def outfit_generate(
     except leonardo_service.LeonardoError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    local_path = await asyncio.to_thread(tryon_result_service.store_remote_result, gen_id, url)
+    await asyncio.to_thread(tryon_result_service.prune_generated_results)
+    local_url = tryon_result_service.build_generated_image_url(request, local_path.name)
+
     await control_registry.broadcast(
         {
             "type": "TRYON_RESULT",
             "version": 2,
             "timestamp": datetime.utcnow().isoformat() + "Z",
-            "payload": {"generation_id": gen_id, "image_url": url},
+            "payload": {"generation_id": gen_id, "image_url": local_url},
         }
     )
-    return OutfitGenerateResponse(status="complete", generation_id=gen_id, image_url=url)
+    return OutfitGenerateResponse(status="complete", generation_id=gen_id, image_url=local_url)

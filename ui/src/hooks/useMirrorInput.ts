@@ -16,6 +16,7 @@ export type MirrorInputActions = {
   toggleDim: () => void;
   toggleSleep: () => void;
   toggleDevPanel: () => void;
+  dismissTryOnOverlay: () => void;
   getSleepMode: () => boolean;
 };
 
@@ -49,6 +50,10 @@ export function useMirrorInput(actions: MirrorInputActions) {
         e.preventDefault();
         ref.current.toggleSleep();
         return;
+      }
+      if (k === 'x' || k === 'X') {
+        e.preventDefault();
+        ref.current.dismissTryOnOverlay();
       }
     };
 
@@ -88,6 +93,9 @@ export function useMirrorInput(actions: MirrorInputActions) {
               break;
             case 'toggle_sleep':
               ref.current.toggleSleep();
+              break;
+            case 'dismiss_tryon':
+              ref.current.dismissTryOnOverlay();
               break;
             default:
               break;

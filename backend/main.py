@@ -75,6 +75,9 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _startup() -> None:  # type: ignore[func-returns-value]
+        from backend.services.camera_service import camera_state
+        await camera_state.reset_person_image_state()
+
         if os.getenv("ENABLE_GPIO", "false").lower() == "true":
             gpio_service.start_button_service()
 
@@ -86,6 +89,8 @@ def create_app() -> FastAPI:
     @app.on_event("shutdown")
     async def _shutdown() -> None:  # type: ignore[func-returns-value]
         gpio_service.stop_button_service()
+        from backend.services.camera_service import camera_state
+        await camera_state.shutdown()
 
         from backend.services.sync_service import sync_manager
         sync_manager.stop_all()

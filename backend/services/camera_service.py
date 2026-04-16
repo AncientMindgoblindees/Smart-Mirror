@@ -1,8 +1,18 @@
 import asyncio
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+from sqlalchemy.orm import Session
+
+from backend.database.session import SessionLocal
+from backend.services.person_image_service import (
+    LATEST_PERSON_IMAGE_PATH,
+    clear_person_images,
+    set_latest_person_image_path,
+)
+from backend.services.pi_camera import pi_camera
 from backend.services.realtime import control_registry
 
 
@@ -68,6 +78,12 @@ class CameraCaptureState:
                 await asyncio.sleep(1)
 
             capture_id = f"capture-{uuid4().hex[:12]}"
+            await asyncio.to_thread(pi_camera.capture_to, Path(LATEST_PERSON_IMAGE_PATH))
+            db: Session = SessionLocal()
+            try:
+                set_latest_person_image_path(db, Path(LATEST_PERSON_IMAGE_PATH), status="captured")
+            finally:
+                db.close()
             self.last_capture_id = capture_id
             self.last_capture_at = datetime.utcnow()
             self.countdown_remaining = 0
@@ -97,6 +113,34 @@ class CameraCaptureState:
             self.active = False
             self.countdown_remaining = 0
             self._task = None
+
+    async def capture_preview_bytes(self) -> bytes:
+        return await asyncio.to_thread(pi_camera.capture_preview_bytes)
+
+    def clear_state(self) -> None:
+        self.active = False
+        self.countdown_remaining = 0
+        self.last_capture_id = None
+        self.last_capture_at = None
+
+    async def reset_person_image_state(self) -> None:
+        db: Session = SessionLocal()
+        try:
+            clear_person_images(db)
+        finally:
+            db.close()
+        self.clear_state()
+
+    async def shutdown(self) -> None:
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except BaseException:
+                pass
+        self._task = None
+        self.clear_state()
+        await asyncio.to_thread(pi_camera.close)
 
 
 camera_state = CameraCaptureState()

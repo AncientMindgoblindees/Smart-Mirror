@@ -10,3 +10,4 @@ cryptography
 
 cloudinary
 python-dotenv
+picamera2

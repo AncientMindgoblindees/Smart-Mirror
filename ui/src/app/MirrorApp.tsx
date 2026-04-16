@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { X } from 'lucide-react';
 import {
   WidgetFrame,
   useWidgetPersistence,
@@ -36,6 +37,7 @@ export default function MirrorApp() {
   const { widgets, setWidgets } = useWidgetPersistence();
   const { showCamera, setShowCamera, cameraCountdown, setCameraCountdown } = useOverlayState();
   const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
+  const [fullScreenTryOnUrl, setFullScreenTryOnUrl] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
@@ -92,6 +94,7 @@ export default function MirrorApp() {
     toggleDim,
     toggleSleep,
     toggleDevPanel,
+    dismissTryOnOverlay: () => setFullScreenTryOnUrl(null),
     getSleepMode: () => sleepModeRef.current,
   });
 
@@ -106,9 +109,13 @@ export default function MirrorApp() {
     },
     onCameraCaptured: () => {
       setCameraCountdown(null);
+      setShowCamera(false);
     },
     onCameraError: () => {
       setCameraCountdown(null);
+    },
+    onTryOnResult: (payload) => {
+      if (payload.image_url) setFullScreenTryOnUrl(payload.image_url);
     },
     ...deviceHandlers,
     onAuthStateChanged: () => {
@@ -170,6 +177,36 @@ export default function MirrorApp() {
           }}
         />
       )}
+
+      <AnimatePresence>
+        {fullScreenTryOnUrl && (
+          <motion.div
+            className="camera-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="camera-stage">
+              <div className="camera-video-wrap">
+                <img
+                  src={fullScreenTryOnUrl}
+                  className="camera-video"
+                  aria-label="Full-screen virtual try-on result"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <button
+                type="button"
+                className="camera-exit-btn"
+                onClick={() => setFullScreenTryOnUrl(null)}
+              >
+                <X size={20} /> Hide Try-On
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <DeviceConnectionOverlay
         state={connectionState}
