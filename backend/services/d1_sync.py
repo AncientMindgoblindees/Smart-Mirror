@@ -4,11 +4,11 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 from urllib.parse import urlparse
 
 import httpx
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from backend.database.models import (
 )
 from backend.database.session import SessionLocal
 from backend.services.d1_conflict import remote_wins
+from backend.services.datetime_utils import parse_datetime_utc_naive, to_iso_utc_z
 from backend.services.realtime import control_registry
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,9 @@ class D1SyncService:
         self.interval_sec = max(5, int(config.D1_SYNC_INTERVAL_SEC))
         self._task: Optional[asyncio.Task[Any]] = None
         self._stop_event = asyncio.Event()
-        self._last_pull: Dict[str, str] = {table: PULL_FLOOR_ISO for table in self.TABLE_ORDER}
+        self._remote_cursor_iso: Dict[str, str] = {table: PULL_FLOOR_ISO for table in self.TABLE_ORDER}
+        self._remote_cursor_id: Dict[str, int] = {table: 0 for table in self.TABLE_ORDER}
+        self._force_full_sync_pending = False
 
     @property
     def enabled(self) -> bool:
@@ -59,6 +62,10 @@ class D1SyncService:
         if self._task and not self._task.done():
             return
         self._load_checkpoints()
+        self._force_full_sync_pending = bool(config.D1_FORCE_FULL_SYNC)
+        if self._force_full_sync_pending:
+            self._reset_remote_cursors_to_floor()
+            logger.info("D1_FORCE_FULL_SYNC: remote pull cursors reset to floor; next sync will re-pull from D1")
         self._stop_event.clear()
         self._task = asyncio.create_task(self._sync_loop())
         host = urlparse(self.worker_url).netloc or self.worker_url
@@ -82,9 +89,12 @@ class D1SyncService:
         widget_changed = False
         for table in self.TABLE_ORDER:
             await self.push(table)
-            changed = await self.pull(table)
+            want_full = self._force_full_sync_pending or await self._detect_drift_full_pull(table)
+            changed = await self.pull(table, full=want_full)
             if table == "widget_config" and changed:
                 widget_changed = True
+        if self._force_full_sync_pending:
+            self._force_full_sync_pending = False
         if widget_changed:
             await control_registry.broadcast(
                 {
@@ -137,26 +147,39 @@ class D1SyncService:
             )
             return
 
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+        accepted_ids_raw = body.get("accepted_ids") if isinstance(body, dict) else None
+        if isinstance(accepted_ids_raw, list):
+            accepted_ids = [int(v) for v in accepted_ids_raw if isinstance(v, (int, float, str)) and str(v).isdigit()]
+        else:
+            accepted_ids = [int(row["id"]) for row in payload_rows if row.get("id") is not None]
+
         now = datetime.utcnow()
-        ids = [int(row["id"]) for row in payload_rows if row.get("id") is not None]
-        if not ids:
+        if not accepted_ids:
             return
 
         db = SessionLocal()
         try:
-            rows = db.query(model).filter(model.id.in_(ids)).all()
+            rows = db.query(model).filter(model.id.in_(accepted_ids)).all()
             for row in rows:
                 row.synced_at = now
             db.commit()
         finally:
             db.close()
 
-    async def pull(self, table_name: str) -> bool:
-        since = self._last_pull.get(table_name, PULL_FLOOR_ISO)
+    async def pull(self, table_name: str, *, full: bool = False) -> bool:
+        since = self._remote_cursor_iso.get(table_name, PULL_FLOOR_ISO)
+        since_id = self._remote_cursor_id.get(table_name, 0)
+        params: Dict[str, str] = {"table": table_name, "since": since, "since_id": str(since_id)}
+        if full:
+            params["full"] = "1"
         response = await self._request(
             "GET",
             "/sync/pull",
-            params={"table": table_name, "since": since},
+            params=params,
             json_body=None,
         )
         if response is None:
@@ -179,12 +202,230 @@ class D1SyncService:
 
         rows = data.get("rows", [])
         if not isinstance(rows, list) or not rows:
-            self._set_last_pull(table_name, datetime.now(timezone.utc))
+            self._touch_last_pull_at(table_name)
             return False
 
         changed = self._merge_remote_rows(table_name, rows)
-        self._set_last_pull(table_name, datetime.now(timezone.utc))
+        max_cursor_iso, max_cursor_id = self._max_remote_cursor(table_name, rows)
+        if max_cursor_iso is None:
+            # Must advance cursor after a non-empty pull or incremental pulls repeat forever.
+            max_cursor_iso = self._utc_now_iso_z()
+            max_cursor_id = 0
+            logger.warning(
+                "D1 pull had rows but no parseable order column for %s; using wall-clock cursor fallback",
+                table_name,
+            )
+        self._persist_remote_cursor(table_name, max_cursor_iso, max_cursor_id)
+        self._touch_last_pull_at(table_name)
         return changed
+
+    async def _detect_drift_full_pull(self, table_name: str) -> bool:
+        stats = await self._fetch_table_stats(table_name)
+        if stats is None:
+            return False
+        local = self._local_table_stats(table_name)
+        if local is None:
+            return False
+        remote_count = int(stats.get("count", 0))
+        local_count = local["count"]
+        if remote_count > local_count:
+            logger.info(
+                "D1 drift: remote count %s > local %s for %s; full pull",
+                remote_count,
+                local_count,
+                table_name,
+            )
+            return True
+        remote_max = stats.get("max_order")
+        local_max = local["max_order"]
+        if remote_max is not None and local_max is not None:
+            if self._remote_order_ts_ms(remote_max) > self._local_order_ts_ms(local_max):
+                logger.info("D1 drift: remote max_order newer than local for %s; full pull", table_name)
+                return True
+        return False
+
+    async def _fetch_table_stats(self, table_name: str) -> Optional[Dict[str, Any]]:
+        response = await self._request(
+            "GET",
+            "/sync/stats",
+            params={"table": table_name},
+            json_body=None,
+        )
+        if response is None or response.status_code >= 400:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        if not isinstance(data, dict) or data.get("error"):
+            return None
+        return data
+
+    def _local_table_stats(self, table_name: str) -> Optional[Dict[str, Any]]:
+        model = self.TABLE_MODELS[table_name]
+        order_attr = self._order_column_attr(model, table_name)
+        db = SessionLocal()
+        try:
+            count = int(db.query(func.count(model.id)).scalar() or 0)
+            max_val = db.query(func.max(order_attr)).scalar()
+            return {"count": count, "max_order": max_val}
+        finally:
+            db.close()
+
+    @staticmethod
+    def _order_column_attr(model: Type[Any], table_name: str) -> Any:
+        if table_name == "clothing_image":
+            return model.created_at
+        return model.updated_at
+
+    @classmethod
+    def _local_order_ts_ms(cls, value: Any) -> float:
+        if value is None:
+            return float("-inf")
+        dt = parse_datetime_utc_naive(value)
+        if dt is None:
+            return float("-inf")
+        return float(dt.replace(tzinfo=timezone.utc).timestamp()) * 1000.0
+
+    @staticmethod
+    def _utc_now_iso_z() -> str:
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    @classmethod
+    def _remote_order_ts_ms(cls, value: Any) -> float:
+        if value is None:
+            return float("-inf")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            v = float(value)
+            # Seconds since epoch vs milliseconds (D1 JSON is usually ISO strings).
+            return v if v > 1e12 else v * 1000.0
+        text = str(value).strip()
+        if not text:
+            return float("-inf")
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        elif " " in text and "T" not in text.split(" ", 1)[0]:
+            # SQLite / D1 often returns "YYYY-MM-DD HH:MM:SS" (Python < 3.11 fromisoformat needs T).
+            text = text.replace(" ", "T", 1)
+        if "+" not in text and not text.endswith("Z"):
+            text = text + "+00:00"
+        try:
+            return datetime.fromisoformat(text).timestamp() * 1000.0
+        except ValueError:
+            return float("-inf")
+
+    def _reset_remote_cursors_to_floor(self) -> None:
+        for table in self.TABLE_ORDER:
+            self._remote_cursor_iso[table] = PULL_FLOOR_ISO
+            self._remote_cursor_id[table] = 0
+        db = SessionLocal()
+        try:
+            for table in self.TABLE_ORDER:
+                row = db.query(D1SyncCheckpoint).filter_by(table_name=table).first()
+                if row is None:
+                    row = D1SyncCheckpoint(
+                        table_name=table,
+                        last_pull_at=datetime.utcnow(),
+                        last_remote_cursor=None,
+                    )
+                    db.add(row)
+                else:
+                    row.last_remote_cursor = None
+                    row.last_remote_cursor_id = None
+            db.commit()
+        except OperationalError:
+            db.rollback()
+            logger.warning("D1 checkpoint table missing; skipping cursor reset persist")
+        finally:
+            db.close()
+
+    def _persist_remote_cursor(self, table_name: str, cursor_iso: str, cursor_id: int) -> None:
+        self._remote_cursor_iso[table_name] = cursor_iso
+        self._remote_cursor_id[table_name] = cursor_id
+        db = SessionLocal()
+        try:
+            row = db.query(D1SyncCheckpoint).filter_by(table_name=table_name).first()
+            if row is None:
+                row = D1SyncCheckpoint(
+                    table_name=table_name,
+                    last_pull_at=datetime.utcnow(),
+                    last_remote_cursor=cursor_iso,
+                    last_remote_cursor_id=cursor_id,
+                )
+                db.add(row)
+            else:
+                row.last_remote_cursor = cursor_iso
+                row.last_remote_cursor_id = cursor_id
+            db.commit()
+        except OperationalError:
+            db.rollback()
+            logger.warning("D1 checkpoint table missing; skipping remote cursor persist")
+        finally:
+            db.close()
+
+    def _touch_last_pull_at(self, table_name: str) -> None:
+        now = datetime.utcnow()
+        db = SessionLocal()
+        try:
+            row = db.query(D1SyncCheckpoint).filter_by(table_name=table_name).first()
+            if row is None:
+                row = D1SyncCheckpoint(
+                    table_name=table_name,
+                    last_pull_at=now,
+                    last_remote_cursor=None,
+                )
+                db.add(row)
+            else:
+                row.last_pull_at = now
+            db.commit()
+        except OperationalError:
+            db.rollback()
+            logger.warning("D1 checkpoint table missing; skipping last_pull_at touch")
+        finally:
+            db.close()
+
+    def _max_remote_cursor(self, table_name: str, rows: List[Dict[str, Any]]) -> Tuple[Optional[str], int]:
+        best_iso: Optional[str] = None
+        best_id = 0
+        best_ms = float("-inf")
+        for incoming in rows:
+            row_id = incoming.get("id")
+            if row_id is None:
+                continue
+            try:
+                row_id_int = int(row_id)
+            except (TypeError, ValueError):
+                continue
+            raw = self._order_value_raw_from_payload(table_name, incoming)
+            if raw is None:
+                continue
+            ms = self._remote_order_ts_ms(raw)
+            if ms > best_ms or (ms == best_ms and row_id_int > best_id):
+                best_ms = ms
+                best_iso = self._normalize_remote_cursor_iso(raw)
+                best_id = row_id_int
+        return best_iso, best_id
+
+    @staticmethod
+    def _order_value_raw_from_payload(table_name: str, incoming: Dict[str, Any]) -> Any:
+        if table_name == "clothing_image":
+            return incoming.get("created_at")
+        return incoming.get("updated_at") or incoming.get("created_at")
+
+    @classmethod
+    def _normalize_remote_cursor_iso(cls, raw: Any) -> str:
+        if isinstance(raw, datetime):
+            return to_iso_utc_z(raw) or PULL_FLOOR_ISO
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            ms = cls._remote_order_ts_ms(raw)
+            if ms == float("-inf"):
+                return PULL_FLOOR_ISO
+            return (
+                datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z")
+            )
+        return to_iso_utc_z(raw) or str(raw).strip() or PULL_FLOOR_ISO
 
     async def _sync_loop(self) -> None:
         backoff = BACKOFF_INITIAL_SEC
@@ -350,25 +591,11 @@ class D1SyncService:
 
     @staticmethod
     def _parse_datetime(value: Any) -> Optional[datetime]:
-        if value is None:
-            return None
-        if isinstance(value, datetime):
-            return value
-        text = str(value).strip()
-        if not text:
-            return None
-        if text.endswith("Z"):
-            text = text[:-1] + "+00:00"
-        try:
-            return datetime.fromisoformat(text).replace(tzinfo=None)
-        except ValueError:
-            return None
+        return parse_datetime_utc_naive(value)
 
     @staticmethod
     def _to_iso(value: Optional[datetime]) -> Optional[str]:
-        if value is None:
-            return None
-        return value.replace(tzinfo=timezone.utc).isoformat()
+        return to_iso_utc_z(value)
 
     def _load_checkpoints(self) -> None:
         db = SessionLocal()
@@ -379,32 +606,18 @@ class D1SyncService:
                 .all()
             )
             for row in rows:
-                self._last_pull[row.table_name] = self._to_iso(row.last_pull_at) or PULL_FLOOR_ISO
+                self._remote_cursor_iso[row.table_name] = self._checkpoint_cursor_iso(row)
+                self._remote_cursor_id[row.table_name] = int(row.last_remote_cursor_id or 0)
         except OperationalError:
             logger.warning("D1 checkpoint table missing; using in-memory pull checkpoints")
         finally:
             db.close()
 
-    def _set_last_pull(self, table_name: str, pulled_at: datetime) -> None:
-        pulled_utc = pulled_at.astimezone(timezone.utc)
-        self._last_pull[table_name] = pulled_utc.isoformat()
-        db = SessionLocal()
-        try:
-            row = db.query(D1SyncCheckpoint).filter_by(table_name=table_name).first()
-            if row is None:
-                row = D1SyncCheckpoint(
-                    table_name=table_name,
-                    last_pull_at=pulled_utc.replace(tzinfo=None),
-                )
-                db.add(row)
-            else:
-                row.last_pull_at = pulled_utc.replace(tzinfo=None)
-            db.commit()
-        except OperationalError:
-            db.rollback()
-            logger.warning("D1 checkpoint table missing; skipping persisted checkpoint write")
-        finally:
-            db.close()
+    @staticmethod
+    def _checkpoint_cursor_iso(row: D1SyncCheckpoint) -> str:
+        if isinstance(row.last_remote_cursor, str) and row.last_remote_cursor.strip():
+            return row.last_remote_cursor.strip()
+        return PULL_FLOOR_ISO
 
 
 d1_sync_service = D1SyncService()

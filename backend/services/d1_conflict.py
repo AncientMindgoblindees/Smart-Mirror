@@ -4,28 +4,16 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from backend.services.datetime_utils import parse_datetime_utc_naive
+
 logger = logging.getLogger(__name__)
 
 
 def _parse_dt(value: object) -> Optional[datetime]:
-    if value is None:
+    parsed = parse_datetime_utc_naive(value)
+    if parsed is None:
         return None
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
-    text = str(value).strip()
-    if not text:
-        return None
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
-    except ValueError:
-        return None
+    return parsed.replace(tzinfo=timezone.utc)
 
 
 def remote_wins(

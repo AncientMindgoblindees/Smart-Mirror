@@ -6,8 +6,9 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from backend import config
+from backend.database.models import PersonImage
 from backend.database.session import get_db
-from backend.schemas.person_image import PersonImageRead
+from backend.schemas.person_image import PersonImageRead, PersonImageUpdate
 from backend.schemas.tryon_outfit import OutfitGenerateRequest, OutfitGenerateResponse
 from backend.services import leonardo_service, person_image_service, tryon_outfit_service
 from backend.services.realtime import control_registry
@@ -39,6 +40,44 @@ async def upload_person_image(
     db: Session = Depends(get_db),
 ):
     return await person_image_service.save_person_image(db, file)
+
+
+@router.get("/person-image", response_model=list[PersonImageRead])
+def list_person_images(db: Session = Depends(get_db)):
+    rows = db.query(PersonImage).order_by(PersonImage.created_at.desc(), PersonImage.id.desc()).all()
+    return rows
+
+
+@router.patch("/person-image/{image_id}", response_model=PersonImageRead)
+def patch_person_image(
+    image_id: int,
+    payload: PersonImageUpdate,
+    db: Session = Depends(get_db),
+):
+    row = person_image_service.get_person_image_by_id(db, image_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Person image not found")
+    updates = payload.model_dump(exclude_unset=True)
+    for k, v in updates.items():
+        setattr(row, k, v)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/person-image/{image_id}")
+def delete_person_image(image_id: int, db: Session = Depends(get_db)):
+    row = person_image_service.get_person_image_by_id(db, image_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Person image not found")
+    path = person_image_service.resolve_safe_image_path(row)
+    db.delete(row)
+    db.commit()
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return {"status": "ok", "deleted_id": image_id}
 
 
 @router.post("/outfit-generate", response_model=OutfitGenerateResponse)

@@ -44,11 +44,14 @@ export function useWidgetPersistence(): {
   const lastPutSig = useRef('');
   const lastServerFingerprintRef = useRef('');
   const pendingPushTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const putInFlightRef = useRef(false);
 
   const mergeServerRows = useCallback((list: WidgetConfigOut[], opts?: { force?: boolean }) => {
     const deduped = dedupeWidgetRows(list);
     const fp = serverLayoutFingerprint(deduped);
     if (!opts?.force && fp === lastServerFingerprintRef.current) return;
+    // Avoid reverting local edits while a push is queued or in-flight.
+    if (!opts?.force && (putInFlightRef.current || pendingPushTimerRef.current !== undefined)) return;
     lastServerFingerprintRef.current = fp;
     if (pendingPushTimerRef.current !== undefined) {
       clearTimeout(pendingPushTimerRef.current);
@@ -63,8 +66,9 @@ export function useWidgetPersistence(): {
     try {
       const list = await getWidgets();
       mergeServerRows(list);
+      setServerConnected(true);
     } catch {
-      /* ignore */
+      setServerConnected(false);
     }
   }, [mergeServerRows]);
 
@@ -103,6 +107,14 @@ export function useWidgetPersistence(): {
   }, [mergeServerRows]);
 
   useEffect(() => {
+    if (!ready || serverConnected) return;
+    const id = window.setInterval(() => {
+      void pullWidgetsFromServer();
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [ready, serverConnected, pullWidgetsFromServer]);
+
+  useEffect(() => {
     if (!ready) return;
     localStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify({ widgets }));
   }, [widgets, ready]);
@@ -115,10 +127,15 @@ export function useWidgetPersistence(): {
     pendingPushTimerRef.current = window.setTimeout(async () => {
       pendingPushTimerRef.current = undefined;
       try {
+        putInFlightRef.current = true;
         const out = await putWidgets(widgets.map(widgetToBackend));
         mergeServerRows(out, { force: true });
+        setServerConnected(true);
       } catch (e) {
         console.warn('Failed to sync widgets to server', e);
+        setServerConnected(false);
+      } finally {
+        putInFlightRef.current = false;
       }
     }, 250);
     return () => {

@@ -129,6 +129,10 @@ class D1SyncCheckpoint(Base):
 
     table_name = Column(String(64), primary_key=True)
     last_pull_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    # Max remote order column (updated_at or created_at) merged from D1; used as incremental pull cursor.
+    last_remote_cursor = Column(String(128), nullable=True, default=None)
+    # Tie-breaker row id when multiple rows share the same order timestamp.
+    last_remote_cursor_id = Column(Integer, nullable=True, default=None)
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )

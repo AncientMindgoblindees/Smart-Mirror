@@ -43,6 +43,8 @@ def get_sqlalchemy_database_url() -> str:
 D1_WORKER_URL = os.getenv("D1_WORKER_URL", "")
 MIRROR_SYNC_TOKEN = os.getenv("MIRROR_SYNC_TOKEN", "")
 D1_SYNC_INTERVAL_SEC = int(os.getenv("D1_SYNC_INTERVAL_SEC", "600"))
+# One-shot: reset D1 pull cursors to epoch and full-sync on next startup (then disable in .env).
+D1_FORCE_FULL_SYNC = os.getenv("D1_FORCE_FULL_SYNC", "").lower() in ("1", "true", "yes")
 
 LEONARDO_API_KEY = os.getenv("LEONARDO_API_KEY", "")
 LEONARDO_API_BASE = os.getenv("LEONARDO_API_BASE", "https://cloud.leonardo.ai/api/rest/v1")

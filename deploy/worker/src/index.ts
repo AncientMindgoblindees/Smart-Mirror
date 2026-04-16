@@ -143,17 +143,31 @@ function compareTimestamp(a: unknown, b: unknown): number {
   return aTs - bTs;
 }
 
-async function pullRows(env: Env, table: string, since: string): Promise<Response> {
+async function pullRows(
+  env: Env,
+  table: string,
+  since: string,
+  full: boolean,
+  sinceId: number,
+): Promise<Response> {
   const schema = TABLE_SCHEMAS[table];
   if (!schema) {
     return json({ error: "invalid table" }, 400);
   }
-  const sinceTs = Date.parse(since);
-  if (!Number.isFinite(sinceTs)) {
-    return json({ error: "invalid since timestamp" }, 400);
+  if (!full) {
+    const sinceTs = Date.parse(since);
+    if (!Number.isFinite(sinceTs)) {
+      return json({ error: "invalid since timestamp" }, 400);
+    }
   }
-  const query = `SELECT * FROM ${table} WHERE ${schema.orderColumn} > ? ORDER BY ${schema.orderColumn} ASC`;
-  const result = await env.MIRROR_DB.prepare(query).bind(new Date(sinceTs).toISOString()).all<RowRecord>();
+  const query = full
+    ? `SELECT * FROM ${table} ORDER BY ${schema.orderColumn} ASC, id ASC`
+    : `SELECT * FROM ${table} WHERE ${schema.orderColumn} > ? OR (${schema.orderColumn} = ? AND id > ?) ORDER BY ${schema.orderColumn} ASC, id ASC`;
+  const result = full
+    ? await env.MIRROR_DB.prepare(query).all<RowRecord>()
+    : await env.MIRROR_DB.prepare(query)
+        .bind(new Date(Date.parse(since)).toISOString(), new Date(Date.parse(since)).toISOString(), sinceId)
+        .all<RowRecord>();
   if (result.success === false) {
     return json(
       {
@@ -166,7 +180,25 @@ async function pullRows(env: Env, table: string, since: string): Promise<Respons
   }
   return json({
     table,
+    full,
     rows: result.results ?? [],
+  });
+}
+
+async function tableStats(env: Env, table: string): Promise<Response> {
+  const schema = TABLE_SCHEMAS[table];
+  if (!schema) {
+    return json({ error: "invalid table" }, 400);
+  }
+  const countRow = await env.MIRROR_DB.prepare(`SELECT COUNT(*) as n FROM ${table}`).first<{ n: number }>();
+  const maxRow = await env.MIRROR_DB.prepare(`SELECT MAX(${schema.orderColumn}) as m FROM ${table}`).first<{
+    m: unknown;
+  }>();
+  return json({
+    table,
+    count: Number(countRow?.n ?? 0),
+    max_order: maxRow?.m ?? null,
+    order_column: schema.orderColumn,
   });
 }
 
@@ -188,6 +220,8 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
   const upsertSql = `INSERT INTO ${table} (${schema.columns.join(", ")}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updates}`;
 
   const conflicts: Array<Record<string, unknown>> = [];
+  const accepted_ids: number[] = [];
+  const skipped_ids: number[] = [];
   let insertedOrUpdated = 0;
   let skipped = 0;
 
@@ -207,6 +241,7 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
         const cmp = compareTimestamp(incomingChangedAt, existingChangedAt);
         if (cmp < 0) {
           skipped += 1;
+          skipped_ids.push(id);
           conflicts.push({
             id,
             winner: "remote",
@@ -239,6 +274,7 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
         );
       }
       insertedOrUpdated += 1;
+      accepted_ids.push(id);
     }
   } catch (err) {
     return json(
@@ -255,6 +291,8 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
     table,
     accepted: insertedOrUpdated,
     skipped,
+    accepted_ids,
+    skipped_ids,
     conflicts,
   });
 }
@@ -270,10 +308,18 @@ export default {
       return json({ status: "ok" });
     }
 
+    if (request.method === "GET" && url.pathname === "/sync/stats") {
+      const table = String(url.searchParams.get("table") || "");
+      return tableStats(env, table);
+    }
+
     if (request.method === "GET" && url.pathname === "/sync/pull") {
       const table = String(url.searchParams.get("table") || "");
       const since = String(url.searchParams.get("since") || "");
-      return pullRows(env, table, since);
+      const sinceId = Number(url.searchParams.get("since_id") || "0");
+      const fullParam = url.searchParams.get("full");
+      const full = fullParam === "1" || fullParam === "true";
+      return pullRows(env, table, since, full, Number.isFinite(sinceId) ? sinceId : 0);
     }
 
     if (request.method === "POST" && url.pathname === "/sync/push") {

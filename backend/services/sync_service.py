@@ -152,9 +152,7 @@ class SyncManager:
         db: Session = SessionLocal()
         now = datetime.now(timezone.utc)
         try:
-            seen_ids = set()
             for item in items:
-                seen_ids.add(item.external_id)
                 row = (
                     db.query(CalendarEvent)
                     .filter_by(provider=provider_name, external_id=item.external_id)
