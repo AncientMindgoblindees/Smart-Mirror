@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, Type
@@ -57,6 +58,7 @@ class D1SyncService:
         self._remote_cursor_iso: Dict[str, str] = {table: PULL_FLOOR_ISO for table in self.TABLE_ORDER}
         self._remote_cursor_id: Dict[str, int] = {table: 0 for table in self.TABLE_ORDER}
         self._force_full_sync_pending = False
+        self._local_readonly_mode = False
 
     @property
     def enabled(self) -> bool:
@@ -67,6 +69,12 @@ class D1SyncService:
             logger.info("D1 sync disabled (missing D1_WORKER_URL or MIRROR_SYNC_TOKEN)")
             return
         if self._task and not self._task.done():
+            return
+        if _sqlite_local_db_is_readonly():
+            self._local_readonly_mode = True
+            logger.warning(
+                "D1 sync disabled [code=LOCAL_DB_READONLY_AT_STARTUP]: local SQLite database is readonly"
+            )
             return
         self._load_checkpoints()
         self._force_full_sync_pending = bool(config.D1_FORCE_FULL_SYNC)
@@ -93,6 +101,8 @@ class D1SyncService:
         logger.info("D1 sync loop stopped")
 
     async def sync_all(self) -> None:
+        if self._local_readonly_mode:
+            return
         widget_changed = False
         for table in self.TABLE_ORDER:
             await self.push(table)
@@ -184,8 +194,9 @@ class D1SyncService:
             except Exception as exc:
                 db.rollback()
                 if _is_sqlite_readonly_error(exc):
+                    self._local_readonly_mode = True
                     logger.warning(
-                        "D1 push local marker skipped for %s [code=LOCAL_DB_READONLY_SYNCED_AT_SKIPPED, accepted_remote=%d, pushed_rows=%d]",
+                        "D1 push local marker skipped for %s [code=LOCAL_DB_READONLY_SYNCED_AT_SKIPPED, accepted_remote=%d, pushed_rows=%d]; disabling D1 sync until restart",
                         table_name,
                         len(accepted_ids),
                         len(payload_rows),
@@ -600,8 +611,9 @@ class D1SyncService:
             except Exception as exc:
                 db.rollback()
                 if _is_sqlite_readonly_error(exc):
+                    self._local_readonly_mode = True
                     logger.warning(
-                        "D1 pull merge could not write %s because local DB is readonly; skipping apply for this cycle",
+                        "D1 pull merge could not write %s because local DB is readonly [code=LOCAL_DB_READONLY_PULL_MERGE]; disabling D1 sync until restart",
                         table_name,
                     )
                     return MergeOutcome(changed=False, persisted=False)
@@ -708,3 +720,14 @@ def _classify_sqlite_operational_error(exc: Exception) -> str:
     if "readonly" in msg:
         return "readonly"
     return "other"
+
+
+def _sqlite_local_db_is_readonly() -> bool:
+    db_url = config.get_sqlalchemy_database_url()
+    if not db_url.startswith("sqlite"):
+        return False
+    db_path = config.get_db_path()
+    if db_path.exists():
+        return not os.access(db_path, os.W_OK)
+    parent = db_path.parent
+    return not os.access(parent, os.W_OK)

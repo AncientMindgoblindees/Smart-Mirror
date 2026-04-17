@@ -131,3 +131,27 @@
   - `python -m compileall backend/services/pi_camera.py backend/api/camera.py backend/services/d1_sync.py` (pass)
   - `npm --prefix ui run build` (pass)
   - `npm exec wrangler deploy --dry-run` in `deploy/worker` (pass)
+
+## 2026-04-17 — Follow-up fix for persistent Pi camera contention + readonly D1
+
+- **Runtime Evidence**: User logs still show `/dev/media*` holders (`pipewire`/`wireplumber`) and many duplicate `uvicorn backend.main:app` processes, plus persistent readonly D1 behavior.
+- **Action**:
+  - Added backend process singleton lock at app startup via new `backend/services/runtime_singleton.py`, wired in `backend/main.py` startup/shutdown.
+  - Updated `backend/services/d1_sync.py` to detect readonly local SQLite at startup and disable D1 sync loop (`LOCAL_DB_READONLY_AT_STARTUP`), and to disable sync for the process when readonly is encountered during marker/merge commits.
+  - Updated `scripts/stop-mirror-app.sh` to stop duplicate backend instances by default (`MIRROR_STOP_EXTRA_BACKENDS=1` default).
+  - Added explicit user-session media-service stop/start guidance in `README.md` for resolving PipeWire ownership conflicts.
+- **Commands**:
+  - `python -m compileall backend/main.py backend/services/runtime_singleton.py backend/services/d1_sync.py` (pass)
+  - `bash -n scripts/start-mirror-app.sh; bash -n scripts/stop-mirror-app.sh` (pass)
+  - `npm --prefix ui run build` (pass)
+
+## 2026-04-17 — PipeWire auto-release camera recovery
+
+- **Runtime Evidence**: After reboot, only one backend process remained, but camera still failed with `resource busy` while holders showed `pipewire` + `wireplumber` on `/dev/media*`.
+- **Action**:
+  - `backend/services/pi_camera.py`: added PipeWire-holder detection and optional automatic user-service stop (`systemctl --user stop pipewire pipewire-pulse wireplumber`) before retrying camera acquisition; error now includes `media_release=` outcome.
+  - `scripts/start-mirror-app.sh`: added optional pre-flight auto-stop of PipeWire services (`MIRROR_CAMERA_AUTO_STOP_PIPEWIRE`, default `1`).
+  - `README.md`: documented auto-stop toggle and behavior.
+- **Commands**:
+  - `python -m compileall backend/services/pi_camera.py` (pass)
+  - `bash -n scripts/start-mirror-app.sh` (pass)

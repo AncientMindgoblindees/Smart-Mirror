@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PID_FILE="${ROOT_DIR}/data/mirror-backend.pid"
 TUNNEL_PID_FILE="${ROOT_DIR}/data/mirror-tunnel.pid"
 PORT="${MIRROR_PORT:-8002}"
-MIRROR_STOP_EXTRA_BACKENDS="${MIRROR_STOP_EXTRA_BACKENDS:-0}"
+MIRROR_STOP_EXTRA_BACKENDS="${MIRROR_STOP_EXTRA_BACKENDS:-1}"
 
 terminate_pid() {
   local pid="$1"

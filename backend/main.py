@@ -29,6 +29,7 @@ from backend.api import (
     widgets,
 )
 from backend.database.session import init_db
+from backend.services.runtime_singleton import acquire_single_instance_or_raise, release_single_instance
 from hardware.gpio import service as gpio_service
 
 UI_DIST = BASE_DIR / "ui" / "dist"
@@ -75,6 +76,8 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _startup() -> None:  # type: ignore[func-returns-value]
+        acquire_single_instance_or_raise("smart-mirror-backend")
+
         from backend.services.camera_service import camera_state
         await camera_state.reset_person_image_state()
 
@@ -96,6 +99,7 @@ def create_app() -> FastAPI:
         sync_manager.stop_all()
         from backend.services.d1_sync import d1_sync_service
         await d1_sync_service.stop()
+        release_single_instance()
 
     return app
 

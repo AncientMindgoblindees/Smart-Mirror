@@ -124,6 +124,30 @@ ps -eo pid,cmd | grep -E 'uvicorn|backend.main|rpicam|libcamera' | grep -v grep
 systemctl --user status pipewire wireplumber
 ```
 
+If camera ownership conflicts persist and mirror is the only app that needs camera access in this session:
+
+```
+systemctl --user stop pipewire pipewire-pulse wireplumber
+```
+
+The launcher and camera service can do this automatically (default enabled):
+
+```
+MIRROR_CAMERA_AUTO_STOP_PIPEWIRE=1
+```
+
+Disable auto-stop if you want to keep desktop audio/camera services active while testing:
+
+```
+MIRROR_CAMERA_AUTO_STOP_PIPEWIRE=0
+```
+
+To restore desktop media services later:
+
+```
+systemctl --user start pipewire pipewire-pulse wireplumber
+```
+
 If you suspect duplicate mirror backends:
 
 ```

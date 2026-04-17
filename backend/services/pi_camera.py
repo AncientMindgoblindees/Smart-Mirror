@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import threading
@@ -81,12 +82,23 @@ class PiCameraAdapter:
         attempts = 4
         proc: subprocess.CompletedProcess[str] | None = None
         last_holders = holders_before
+        attempted_media_release = False
+        media_release_note = "none"
         for attempt in range(1, attempts + 1):
             proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if proc.returncode == 0:
                 return
             combined = f"{proc.stderr}\n{proc.stdout}".lower()
             busy = "resource busy" in combined or "pipeline handler in use" in combined or "failed to acquire camera" in combined
+            if busy and not attempted_media_release and _holders_include_pipewire(last_holders):
+                attempted_media_release = True
+                if _should_auto_stop_pipewire():
+                    stopped = _stop_pipewire_user_services()
+                    media_release_note = f"auto_stop_pipewire={stopped}"
+                else:
+                    media_release_note = "pipewire_detected_auto_stop_disabled"
+                time.sleep(0.25)
+                last_holders = _camera_holders_snapshot()
             if not busy or attempt == attempts:
                 break
             time.sleep(0.2 * (2 ** (attempt - 1)))
@@ -96,6 +108,7 @@ class PiCameraAdapter:
         raise PiCameraError(
             f"rpicam-still failed ({proc.returncode}): "
             f"{proc.stderr.strip() or proc.stdout.strip()} | "
+            f"media_release={media_release_note} | "
             f"{_format_holders('holders-before', holders_before)} | "
             f"{_format_holders('holders-retry', last_holders)} | "
             f"{_format_holders('holders-after', holders_after)}"
@@ -227,3 +240,19 @@ def _format_holders(prefix: str, snapshot: dict[str, str]) -> str:
         f"{prefix}.holders_backend={snapshot.get('backend', 'none')} "
         f"{prefix}.holders_other={snapshot.get('other', 'none')}"
     )
+
+
+def _holders_include_pipewire(snapshot: dict[str, str]) -> bool:
+    media = (snapshot.get("media") or "").lower()
+    return "pipewire" in media or "wireplumber" in media
+
+
+def _should_auto_stop_pipewire() -> bool:
+    flag = (os.getenv("MIRROR_CAMERA_AUTO_STOP_PIPEWIRE", "1") or "1").strip().lower()
+    return flag in {"1", "true", "yes", "on"}
+
+
+def _stop_pipewire_user_services() -> bool:
+    cmd = ["systemctl", "--user", "stop", "pipewire", "pipewire-pulse", "wireplumber"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return proc.returncode == 0

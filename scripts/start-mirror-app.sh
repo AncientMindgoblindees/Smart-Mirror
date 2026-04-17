@@ -12,6 +12,7 @@ TUNNEL_LOG_FILE="${ROOT_DIR}/data/mirror-tunnel.log"
 MIRROR_ENABLE_TUNNEL="${MIRROR_ENABLE_TUNNEL:-1}"
 MIRROR_TUNNEL_NAME="${MIRROR_TUNNEL_NAME:-smart-mirror-ui}"
 MIRROR_TUNNEL_RESTART_DELAY_SEC="${MIRROR_TUNNEL_RESTART_DELAY_SEC:-5}"
+MIRROR_CAMERA_AUTO_STOP_PIPEWIRE="${MIRROR_CAMERA_AUTO_STOP_PIPEWIRE:-1}"
 
 mkdir -p "${ROOT_DIR}/data"
 
@@ -84,6 +85,10 @@ if command -v flock >/dev/null 2>&1; then
 else
   # Fallback when flock is unavailable; keep previous behavior.
   start_backend_if_needed
+fi
+
+if [[ "${MIRROR_CAMERA_AUTO_STOP_PIPEWIRE}" == "1" ]] && command -v systemctl >/dev/null 2>&1; then
+  systemctl --user stop pipewire pipewire-pulse wireplumber >/dev/null 2>&1 || true
 fi
 
 echo "Waiting for backend: ${URL}"
