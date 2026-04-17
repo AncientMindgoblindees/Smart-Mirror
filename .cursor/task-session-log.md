@@ -71,3 +71,12 @@
   - `H8`: commit of local `synced_at` updates after push acceptance
   - `H9`: commit of merged remote rows during pull
 - **Verification**: Lint diagnostics clean for modified file.
+
+## 2026-04-17 — Follow-up from H7 and camera busy logs
+
+- **Runtime Evidence Received**:
+  - User observed `H7` for `widget_config`, `user_settings`, `clothing_item`, `clothing_image`.
+  - Camera CLI error reports `failed to acquire camera ... pipeline handler in use by another process`.
+- **Action (camera)**: Added interprocess lock around `rpicam-still` fallback in `backend/services/pi_camera.py` to serialize camera access across backend processes.
+- **Action (SQL instrumentation)**: Added commit-failure instrumentation for `PATCH /api/widgets/item/{id}` (`H11`) and `DELETE /api/widgets/item/{id}` (`H12`) in `backend/api/widgets.py`.
+- **Verification**: Lints clean for both touched files.

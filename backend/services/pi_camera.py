@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -96,7 +97,17 @@ class PiCameraAdapter:
             data={"bin": bin_name, "width": width, "height": height},
         )
         # endregion
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        with _interprocess_camera_lock():
+            # region agent log
+            write_debug_log(
+                run_id="post-fix",
+                hypothesis_id="H10",
+                location="backend/services/pi_camera.py:96",
+                message="acquired interprocess camera lock",
+                data={},
+            )
+            # endregion
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if proc.returncode != 0:
             raise PiCameraError(
                 f"rpicam-still failed ({proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}"
@@ -153,3 +164,20 @@ class PiCameraAdapter:
 
 
 pi_camera = PiCameraAdapter()
+
+
+@contextmanager
+def _interprocess_camera_lock():
+    lock_path = Path("/tmp/smart-mirror-camera.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as fh:
+        try:
+            import fcntl  # type: ignore
+        except Exception:
+            yield
+            return
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)

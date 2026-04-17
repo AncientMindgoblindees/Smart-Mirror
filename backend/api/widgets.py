@@ -85,9 +85,30 @@ def patch_widget_item(item_id: int, payload: WidgetConfigPatch, db: Session = De
     row = db.query(WidgetConfig).filter_by(id=item_id).first()
     if row is None:
         raise HTTPException(status_code=404, detail="Widget row not found")
+    # region agent log
+    write_debug_log(
+        run_id="baseline-2",
+        hypothesis_id="H11",
+        location="backend/api/widgets.py:89",
+        message="patch_widget_item requested",
+        data={"item_id": item_id},
+    )
+    # endregion
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(row, k, v)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        # region agent log
+        write_debug_log(
+            run_id="baseline-2",
+            hypothesis_id="H11",
+            location="backend/api/widgets.py:102",
+            message="patch_widget_item commit failed",
+            data={"item_id": item_id, "error_type": type(exc).__name__, "error": str(exc)},
+        )
+        # endregion
+        raise
     db.refresh(row)
     return row
 
@@ -98,6 +119,18 @@ def delete_widget_item(item_id: int, db: Session = Depends(get_db)) -> dict:
     if row is None:
         raise HTTPException(status_code=404, detail="Widget row not found")
     db.delete(row)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        # region agent log
+        write_debug_log(
+            run_id="baseline-2",
+            hypothesis_id="H12",
+            location="backend/api/widgets.py:127",
+            message="delete_widget_item commit failed",
+            data={"item_id": item_id, "error_type": type(exc).__name__, "error": str(exc)},
+        )
+        # endregion
+        raise
     return {"status": "ok", "deleted_id": item_id}
 
