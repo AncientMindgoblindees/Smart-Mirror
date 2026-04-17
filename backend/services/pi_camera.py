@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 import threading
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -21,8 +23,12 @@ class PiCameraAdapter:
     def __init__(self) -> None:
         self._camera = None
         self._lock = threading.Lock()
+        self._use_cli_fallback = False
+        self._camera_init_error = ""
 
     def _ensure_camera(self):
+        if self._use_cli_fallback:
+            return None
         if self._camera is not None:
             return self._camera
         try:
@@ -37,9 +43,9 @@ class PiCameraAdapter:
                 data={"error_type": type(exc).__name__, "error": str(exc)},
             )
             # endregion
-            raise PiCameraError(
-                "Pi camera library unavailable. Install Picamera2 on the Raspberry Pi."
-            ) from exc
+            self._use_cli_fallback = True
+            self._camera_init_error = str(exc)
+            return None
 
         try:
             cam = Picamera2()
@@ -58,9 +64,43 @@ class PiCameraAdapter:
                 data={"error_type": type(exc).__name__, "error": str(exc)},
             )
             # endregion
-            raise
+            self._use_cli_fallback = True
+            self._camera_init_error = str(exc)
+            return None
         self._camera = cam
         return cam
+
+    def _capture_with_rpicam_cli(self, target_path: Path, width: int, height: int) -> None:
+        bin_name = shutil.which("rpicam-still")
+        if not bin_name:
+            raise PiCameraError(
+                f"Picamera2 unavailable ({self._camera_init_error}) and rpicam-still not found on PATH."
+            )
+        cmd = [
+            bin_name,
+            "-n",
+            "--immediate",
+            "--width",
+            str(width),
+            "--height",
+            str(height),
+            "-o",
+            str(target_path),
+        ]
+        # region agent log
+        write_debug_log(
+            run_id="post-fix",
+            hypothesis_id="H5",
+            location="backend/services/pi_camera.py:84",
+            message="using rpicam-still fallback",
+            data={"bin": bin_name, "width": width, "height": height},
+        )
+        # endregion
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if proc.returncode != 0:
+            raise PiCameraError(
+                f"rpicam-still failed ({proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}"
+            )
 
     def capture_to(self, target_path: Path) -> None:
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,7 +113,14 @@ class PiCameraAdapter:
             ) as tmp:
                 tmp_path = Path(tmp.name)
             try:
-                cam.capture_file(str(tmp_path))
+                if cam is not None:
+                    cam.capture_file(str(tmp_path))
+                else:
+                    self._capture_with_rpicam_cli(
+                        tmp_path,
+                        config.PI_CAMERA_CAPTURE_WIDTH,
+                        config.PI_CAMERA_CAPTURE_HEIGHT,
+                    )
                 tmp_path.replace(target_path)
             finally:
                 if tmp_path.exists():
@@ -85,7 +132,10 @@ class PiCameraAdapter:
             with NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                 tmp_path = Path(tmp.name)
             try:
-                cam.capture_file(str(tmp_path))
+                if cam is not None:
+                    cam.capture_file(str(tmp_path))
+                else:
+                    self._capture_with_rpicam_cli(tmp_path, 640, 360)
                 return tmp_path.read_bytes()
             finally:
                 tmp_path.unlink(missing_ok=True)

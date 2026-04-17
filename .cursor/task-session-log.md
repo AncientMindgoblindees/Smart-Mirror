@@ -54,3 +54,20 @@
 - **Result**: Logs now capture request entry, DB path/permission state, commit success/failure, PiCamera import/init failures, capture start/failure, and frontend capture trigger payload.
 - **Errors + Handling**: Attempted to clear `debug-90a4c0.log` via delete tool; file did not exist yet (expected clean baseline).
 - **Verification**: Ran lint diagnostics on edited files; no new linter errors.
+
+## 2026-04-17 — Camera runtime fix from confirmed hypotheses
+
+- **Action**: Implemented evidence-based camera fallback in `backend/services/pi_camera.py`.
+- **Reasoning**: User-reported hypothesis hits (`H4`, `H5`) indicate backend camera failure at Picamera2 import/init/capture layers while Pi CLI camera tooling works.
+- **Change**: If Picamera2 import/init fails, backend now falls back to `rpicam-still` for both full captures and preview frames; retains existing debug logs and adds post-fix fallback usage logging.
+- **Verification**: Lint check on edited file passed.
+
+## 2026-04-17 — SQL readonly path instrumentation (D1 sync)
+
+- **Action**: Added new debug instrumentation in `backend/services/d1_sync.py`.
+- **Why**: No `H1-H3` logs appeared, indicating the readonly write likely occurs outside `/api/widgets` in background sync writes.
+- **Coverage**:
+  - `H7`: dirty row collection before push
+  - `H8`: commit of local `synced_at` updates after push acceptance
+  - `H9`: commit of merged remote rows during pull
+- **Verification**: Lint diagnostics clean for modified file.

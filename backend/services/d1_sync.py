@@ -23,6 +23,7 @@ from backend.database.models import (
 from backend.database.session import SessionLocal
 from backend.services.d1_conflict import remote_wins
 from backend.services.datetime_utils import parse_datetime_utc_naive, to_iso_utc_z
+from backend.services.debug_log import write_debug_log
 from backend.services.realtime import control_registry
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,15 @@ class D1SyncService:
                     .all()
                 )
             payload_rows = [self._serialize_row(table_name, row) for row in dirty_rows]
+            # region agent log
+            write_debug_log(
+                run_id="baseline-2",
+                hypothesis_id="H7",
+                location="backend/services/d1_sync.py:127",
+                message="d1 push collected dirty rows",
+                data={"table": table_name, "dirty_count": len(payload_rows)},
+            )
+            # endregion
         finally:
             db.close()
 
@@ -166,7 +176,33 @@ class D1SyncService:
             rows = db.query(model).filter(model.id.in_(accepted_ids)).all()
             for row in rows:
                 row.synced_at = now
-            db.commit()
+            try:
+                db.commit()
+                # region agent log
+                write_debug_log(
+                    run_id="baseline-2",
+                    hypothesis_id="H8",
+                    location="backend/services/d1_sync.py:179",
+                    message="d1 push synced_at commit success",
+                    data={"table": table_name, "accepted_ids_count": len(accepted_ids)},
+                )
+                # endregion
+            except Exception as exc:
+                # region agent log
+                write_debug_log(
+                    run_id="baseline-2",
+                    hypothesis_id="H8",
+                    location="backend/services/d1_sync.py:189",
+                    message="d1 push synced_at commit failed",
+                    data={
+                        "table": table_name,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                        "accepted_ids_count": len(accepted_ids),
+                    },
+                )
+                # endregion
+                raise
         finally:
             db.close()
 
@@ -538,7 +574,33 @@ class D1SyncService:
                     continue
                 self._apply_incoming_row(table_name, existing, incoming, now)
                 changed = True
-            db.commit()
+            try:
+                db.commit()
+                # region agent log
+                write_debug_log(
+                    run_id="baseline-2",
+                    hypothesis_id="H9",
+                    location="backend/services/d1_sync.py:570",
+                    message="d1 pull merge commit success",
+                    data={"table": table_name, "incoming_count": len(rows), "changed": changed},
+                )
+                # endregion
+            except Exception as exc:
+                # region agent log
+                write_debug_log(
+                    run_id="baseline-2",
+                    hypothesis_id="H9",
+                    location="backend/services/d1_sync.py:581",
+                    message="d1 pull merge commit failed",
+                    data={
+                        "table": table_name,
+                        "incoming_count": len(rows),
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                )
+                # endregion
+                raise
         finally:
             db.close()
         return changed
