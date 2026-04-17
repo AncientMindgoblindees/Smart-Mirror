@@ -88,27 +88,39 @@ class PiCameraAdapter:
             "-o",
             str(target_path),
         ]
-        # region agent log
-        write_debug_log(
-            run_id="post-fix",
-            hypothesis_id="H5",
-            location="backend/services/pi_camera.py:84",
-            message="using rpicam-still fallback",
-            data={"bin": bin_name, "width": width, "height": height},
-        )
-        # endregion
         with _interprocess_camera_lock():
+            holders_before = _camera_holders_snapshot()
             # region agent log
             write_debug_log(
-                run_id="post-fix",
-                hypothesis_id="H10",
-                location="backend/services/pi_camera.py:96",
-                message="acquired interprocess camera lock",
-                data={},
+                run_id="baseline-3",
+                hypothesis_id="H13",
+                location="backend/services/pi_camera.py:102",
+                message="using rpicam-still fallback",
+                data={
+                    "bin": bin_name,
+                    "width": width,
+                    "height": height,
+                    "holders_before": holders_before[:2000],
+                },
             )
             # endregion
             proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if proc.returncode != 0:
+            holders_after = _camera_holders_snapshot()
+            # region agent log
+            write_debug_log(
+                run_id="baseline-3",
+                hypothesis_id="H13",
+                location="backend/services/pi_camera.py:121",
+                message="rpicam-still failed",
+                data={
+                    "returncode": proc.returncode,
+                    "stderr": (proc.stderr or "")[:2000],
+                    "stdout": (proc.stdout or "")[:2000],
+                    "holders_after": holders_after[:2000],
+                },
+            )
+            # endregion
             raise PiCameraError(
                 f"rpicam-still failed ({proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}"
             )
@@ -181,3 +193,21 @@ def _interprocess_camera_lock():
             yield
         finally:
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+def _camera_holders_snapshot() -> str:
+    cmds = [
+        ["fuser", "-v", "/dev/video0"],
+        ["fuser", "-v", "/dev/video1"],
+        ["fuser", "-v", "/dev/media0"],
+        ["fuser", "-v", "/dev/media2"],
+    ]
+    out: list[str] = []
+    for cmd in cmds:
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        snippet = (proc.stdout or "") + (proc.stderr or "")
+        if snippet.strip():
+            out.append(f"{' '.join(cmd)} => {snippet.strip()}")
+    if not out:
+        return "no-holders-detected-or-fuser-unavailable"
+    return " | ".join(out)

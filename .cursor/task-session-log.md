@@ -80,3 +80,10 @@
 - **Action (camera)**: Added interprocess lock around `rpicam-still` fallback in `backend/services/pi_camera.py` to serialize camera access across backend processes.
 - **Action (SQL instrumentation)**: Added commit-failure instrumentation for `PATCH /api/widgets/item/{id}` (`H11`) and `DELETE /api/widgets/item/{id}` (`H12`) in `backend/api/widgets.py`.
 - **Verification**: Lints clean for both touched files.
+
+## 2026-04-17 — Camera busy holder instrumentation
+
+- **Runtime Evidence**: Camera still fails with `Pipeline handler in use by another process` even after interprocess lock.
+- **Action**: Added `H13` instrumentation in `backend/services/pi_camera.py` to capture device holder snapshots (`fuser -v /dev/video0,/dev/video1,/dev/media0,/dev/media2`) before fallback capture and again on failure.
+- **Decision**: Treat `H7` as expected activity signal (D1 table scan), not root-cause proof for SQL failure by itself.
+- **Verification**: Lint clean; debug log file still absent prior to next run.
