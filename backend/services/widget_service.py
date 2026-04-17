@@ -1,9 +1,12 @@
 from datetime import datetime
+import os
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 from backend.database.models import WidgetConfig
+from backend.config import get_db_path
+from backend.services.debug_log import write_debug_log
 from backend.schemas.mirror_sync_state import SyncStateInbound
 from backend.schemas.widget import WidgetConfigUpdate
 
@@ -108,6 +111,22 @@ def replace_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[Widg
     ``widget_id`` using the lowest existing row id as canonical so we update in
     place instead of inserting duplicate placements.
     """
+    db_path = get_db_path()
+    # region agent log
+    write_debug_log(
+        run_id="baseline",
+        hypothesis_id="H2",
+        location="backend/services/widget_service.py:115",
+        message="replace_widgets start",
+        data={
+            "db_path": str(db_path),
+            "db_exists": db_path.exists(),
+            "db_parent_writable": os.access(db_path.parent, os.W_OK),
+            "db_file_writable": (not db_path.exists()) or os.access(db_path, os.W_OK),
+            "incoming_count": len(configs),
+        },
+    )
+    # endregion
     initial_rows = list(db.query(WidgetConfig).all())
     existing_by_id = {w.id: w for w in initial_rows}
     existing_by_widget_id: dict[str, WidgetConfig] = {}
@@ -145,7 +164,28 @@ def replace_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[Widg
         if row.id not in seen_ids:
             db.delete(row)
 
-    db.commit()
+    try:
+        db.commit()
+        # region agent log
+        write_debug_log(
+            run_id="baseline",
+            hypothesis_id="H3",
+            location="backend/services/widget_service.py:168",
+            message="replace_widgets commit success",
+            data={"seen_ids_count": len(seen_ids)},
+        )
+        # endregion
+    except Exception as exc:
+        # region agent log
+        write_debug_log(
+            run_id="baseline",
+            hypothesis_id="H3",
+            location="backend/services/widget_service.py:178",
+            message="replace_widgets commit failed",
+            data={"error_type": type(exc).__name__, "error": str(exc)},
+        )
+        # endregion
+        raise
     return get_all_widgets(db)
 
 

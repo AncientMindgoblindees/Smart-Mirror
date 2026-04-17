@@ -39,3 +39,18 @@
 - **Commands**: `npm --prefix /workspace/ui install && npm --prefix /workspace/ui run build` (success); `python3 -m pip install -r /workspace/backend/requirements.txt`; FastAPI `TestClient` checks for `/ui/`, `/api/health`, `/api/widgets/` GET/PUT (all 200).
 - **Key Results**: UI build passes; keyboard mapping now includes `1`; tools panel includes layout cycle + mode label; transforms/backend seed include peripheral defaults and preserve persisted layouts.
 - **Note**: Validation used existing DB rows (`clock`, `sticky_note`, `weather`, `calendar`) so seeded defaults apply only on empty DB as designed.
+
+## 2026-04-17 — Runtime debug kickoff (SQLAlchemy + camera)
+
+- **Action**: Loaded required process skills (`using-superpowers`, `systematic-debugging`) and located task logging files.
+- **Commands**: Read skill files; searched for running log files and bug-related code paths with ripgrep.
+- **Result**: Identified likely hotspots: `backend/database/session.py`, widget/sync services, and camera flow files (`backend/api/camera.py`, `backend/services/camera_service.py`, `backend/services/pi_camera.py`, `ui/src/features/camera/useCameraStream.ts`).
+- **Decision**: Proceed with runtime instrumentation first (no speculative fix) per debug mode.
+
+## 2026-04-17 — Instrumentation added for evidence collection
+
+- **Action**: Added NDJSON debug instrumentation for SQL widget writes and camera capture flow.
+- **Commands**: Edited `backend/api/widgets.py`, `backend/services/widget_service.py`, `backend/services/camera_service.py`, `backend/services/pi_camera.py`, and `ui/src/api/mirrorApi.ts`; added helper `backend/services/debug_log.py`.
+- **Result**: Logs now capture request entry, DB path/permission state, commit success/failure, PiCamera import/init failures, capture start/failure, and frontend capture trigger payload.
+- **Errors + Handling**: Attempted to clear `debug-90a4c0.log` via delete tool; file did not exist yet (expected clean baseline).
+- **Verification**: Ran lint diagnostics on edited files; no new linter errors.

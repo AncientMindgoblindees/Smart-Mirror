@@ -49,6 +49,9 @@ export function getWeather(opts?: {
 }
 
 export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ status: string }> {
+  // #region agent log
+  fetch('http://127.0.0.1:7343/ingest/d1269763-0513-4ea2-bf38-ef399503aff1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'90a4c0'},body:JSON.stringify({sessionId:'90a4c0',runId:'baseline',hypothesisId:'H6',location:'ui/src/api/mirrorApi.ts:53',message:'triggerCameraCapture invoked',data:{countdown_seconds:req.countdown_seconds,source:req.source,has_session_id:!!req.session_id},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   return jsonRequest<{ status: string }>('/camera/capture', {
     method: 'POST',
     body: JSON.stringify(req),

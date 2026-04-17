@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from backend import config
+from backend.services.debug_log import write_debug_log
 
 
 class PiCameraError(RuntimeError):
@@ -27,16 +28,37 @@ class PiCameraAdapter:
         try:
             from picamera2 import Picamera2  # type: ignore
         except Exception as exc:  # noqa: BLE001
+            # region agent log
+            write_debug_log(
+                run_id="baseline",
+                hypothesis_id="H4",
+                location="backend/services/pi_camera.py:31",
+                message="picamera2 import failed",
+                data={"error_type": type(exc).__name__, "error": str(exc)},
+            )
+            # endregion
             raise PiCameraError(
                 "Pi camera library unavailable. Install Picamera2 on the Raspberry Pi."
             ) from exc
 
-        cam = Picamera2()
-        still_cfg = cam.create_still_configuration(
-            main={"size": (config.PI_CAMERA_CAPTURE_WIDTH, config.PI_CAMERA_CAPTURE_HEIGHT)}
-        )
-        cam.configure(still_cfg)
-        cam.start()
+        try:
+            cam = Picamera2()
+            still_cfg = cam.create_still_configuration(
+                main={"size": (config.PI_CAMERA_CAPTURE_WIDTH, config.PI_CAMERA_CAPTURE_HEIGHT)}
+            )
+            cam.configure(still_cfg)
+            cam.start()
+        except Exception as exc:  # noqa: BLE001
+            # region agent log
+            write_debug_log(
+                run_id="baseline",
+                hypothesis_id="H5",
+                location="backend/services/pi_camera.py:53",
+                message="camera init failed",
+                data={"error_type": type(exc).__name__, "error": str(exc)},
+            )
+            # endregion
+            raise
         self._camera = cam
         return cam
 

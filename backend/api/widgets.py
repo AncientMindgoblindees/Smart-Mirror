@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from backend.database.models import WidgetConfig
 from backend.database.session import get_db
 from backend.schemas.widget import WidgetConfigCreate, WidgetConfigOut, WidgetConfigPatch, WidgetConfigUpdate
+from backend.services.debug_log import write_debug_log
 from backend.services import widget_service
 
 
@@ -30,7 +31,28 @@ def put_widgets(
     payload: List[WidgetConfigUpdate],
     db: Session = Depends(get_db),
 ) -> List[WidgetConfigOut]:
-    return widget_service.replace_widgets(db, payload)
+    # region agent log
+    write_debug_log(
+        run_id="baseline",
+        hypothesis_id="H1",
+        location="backend/api/widgets.py:34",
+        message="put_widgets request received",
+        data={"payload_count": len(payload)},
+    )
+    # endregion
+    try:
+        return widget_service.replace_widgets(db, payload)
+    except Exception as exc:
+        # region agent log
+        write_debug_log(
+            run_id="baseline",
+            hypothesis_id="H1",
+            location="backend/api/widgets.py:45",
+            message="put_widgets failed",
+            data={"error_type": type(exc).__name__, "error": str(exc)},
+        )
+        # endregion
+        raise
 
 
 @router.get(
