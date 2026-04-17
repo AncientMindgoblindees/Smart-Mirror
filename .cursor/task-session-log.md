@@ -94,3 +94,24 @@
 - **Action (camera)**: Updated `backend/services/pi_camera.py` to explicitly stop/close partially-initialized Picamera2 handles on init failure before switching to CLI fallback (`H14`), preventing backend self-lock leaks.
 - **Action (sync evidence)**: Added `H15` logs in `backend/services/d1_sync.py` for early exits (`no dirty rows` and `no accepted ids`) to explain why later commit hypotheses may not fire.
 - **Verification**: Lints clean; session debug file absent locally before rerun.
+
+## 2026-04-17 — Applied fixes + removed instrumentation
+
+- **Action**: Removed temporary debug instrumentation from widgets API/service, camera service, D1 sync service, and frontend camera API call; deleted `backend/services/debug_log.py`.
+- **Camera fix kept**: `backend/services/pi_camera.py` now keeps interprocess lock + explicit cleanup of partial Picamera2 initialization and includes device-holder details directly in camera error text for diagnosis on Pi.
+- **DB sync fix kept**: `backend/services/d1_sync.py` now treats SQLite readonly write failures during sync marker updates/merge as non-fatal (`rollback` + warning + continue), preventing sync loop crashes from repeated `readonly` writes.
+- **Verification**: Lint diagnostics show no errors for all edited files.
+
+## 2026-04-17 — D1 sync + PiCamera reliability implementation
+
+- **Action**: Implemented plan items across backend sync, worker contracts, camera runtime handling, and UI camera error UX.
+- **Changes**:
+  - `backend/services/d1_sync.py`: merge persistence contract (`MergeOutcome`), prevent cursor advancement on failed merge, classify checkpoint write failures (missing table vs readonly vs other), protocol guard for missing `accepted_ids`, stronger readonly marker logging.
+  - `deploy/worker/src/index.ts`: structured `error_code/table/op` responses, strict D1 success checks in `/sync/stats`, invalid timestamp handling in push conflict logic.
+  - `backend/services/pi_camera.py`: expanded cross-process locking to all camera I/O paths, busy-aware bounded retries for CLI capture, richer holder snapshots (`fuser` + process command lines), Picamera2 capture/preview errors augmented with holder details.
+  - `ui/src/features/camera/*`, `ui/src/app/MirrorApp.tsx`, `ui/src/app/hooks/useOverlayState.ts`: camera error state surfaced in overlay and adaptive preview polling backoff on repeated errors.
+- **Commands**:
+  - `python -m compileall backend/services/d1_sync.py backend/services/pi_camera.py backend/services/camera_service.py` (pass)
+  - `npm --prefix ui run build` (pass)
+  - `npm --prefix ui run test -- src/features/camera/cameraErrors.test.ts` (pass)
+  - `npm exec wrangler deploy --dry-run` in `deploy/worker` (completed successfully and reported worker endpoint/version)

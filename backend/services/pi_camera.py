@@ -3,12 +3,12 @@ from __future__ import annotations
 import shutil
 import subprocess
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from backend import config
-from backend.services.debug_log import write_debug_log
 
 
 class PiCameraError(RuntimeError):
@@ -36,15 +36,6 @@ class PiCameraAdapter:
         try:
             from picamera2 import Picamera2  # type: ignore
         except Exception as exc:  # noqa: BLE001
-            # region agent log
-            write_debug_log(
-                run_id="baseline",
-                hypothesis_id="H4",
-                location="backend/services/pi_camera.py:31",
-                message="picamera2 import failed",
-                data={"error_type": type(exc).__name__, "error": str(exc)},
-            )
-            # endregion
             self._use_cli_fallback = True
             self._camera_init_error = str(exc)
             return None
@@ -63,15 +54,6 @@ class PiCameraAdapter:
                     cam.close()
                 except Exception:
                     pass
-            # region agent log
-            write_debug_log(
-                run_id="baseline-3",
-                hypothesis_id="H14",
-                location="backend/services/pi_camera.py:67",
-                message="camera init failed; cleaned up camera handle and enabling cli fallback",
-                data={"error_type": type(exc).__name__, "error": str(exc)},
-            )
-            # endregion
             self._use_cli_fallback = True
             self._camera_init_error = str(exc)
             return None
@@ -95,80 +77,76 @@ class PiCameraAdapter:
             "-o",
             str(target_path),
         ]
-        with _interprocess_camera_lock():
-            holders_before = _camera_holders_snapshot()
-            # region agent log
-            write_debug_log(
-                run_id="baseline-3",
-                hypothesis_id="H13",
-                location="backend/services/pi_camera.py:102",
-                message="using rpicam-still fallback",
-                data={
-                    "bin": bin_name,
-                    "width": width,
-                    "height": height,
-                    "holders_before": holders_before[:2000],
-                },
-            )
-            # endregion
+        holders_before = _camera_holders_snapshot()
+        attempts = 4
+        proc: subprocess.CompletedProcess[str] | None = None
+        last_holders = holders_before
+        for attempt in range(1, attempts + 1):
             proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if proc.returncode != 0:
-            holders_after = _camera_holders_snapshot()
-            # region agent log
-            write_debug_log(
-                run_id="baseline-3",
-                hypothesis_id="H13",
-                location="backend/services/pi_camera.py:121",
-                message="rpicam-still failed",
-                data={
-                    "returncode": proc.returncode,
-                    "stderr": (proc.stderr or "")[:2000],
-                    "stdout": (proc.stdout or "")[:2000],
-                    "holders_after": holders_after[:2000],
-                },
-            )
-            # endregion
-            raise PiCameraError(
-                f"rpicam-still failed ({proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}"
-            )
+            if proc.returncode == 0:
+                return
+            combined = f"{proc.stderr}\n{proc.stdout}".lower()
+            busy = "resource busy" in combined or "pipeline handler in use" in combined or "failed to acquire camera" in combined
+            if not busy or attempt == attempts:
+                break
+            time.sleep(0.2 * (2 ** (attempt - 1)))
+            last_holders = _camera_holders_snapshot()
+        holders_after = _camera_holders_snapshot()
+        assert proc is not None
+        raise PiCameraError(
+            f"rpicam-still failed ({proc.returncode}): "
+            f"{proc.stderr.strip() or proc.stdout.strip()} | holders-before={holders_before} | holders-retry={last_holders} | holders-after={holders_after}"
+        )
 
     def capture_to(self, target_path: Path) -> None:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock:
-            cam = self._ensure_camera()
-            with NamedTemporaryFile(
-                suffix=target_path.suffix or ".jpg",
-                dir=str(target_path.parent),
-                delete=False,
-            ) as tmp:
-                tmp_path = Path(tmp.name)
-            try:
-                if cam is not None:
-                    cam.capture_file(str(tmp_path))
-                else:
-                    self._capture_with_rpicam_cli(
-                        tmp_path,
-                        config.PI_CAMERA_CAPTURE_WIDTH,
-                        config.PI_CAMERA_CAPTURE_HEIGHT,
-                    )
-                tmp_path.replace(target_path)
-            finally:
-                if tmp_path.exists():
-                    tmp_path.unlink(missing_ok=True)
+            with _interprocess_camera_lock():
+                cam = self._ensure_camera()
+                with NamedTemporaryFile(
+                    suffix=target_path.suffix or ".jpg",
+                    dir=str(target_path.parent),
+                    delete=False,
+                ) as tmp:
+                    tmp_path = Path(tmp.name)
+                try:
+                    if cam is not None:
+                        try:
+                            cam.capture_file(str(tmp_path))
+                        except Exception as exc:
+                            raise PiCameraError(
+                                f"picamera capture failed: {exc} | holders={_camera_holders_snapshot()}"
+                            ) from exc
+                    else:
+                        self._capture_with_rpicam_cli(
+                            tmp_path,
+                            config.PI_CAMERA_CAPTURE_WIDTH,
+                            config.PI_CAMERA_CAPTURE_HEIGHT,
+                        )
+                    tmp_path.replace(target_path)
+                finally:
+                    if tmp_path.exists():
+                        tmp_path.unlink(missing_ok=True)
 
     def capture_preview_bytes(self) -> bytes:
         with self._lock:
-            cam = self._ensure_camera()
-            with NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                tmp_path = Path(tmp.name)
-            try:
-                if cam is not None:
-                    cam.capture_file(str(tmp_path))
-                else:
-                    self._capture_with_rpicam_cli(tmp_path, 640, 360)
-                return tmp_path.read_bytes()
-            finally:
-                tmp_path.unlink(missing_ok=True)
+            with _interprocess_camera_lock():
+                cam = self._ensure_camera()
+                with NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                    tmp_path = Path(tmp.name)
+                try:
+                    if cam is not None:
+                        try:
+                            cam.capture_file(str(tmp_path))
+                        except Exception as exc:
+                            raise PiCameraError(
+                                f"picamera preview failed: {exc} | holders={_camera_holders_snapshot()}"
+                            ) from exc
+                    else:
+                        self._capture_with_rpicam_cli(tmp_path, 640, 360)
+                    return tmp_path.read_bytes()
+                finally:
+                    tmp_path.unlink(missing_ok=True)
 
     def close(self) -> None:
         with self._lock:
@@ -208,6 +186,9 @@ def _camera_holders_snapshot() -> str:
         ["fuser", "-v", "/dev/video1"],
         ["fuser", "-v", "/dev/media0"],
         ["fuser", "-v", "/dev/media2"],
+        ["pgrep", "-a", "rpicam"],
+        ["pgrep", "-a", "libcamera"],
+        ["sh", "-lc", "ps -eo pid,cmd | grep -E 'uvicorn|backend.main|python.*smart-mirror' | grep -v grep"],
     ]
     out: list[str] = []
     for cmd in cmds:

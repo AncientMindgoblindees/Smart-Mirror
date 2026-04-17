@@ -138,7 +138,7 @@ function compareTimestamp(a: unknown, b: unknown): number {
   const aTs = Date.parse(String(a ?? ""));
   const bTs = Date.parse(String(b ?? ""));
   if (!Number.isFinite(aTs) || !Number.isFinite(bTs)) {
-    return 0;
+    return Number.NaN;
   }
   return aTs - bTs;
 }
@@ -152,12 +152,12 @@ async function pullRows(
 ): Promise<Response> {
   const schema = TABLE_SCHEMAS[table];
   if (!schema) {
-    return json({ error: "invalid table" }, 400);
+    return json({ error: "invalid table", error_code: "INVALID_TABLE", table, op: "pull" }, 400);
   }
   if (!full) {
     const sinceTs = Date.parse(since);
     if (!Number.isFinite(sinceTs)) {
-      return json({ error: "invalid since timestamp" }, 400);
+      return json({ error: "invalid since timestamp", error_code: "INVALID_SINCE", table, op: "pull" }, 400);
     }
   }
   const query = full
@@ -172,7 +172,9 @@ async function pullRows(
     return json(
       {
         error: "d1_query_failed",
+        error_code: "D1_QUERY_FAILED",
         table,
+        op: "pull",
         detail: result.error ?? result.meta ?? result,
       },
       500,
@@ -188,12 +190,38 @@ async function pullRows(
 async function tableStats(env: Env, table: string): Promise<Response> {
   const schema = TABLE_SCHEMAS[table];
   if (!schema) {
-    return json({ error: "invalid table" }, 400);
+    return json({ error: "invalid table", error_code: "INVALID_TABLE", table, op: "stats" }, 400);
   }
-  const countRow = await env.MIRROR_DB.prepare(`SELECT COUNT(*) as n FROM ${table}`).first<{ n: number }>();
-  const maxRow = await env.MIRROR_DB.prepare(`SELECT MAX(${schema.orderColumn}) as m FROM ${table}`).first<{
+  const countResult = await env.MIRROR_DB.prepare(`SELECT COUNT(*) as n FROM ${table}`).all<{ n: number }>();
+  if (countResult.success === false) {
+    return json(
+      {
+        error: "d1_stats_failed",
+        error_code: "D1_STATS_COUNT_FAILED",
+        table,
+        op: "stats",
+        detail: countResult.error ?? countResult.meta ?? countResult,
+      },
+      500,
+    );
+  }
+  const maxResult = await env.MIRROR_DB.prepare(`SELECT MAX(${schema.orderColumn}) as m FROM ${table}`).all<{
     m: unknown;
   }>();
+  if (maxResult.success === false) {
+    return json(
+      {
+        error: "d1_stats_failed",
+        error_code: "D1_STATS_MAX_FAILED",
+        table,
+        op: "stats",
+        detail: maxResult.error ?? maxResult.meta ?? maxResult,
+      },
+      500,
+    );
+  }
+  const countRow = countResult.results?.[0];
+  const maxRow = maxResult.results?.[0];
   return json({
     table,
     count: Number(countRow?.n ?? 0),
@@ -211,7 +239,7 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
   const rows = Array.isArray(payload.rows) ? payload.rows : [];
   const schema = TABLE_SCHEMAS[table];
   if (!schema) {
-    return json({ error: "invalid table" }, 400);
+    return json({ error: "invalid table", error_code: "INVALID_TABLE", table, op: "push" }, 400);
   }
 
   const updatableColumns = schema.columns.filter((col) => col !== "id");
@@ -239,6 +267,18 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
         const incomingChangedAt = row.updated_at ?? row.created_at;
         const existingChangedAt = existing.updated_at ?? existing.created_at;
         const cmp = compareTimestamp(incomingChangedAt, existingChangedAt);
+        if (!Number.isFinite(cmp)) {
+          skipped += 1;
+          skipped_ids.push(id);
+          conflicts.push({
+            id,
+            winner: "remote",
+            reason: "invalid_timestamp",
+            incoming_updated_at: incomingChangedAt,
+            remote_updated_at: existingChangedAt,
+          });
+          continue;
+        }
         if (cmp < 0) {
           skipped += 1;
           skipped_ids.push(id);
@@ -266,7 +306,9 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
         return json(
           {
             error: "d1_upsert_failed",
+            error_code: "D1_UPSERT_FAILED",
             table,
+            op: "push",
             id,
             detail: runResult.error ?? runResult.meta ?? runResult,
           },
@@ -280,7 +322,9 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
     return json(
       {
         error: "d1_push_exception",
+        error_code: "D1_PUSH_EXCEPTION",
         table,
+        op: "push",
         detail: String(err),
       },
       500,

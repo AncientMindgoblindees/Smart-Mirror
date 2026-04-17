@@ -58,6 +58,24 @@
   background: rgba(0, 0, 0, 0.55);
 }
 
+.camera-error-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: min(72rem, 92vw);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.camera-error-content strong {
+  color: #fca5a5;
+}
+
+.camera-error-content span {
+  color: #fde68a;
+  font-size: 0.95rem;
+}
+
 .camera-exit-btn {
   align-self: center;
   background: #fff;

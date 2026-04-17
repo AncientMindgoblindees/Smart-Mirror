@@ -3,9 +3,14 @@ import { X } from 'lucide-react';
 import { useCameraStream } from './useCameraStream';
 import './camera-overlay.css';
 
-export const CameraOverlay: React.FC<{ onClose: () => void; countdown?: number | null }> = ({
+export const CameraOverlay: React.FC<{
+  onClose: () => void;
+  countdown?: number | null;
+  errorMessage?: string | null;
+}> = ({
   onClose,
   countdown = null,
+  errorMessage = null,
 }) => {
   const { frameSrc, status, markLoaded, markError } = useCameraStream();
 
@@ -25,7 +30,10 @@ export const CameraOverlay: React.FC<{ onClose: () => void; countdown?: number |
           )}
           {status === 'error' && (
             <div className="camera-status camera-status-error">
-              Mirror camera preview unavailable.
+              <div className="camera-error-content">
+                <strong>Mirror camera preview unavailable.</strong>
+                {errorMessage && <span>{errorMessage}</span>}
+              </div>
             </div>
           )}
           {typeof countdown === 'number' && countdown > 0 && (

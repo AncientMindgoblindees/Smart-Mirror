@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, Type
 from urllib.parse import urlparse
@@ -23,7 +24,6 @@ from backend.database.models import (
 from backend.database.session import SessionLocal
 from backend.services.d1_conflict import remote_wins
 from backend.services.datetime_utils import parse_datetime_utc_naive, to_iso_utc_z
-from backend.services.debug_log import write_debug_log
 from backend.services.realtime import control_registry
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,12 @@ logger = logging.getLogger(__name__)
 PULL_FLOOR_ISO = "1970-01-01T00:00:00Z"
 BACKOFF_INITIAL_SEC = 5.0
 BACKOFF_MAX_SEC = 300.0
+
+
+@dataclass
+class MergeOutcome:
+    changed: bool
+    persisted: bool
 
 
 class D1SyncService:
@@ -124,28 +130,10 @@ class D1SyncService:
                     .all()
                 )
             payload_rows = [self._serialize_row(table_name, row) for row in dirty_rows]
-            # region agent log
-            write_debug_log(
-                run_id="baseline-2",
-                hypothesis_id="H7",
-                location="backend/services/d1_sync.py:127",
-                message="d1 push collected dirty rows",
-                data={"table": table_name, "dirty_count": len(payload_rows)},
-            )
-            # endregion
         finally:
             db.close()
 
         if not payload_rows:
-            # region agent log
-            write_debug_log(
-                run_id="baseline-3",
-                hypothesis_id="H15",
-                location="backend/services/d1_sync.py:132",
-                message="d1 push skipped; no dirty rows",
-                data={"table": table_name},
-            )
-            # endregion
             return
 
         response = await self._request(
@@ -174,19 +162,16 @@ class D1SyncService:
         if isinstance(accepted_ids_raw, list):
             accepted_ids = [int(v) for v in accepted_ids_raw if isinstance(v, (int, float, str)) and str(v).isdigit()]
         else:
-            accepted_ids = [int(row["id"]) for row in payload_rows if row.get("id") is not None]
+            logger.warning(
+                "D1 push protocol error for %s [code=D1_PUSH_ACCEPTED_IDS_MISSING]: status=%s body=%s",
+                table_name,
+                response.status_code,
+                response.text[:500],
+            )
+            return
 
         now = datetime.utcnow()
         if not accepted_ids:
-            # region agent log
-            write_debug_log(
-                run_id="baseline-3",
-                hypothesis_id="H15",
-                location="backend/services/d1_sync.py:166",
-                message="d1 push acknowledged with no accepted ids",
-                data={"table": table_name},
-            )
-            # endregion
             return
 
         db = SessionLocal()
@@ -196,31 +181,17 @@ class D1SyncService:
                 row.synced_at = now
             try:
                 db.commit()
-                # region agent log
-                write_debug_log(
-                    run_id="baseline-2",
-                    hypothesis_id="H8",
-                    location="backend/services/d1_sync.py:179",
-                    message="d1 push synced_at commit success",
-                    data={"table": table_name, "accepted_ids_count": len(accepted_ids)},
-                )
-                # endregion
             except Exception as exc:
-                # region agent log
-                write_debug_log(
-                    run_id="baseline-2",
-                    hypothesis_id="H8",
-                    location="backend/services/d1_sync.py:189",
-                    message="d1 push synced_at commit failed",
-                    data={
-                        "table": table_name,
-                        "error_type": type(exc).__name__,
-                        "error": str(exc),
-                        "accepted_ids_count": len(accepted_ids),
-                    },
-                )
-                # endregion
-                raise
+                db.rollback()
+                if _is_sqlite_readonly_error(exc):
+                    logger.warning(
+                        "D1 push local marker skipped for %s [code=LOCAL_DB_READONLY_SYNCED_AT_SKIPPED, accepted_remote=%d, pushed_rows=%d]",
+                        table_name,
+                        len(accepted_ids),
+                        len(payload_rows),
+                    )
+                else:
+                    raise
         finally:
             db.close()
 
@@ -259,7 +230,15 @@ class D1SyncService:
             self._touch_last_pull_at(table_name)
             return False
 
-        changed = self._merge_remote_rows(table_name, rows)
+        merge = self._merge_remote_rows(table_name, rows)
+        if not merge.persisted:
+            logger.warning(
+                "D1 pull for %s returned %d rows but local merge did not persist; cursor unchanged for retry",
+                table_name,
+                len(rows),
+            )
+            return False
+
         max_cursor_iso, max_cursor_id = self._max_remote_cursor(table_name, rows)
         if max_cursor_iso is None:
             # Must advance cursor after a non-empty pull or incremental pulls repeat forever.
@@ -271,7 +250,7 @@ class D1SyncService:
             )
         self._persist_remote_cursor(table_name, max_cursor_iso, max_cursor_id)
         self._touch_last_pull_at(table_name)
-        return changed
+        return merge.changed
 
     async def _detect_drift_full_pull(self, table_name: str) -> bool:
         stats = await self._fetch_table_stats(table_name)
@@ -387,9 +366,15 @@ class D1SyncService:
                     row.last_remote_cursor = None
                     row.last_remote_cursor_id = None
             db.commit()
-        except OperationalError:
+        except OperationalError as exc:
             db.rollback()
-            logger.warning("D1 checkpoint table missing; skipping cursor reset persist")
+            category = _classify_sqlite_operational_error(exc)
+            if category == "missing_table":
+                logger.warning("D1 checkpoint table missing; skipping cursor reset persist")
+            elif category == "readonly":
+                logger.warning("D1 checkpoint cursor reset skipped because local DB is readonly")
+            else:
+                logger.warning("D1 checkpoint cursor reset persist failed: %s", exc)
         finally:
             db.close()
 
@@ -411,9 +396,18 @@ class D1SyncService:
                 row.last_remote_cursor = cursor_iso
                 row.last_remote_cursor_id = cursor_id
             db.commit()
-        except OperationalError:
+        except OperationalError as exc:
             db.rollback()
-            logger.warning("D1 checkpoint table missing; skipping remote cursor persist")
+            category = _classify_sqlite_operational_error(exc)
+            if category == "missing_table":
+                logger.warning("D1 checkpoint table missing; skipping remote cursor persist")
+            elif category == "readonly":
+                logger.warning(
+                    "D1 remote cursor persist skipped for %s because local DB is readonly",
+                    table_name,
+                )
+            else:
+                logger.warning("D1 remote cursor persist failed for %s: %s", table_name, exc)
         finally:
             db.close()
 
@@ -432,9 +426,18 @@ class D1SyncService:
             else:
                 row.last_pull_at = now
             db.commit()
-        except OperationalError:
+        except OperationalError as exc:
             db.rollback()
-            logger.warning("D1 checkpoint table missing; skipping last_pull_at touch")
+            category = _classify_sqlite_operational_error(exc)
+            if category == "missing_table":
+                logger.warning("D1 checkpoint table missing; skipping last_pull_at touch")
+            elif category == "readonly":
+                logger.warning(
+                    "D1 last_pull_at touch skipped for %s because local DB is readonly",
+                    table_name,
+                )
+            else:
+                logger.warning("D1 last_pull_at touch failed for %s: %s", table_name, exc)
         finally:
             db.close()
 
@@ -568,7 +571,7 @@ class D1SyncService:
             "synced_at": self._to_iso(row.synced_at),
         }
 
-    def _merge_remote_rows(self, table_name: str, rows: List[Dict[str, Any]]) -> bool:
+    def _merge_remote_rows(self, table_name: str, rows: List[Dict[str, Any]]) -> MergeOutcome:
         model = self.TABLE_MODELS[table_name]
         changed = False
         db = SessionLocal()
@@ -594,34 +597,18 @@ class D1SyncService:
                 changed = True
             try:
                 db.commit()
-                # region agent log
-                write_debug_log(
-                    run_id="baseline-2",
-                    hypothesis_id="H9",
-                    location="backend/services/d1_sync.py:570",
-                    message="d1 pull merge commit success",
-                    data={"table": table_name, "incoming_count": len(rows), "changed": changed},
-                )
-                # endregion
             except Exception as exc:
-                # region agent log
-                write_debug_log(
-                    run_id="baseline-2",
-                    hypothesis_id="H9",
-                    location="backend/services/d1_sync.py:581",
-                    message="d1 pull merge commit failed",
-                    data={
-                        "table": table_name,
-                        "incoming_count": len(rows),
-                        "error_type": type(exc).__name__,
-                        "error": str(exc),
-                    },
-                )
-                # endregion
+                db.rollback()
+                if _is_sqlite_readonly_error(exc):
+                    logger.warning(
+                        "D1 pull merge could not write %s because local DB is readonly; skipping apply for this cycle",
+                        table_name,
+                    )
+                    return MergeOutcome(changed=False, persisted=False)
                 raise
         finally:
             db.close()
-        return changed
+        return MergeOutcome(changed=changed, persisted=True)
 
     def _apply_incoming_row(self, table_name: str, entity: Any, incoming: Dict[str, Any], synced_at: datetime) -> None:
         if table_name == "widget_config":
@@ -701,3 +688,23 @@ class D1SyncService:
 
 
 d1_sync_service = D1SyncService()
+
+
+def _is_sqlite_readonly_error(exc: Exception) -> bool:
+    return _classify_sqlite_operational_error(exc) == "readonly"
+
+
+def _classify_sqlite_operational_error(exc: Exception) -> str:
+    chain = [str(exc).lower()]
+    orig = getattr(exc, "orig", None)
+    if orig is not None:
+        chain.append(str(orig).lower())
+    cause = getattr(exc, "__cause__", None)
+    if cause is not None:
+        chain.append(str(cause).lower())
+    msg = " | ".join(chain)
+    if "no such table" in msg:
+        return "missing_table"
+    if "readonly" in msg:
+        return "readonly"
+    return "other"

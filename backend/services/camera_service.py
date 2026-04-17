@@ -12,7 +12,6 @@ from backend.services.person_image_service import (
     clear_person_images,
     set_latest_person_image_path,
 )
-from backend.services.debug_log import write_debug_log
 from backend.services.pi_camera import pi_camera
 from backend.services.realtime import control_registry
 
@@ -79,15 +78,6 @@ class CameraCaptureState:
                 await asyncio.sleep(1)
 
             capture_id = f"capture-{uuid4().hex[:12]}"
-            # region agent log
-            write_debug_log(
-                run_id="baseline",
-                hypothesis_id="H5",
-                location="backend/services/camera_service.py:82",
-                message="camera capture starting",
-                data={"countdown_seconds": countdown_seconds, "source": source},
-            )
-            # endregion
             await asyncio.to_thread(pi_camera.capture_to, Path(LATEST_PERSON_IMAGE_PATH))
             db: Session = SessionLocal()
             try:
@@ -110,15 +100,6 @@ class CameraCaptureState:
                 }
             )
         except Exception as exc:  # noqa: BLE001
-            # region agent log
-            write_debug_log(
-                run_id="baseline",
-                hypothesis_id="H5",
-                location="backend/services/camera_service.py:111",
-                message="camera capture failed",
-                data={"error_type": type(exc).__name__, "error": str(exc)},
-            )
-            # endregion
             await control_registry.broadcast(
                 {
                     "type": "CAMERA_ERROR",

@@ -35,7 +35,8 @@ function readDevPanelInitial(): boolean {
 
 export default function MirrorApp() {
   const { widgets, setWidgets } = useWidgetPersistence();
-  const { showCamera, setShowCamera, cameraCountdown, setCameraCountdown } = useOverlayState();
+  const { showCamera, setShowCamera, cameraCountdown, setCameraCountdown, cameraError, setCameraError } =
+    useOverlayState();
   const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
   const [fullScreenTryOnUrl, setFullScreenTryOnUrl] = useState<string | null>(null);
 
@@ -102,6 +103,7 @@ export default function MirrorApp() {
     onCameraCountdownStarted: (seconds) => {
       setShowCamera(true);
       setCameraCountdown(seconds);
+      setCameraError(null);
     },
     onCameraCountdownTick: (remaining) => {
       setShowCamera(true);
@@ -109,10 +111,13 @@ export default function MirrorApp() {
     },
     onCameraCaptured: () => {
       setCameraCountdown(null);
+      setCameraError(null);
       setShowCamera(false);
     },
-    onCameraError: () => {
+    onCameraError: (message) => {
       setCameraCountdown(null);
+      setShowCamera(true);
+      setCameraError(message);
     },
     onTryOnResult: (payload) => {
       if (payload.image_url) setFullScreenTryOnUrl(payload.image_url);
@@ -171,8 +176,10 @@ export default function MirrorApp() {
       {showCamera && (
         <CameraOverlay
           countdown={cameraCountdown}
+          errorMessage={cameraError}
           onClose={() => {
             setCameraCountdown(null);
+            setCameraError(null);
             setShowCamera(false);
           }}
         />
