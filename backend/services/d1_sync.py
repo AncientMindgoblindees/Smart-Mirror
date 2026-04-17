@@ -137,6 +137,15 @@ class D1SyncService:
             db.close()
 
         if not payload_rows:
+            # region agent log
+            write_debug_log(
+                run_id="baseline-3",
+                hypothesis_id="H15",
+                location="backend/services/d1_sync.py:132",
+                message="d1 push skipped; no dirty rows",
+                data={"table": table_name},
+            )
+            # endregion
             return
 
         response = await self._request(
@@ -169,6 +178,15 @@ class D1SyncService:
 
         now = datetime.utcnow()
         if not accepted_ids:
+            # region agent log
+            write_debug_log(
+                run_id="baseline-3",
+                hypothesis_id="H15",
+                location="backend/services/d1_sync.py:166",
+                message="d1 push acknowledged with no accepted ids",
+                data={"table": table_name},
+            )
+            # endregion
             return
 
         db = SessionLocal()

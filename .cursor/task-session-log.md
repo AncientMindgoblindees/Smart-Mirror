@@ -87,3 +87,10 @@
 - **Action**: Added `H13` instrumentation in `backend/services/pi_camera.py` to capture device holder snapshots (`fuser -v /dev/video0,/dev/video1,/dev/media0,/dev/media2`) before fallback capture and again on failure.
 - **Decision**: Treat `H7` as expected activity signal (D1 table scan), not root-cause proof for SQL failure by itself.
 - **Verification**: Lint clean; debug log file still absent prior to next run.
+
+## 2026-04-17 — Iteration: camera holder + sync progression
+
+- **Runtime Evidence from user**: `H13` still reports holders on `/dev/media*`; `H7` continues for DB sync scans.
+- **Action (camera)**: Updated `backend/services/pi_camera.py` to explicitly stop/close partially-initialized Picamera2 handles on init failure before switching to CLI fallback (`H14`), preventing backend self-lock leaks.
+- **Action (sync evidence)**: Added `H15` logs in `backend/services/d1_sync.py` for early exits (`no dirty rows` and `no accepted ids`) to explain why later commit hypotheses may not fire.
+- **Verification**: Lints clean; session debug file absent locally before rerun.

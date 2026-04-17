@@ -32,6 +32,7 @@ class PiCameraAdapter:
             return None
         if self._camera is not None:
             return self._camera
+        cam = None
         try:
             from picamera2 import Picamera2  # type: ignore
         except Exception as exc:  # noqa: BLE001
@@ -56,12 +57,18 @@ class PiCameraAdapter:
             cam.configure(still_cfg)
             cam.start()
         except Exception as exc:  # noqa: BLE001
+            if cam is not None:
+                try:
+                    cam.stop()
+                    cam.close()
+                except Exception:
+                    pass
             # region agent log
             write_debug_log(
-                run_id="baseline",
-                hypothesis_id="H5",
-                location="backend/services/pi_camera.py:53",
-                message="camera init failed",
+                run_id="baseline-3",
+                hypothesis_id="H14",
+                location="backend/services/pi_camera.py:67",
+                message="camera init failed; cleaned up camera handle and enabling cli fallback",
                 data={"error_type": type(exc).__name__, "error": str(exc)},
             )
             # endregion
