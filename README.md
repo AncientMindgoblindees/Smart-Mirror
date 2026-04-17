@@ -108,6 +108,30 @@ cd /path/to/Smart-Mirror/ui && npm install && npm run build
 
 Then use `scripts/start-mirror-app.sh` as before.
 
+### Raspberry Pi camera ownership troubleshooting
+
+The Pi camera stack is exclusive: if another process owns `/dev/media*`, mirror capture/preview can fail with `resource busy` or `pipeline handler in use`.
+
+- Supported runtime model: one mirror backend process for the configured mirror port (`MIRROR_PORT`, default `8002`).
+- Avoid running parallel camera tools (`rpicam-hello`, `rpicam-still`, other camera apps) while mirror backend camera is active.
+- Avoid launching the backend by multiple methods at the same time (`start-mirror-app.sh` plus manual `uvicorn`, etc.).
+
+Useful commands on Pi:
+
+```
+fuser -v /dev/media0 /dev/media2 /dev/video0 /dev/video1
+ps -eo pid,cmd | grep -E 'uvicorn|backend.main|rpicam|libcamera' | grep -v grep
+systemctl --user status pipewire wireplumber
+```
+
+If you suspect duplicate mirror backends:
+
+```
+bash scripts/stop-mirror-app.sh
+MIRROR_STOP_EXTRA_BACKENDS=1 bash scripts/stop-mirror-app.sh
+bash scripts/start-mirror-app.sh
+```
+
 ## Weather (WeatherAPI.com)
 
 The mirror loads weather through the backend at **`GET /api/weather/`**, which proxies [WeatherAPI.com](https://www.weatherapi.com/docs/) ([Swagger reference](https://app.swaggerhub.com/apis-docs/WeatherAPI.com/WeatherAPI/1.0.2)) so your API key is not exposed to the browser.

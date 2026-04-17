@@ -95,7 +95,10 @@ class PiCameraAdapter:
         assert proc is not None
         raise PiCameraError(
             f"rpicam-still failed ({proc.returncode}): "
-            f"{proc.stderr.strip() or proc.stdout.strip()} | holders-before={holders_before} | holders-retry={last_holders} | holders-after={holders_after}"
+            f"{proc.stderr.strip() or proc.stdout.strip()} | "
+            f"{_format_holders('holders-before', holders_before)} | "
+            f"{_format_holders('holders-retry', last_holders)} | "
+            f"{_format_holders('holders-after', holders_after)}"
         )
 
     def capture_to(self, target_path: Path) -> None:
@@ -115,7 +118,8 @@ class PiCameraAdapter:
                             cam.capture_file(str(tmp_path))
                         except Exception as exc:
                             raise PiCameraError(
-                                f"picamera capture failed: {exc} | holders={_camera_holders_snapshot()}"
+                                f"picamera capture failed: {exc} | "
+                                f"{_format_holders('holders', _camera_holders_snapshot())}"
                             ) from exc
                     else:
                         self._capture_with_rpicam_cli(
@@ -140,7 +144,8 @@ class PiCameraAdapter:
                             cam.capture_file(str(tmp_path))
                         except Exception as exc:
                             raise PiCameraError(
-                                f"picamera preview failed: {exc} | holders={_camera_holders_snapshot()}"
+                                f"picamera preview failed: {exc} | "
+                                f"{_format_holders('holders', _camera_holders_snapshot())}"
                             ) from exc
                     else:
                         self._capture_with_rpicam_cli(tmp_path, 640, 360)
@@ -156,6 +161,10 @@ class PiCameraAdapter:
                 return
             try:
                 cam.stop()
+            except Exception:
+                pass
+            try:
+                cam.close()
             except Exception:
                 pass
 
@@ -180,7 +189,7 @@ def _interprocess_camera_lock():
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
-def _camera_holders_snapshot() -> str:
+def _camera_holders_snapshot() -> dict[str, str]:
     cmds = [
         ["fuser", "-v", "/dev/video0"],
         ["fuser", "-v", "/dev/video1"],
@@ -190,12 +199,31 @@ def _camera_holders_snapshot() -> str:
         ["pgrep", "-a", "libcamera"],
         ["sh", "-lc", "ps -eo pid,cmd | grep -E 'uvicorn|backend.main|python.*smart-mirror' | grep -v grep"],
     ]
-    out: list[str] = []
+    media: list[str] = []
+    backend: list[str] = []
+    other: list[str] = []
     for cmd in cmds:
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         snippet = (proc.stdout or "") + (proc.stderr or "")
         if snippet.strip():
-            out.append(f"{' '.join(cmd)} => {snippet.strip()}")
-    if not out:
-        return "no-holders-detected-or-fuser-unavailable"
-    return " | ".join(out)
+            entry = f"{' '.join(cmd)} => {snippet.strip()}"
+            joined = " ".join(cmd)
+            if "/dev/media" in joined or "/dev/video" in joined:
+                media.append(entry)
+            elif "uvicorn" in joined or "backend.main" in joined:
+                backend.append(entry)
+            else:
+                other.append(entry)
+    return {
+        "media": " || ".join(media) if media else "none",
+        "backend": " || ".join(backend) if backend else "none",
+        "other": " || ".join(other) if other else "none",
+    }
+
+
+def _format_holders(prefix: str, snapshot: dict[str, str]) -> str:
+    return (
+        f"{prefix}.holders_media={snapshot.get('media', 'none')} "
+        f"{prefix}.holders_backend={snapshot.get('backend', 'none')} "
+        f"{prefix}.holders_other={snapshot.get('other', 'none')}"
+    )

@@ -115,3 +115,19 @@
   - `npm --prefix ui run build` (pass)
   - `npm --prefix ui run test -- src/features/camera/cameraErrors.test.ts` (pass)
   - `npm exec wrangler deploy --dry-run` in `deploy/worker` (completed successfully and reported worker endpoint/version)
+
+## 2026-04-17 — Pi camera ownership remediation implementation
+
+- **Action**: Implemented camera ownership/process remediation plan and extra UX fix to close camera overlay after capture errors.
+- **Changes**:
+  - `scripts/start-mirror-app.sh`: added single-instance backend startup lock via `flock`, atomic startup helper, stale PID cleanup under lock, and port-listener guard with diagnostics.
+  - `scripts/stop-mirror-app.sh`: added graceful+bounded forced termination helper, optional cleanup of duplicate uvicorn instances on configured mirror port (`MIRROR_STOP_EXTRA_BACKENDS=1`), and post-stop listener diagnostics.
+  - `backend/services/pi_camera.py`: compact machine-friendly holder sections (`holders_media`, `holders_backend`, `holders_other`), retained retries/locking, and completed camera teardown with `cam.close()` in `close()`.
+  - `backend/api/camera.py`: structured `503` payload for preview failures with stable `code/message/detail`.
+  - `ui/src/app/MirrorApp.tsx`: concise camera error summarization and logic to close overlay when capture-flow errors occur so UI returns to main mirror screen.
+  - `README.md`: added Raspberry Pi camera ownership troubleshooting and single-process runtime guidance.
+- **Commands**:
+  - `bash -n scripts/start-mirror-app.sh; bash -n scripts/stop-mirror-app.sh` (pass)
+  - `python -m compileall backend/services/pi_camera.py backend/api/camera.py backend/services/d1_sync.py` (pass)
+  - `npm --prefix ui run build` (pass)
+  - `npm exec wrangler deploy --dry-run` in `deploy/worker` (pass)

@@ -28,5 +28,17 @@ async def get_camera_preview() -> Response:
     try:
         data = await camera_state.capture_preview_bytes()
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=503, detail=f"Preview unavailable: {exc}") from exc
+        detail = str(exc)
+        code = "CAMERA_PREVIEW_UNAVAILABLE"
+        lowered = detail.lower()
+        if "resource busy" in lowered or "pipeline handler in use" in lowered or "failed to acquire camera" in lowered:
+            code = "CAMERA_BUSY_EXTERNAL_OWNER"
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": code,
+                "message": "Preview unavailable",
+                "detail": detail[:1500],
+            },
+        ) from exc
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})

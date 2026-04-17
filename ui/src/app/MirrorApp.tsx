@@ -33,6 +33,24 @@ function readDevPanelInitial(): boolean {
   return true;
 }
 
+function summarizeCameraError(message: string): string {
+  const raw = (message || '').trim();
+  if (!raw) return 'Camera error';
+  const busyHint = /resource busy|pipeline handler in use|failed to acquire camera/i.test(raw);
+  if (!busyHint) {
+    return raw.slice(0, 280);
+  }
+  const mediaMatch = raw.match(/holders-[a-z]+\.holders_media=([^|]+)/i);
+  const backendMatch = raw.match(/holders-[a-z]+\.holders_backend=([^|]+)/i);
+  const media = mediaMatch?.[1]?.trim();
+  const backend = backendMatch?.[1]?.trim();
+  const mediaText = media && media !== 'none' ? `media: ${media.slice(0, 180)}` : '';
+  const backendText = backend && backend !== 'none' ? `backend: ${backend.slice(0, 180)}` : '';
+  const details = [mediaText, backendText].filter(Boolean).join(' | ');
+  if (details) return `Camera busy (${details})`;
+  return 'Camera busy (owned by another process)';
+}
+
 export default function MirrorApp() {
   const { widgets, setWidgets } = useWidgetPersistence();
   const { showCamera, setShowCamera, cameraCountdown, setCameraCountdown, cameraError, setCameraError } =
@@ -116,8 +134,13 @@ export default function MirrorApp() {
     },
     onCameraError: (message) => {
       setCameraCountdown(null);
+      setCameraError(summarizeCameraError(message));
+      // If this error happened during an active capture flow, return to UI instead of leaving camera overlay stuck.
+      if (cameraCountdown !== null) {
+        setShowCamera(false);
+        return;
+      }
       setShowCamera(true);
-      setCameraError(message);
     },
     onTryOnResult: (payload) => {
       if (payload.image_url) setFullScreenTryOnUrl(payload.image_url);

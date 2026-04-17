@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${MIRROR_PORT:-8002}"
 URL="http://127.0.0.1:${PORT}/ui/"
 PID_FILE="${ROOT_DIR}/data/mirror-backend.pid"
+LOCK_FILE="${ROOT_DIR}/data/mirror-backend.lock"
 LOG_FILE="${ROOT_DIR}/data/mirror-backend.log"
 TUNNEL_PID_FILE="${ROOT_DIR}/data/mirror-tunnel.pid"
 TUNNEL_LOG_FILE="${ROOT_DIR}/data/mirror-tunnel.log"
@@ -22,16 +23,36 @@ else
   PYTHON="python3"
 fi
 
-if [[ -f "${PID_FILE}" ]]; then
-  OLD_PID="$(cat "${PID_FILE}" || true)"
-  if [[ -n "${OLD_PID}" ]] && kill -0 "${OLD_PID}" 2>/dev/null; then
-    echo "Smart Mirror backend already running (PID ${OLD_PID})."
-  else
+backend_port_owner() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnp "( sport = :${PORT} )" 2>/dev/null | sed -n '2,$p' || true
+    return
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN 2>/dev/null || true
+    return
+  fi
+  echo ""
+}
+
+start_backend_if_needed() {
+  if [[ -f "${PID_FILE}" ]]; then
+    OLD_PID="$(cat "${PID_FILE}" || true)"
+    if [[ -n "${OLD_PID}" ]] && kill -0 "${OLD_PID}" 2>/dev/null; then
+      echo "Smart Mirror backend already running (PID ${OLD_PID})."
+      return 0
+    fi
     rm -f "${PID_FILE}"
   fi
-fi
 
-if [[ ! -f "${PID_FILE}" ]]; then
+  OWNER_INFO="$(backend_port_owner)"
+  if [[ -n "${OWNER_INFO// /}" ]]; then
+    echo "Smart Mirror backend not started: port ${PORT} already has a listener."
+    echo "${OWNER_INFO}"
+    echo "If this is a stale process, run: bash ${ROOT_DIR}/scripts/stop-mirror-app.sh"
+    return 0
+  fi
+
   if ! "${PYTHON}" -c "import uvicorn" 2>/dev/null; then
     if [[ -z "${MIRROR_PYTHON:-}" && -f "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" ]]; then
       bash "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" "${ROOT_DIR}"
@@ -51,6 +72,18 @@ if [[ ! -f "${PID_FILE}" ]]; then
     exec "${PYTHON}" -m uvicorn backend.main:app --host 127.0.0.1 --port "${PORT}"
   ) >>"${LOG_FILE}" 2>&1 &
   echo "$!" >"${PID_FILE}"
+}
+
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"${LOCK_FILE}"
+  if ! flock -n 9; then
+    echo "Another Smart Mirror launcher instance is already starting backend; exiting."
+    exit 0
+  fi
+  start_backend_if_needed
+else
+  # Fallback when flock is unavailable; keep previous behavior.
+  start_backend_if_needed
 fi
 
 echo "Waiting for backend: ${URL}"
