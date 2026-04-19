@@ -55,6 +55,9 @@ class OAuthProvider(Base):
     scopes = Column(String(256), nullable=True)
     status = Column(String(16), nullable=False, default="active")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
 
 class ClothingItem(Base):

@@ -611,3 +611,17 @@
   - `python -m compileall backend/database/models.py` (pass)
 - **Verification**:
   - `ReadLints` for `backend/database/models.py` reported no diagnostics.
+
+## 2026-04-19 — Fix OAuthProvider `updated_at` integrity mismatch
+
+- **Runtime evidence from user**:
+  - `sqlite3.IntegrityError: NOT NULL constraint failed: oauth_provider.updated_at`
+  - Insert statement now includes `created_at`, confirming previous fix landed and next schema requirement surfaced.
+- **Root cause**:
+  - ORM model still lacked `updated_at`, while deployed SQLite schema requires it as non-null.
+- **Action**:
+  - Added `updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)` to `backend/database/models.py`.
+- **Commands**:
+  - `python -m compileall backend/database/models.py` (pass)
+- **Verification**:
+  - `ReadLints` for `backend/database/models.py` reported no diagnostics.
