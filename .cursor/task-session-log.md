@@ -408,3 +408,18 @@
   - `bash -n scripts/stop-mirror-app.sh` (pass)
 - **Verification**:
   - `ReadLints` on both scripts returned no diagnostics.
+
+## 2026-04-19 — Camera live preview full-screen FOV pass
+
+- **Action**: Expanded camera live preview overlay to occupy the full mirror viewport and minimize crop.
+- **Changes**:
+  - `ui/src/features/camera/camera-overlay.css`:
+    - Removed fixed preview caps (`min(92vw, 400px)` / max-height and fixed portrait frame).
+    - Made `.camera-video-wrap` full-screen (`flex: 1`, `width/height: 100%`, no border radius).
+    - Reduced stage padding/gap to zero so preview uses entire overlay.
+    - Moved exit button to fixed top-right overlay so it does not consume preview space.
+    - Kept `.camera-video { object-fit: contain; }` for widest visible field of view.
+- **Commands**:
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on updated CSS reported no diagnostics.
