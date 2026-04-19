@@ -597,3 +597,17 @@
   - `python -m compileall backend/api/oauth_web.py` (pass)
 - **Verification**:
   - `ReadLints` for `backend/api/oauth_web.py` reported no diagnostics.
+
+## 2026-04-19 — Fix OAuthProvider `created_at` integrity mismatch
+
+- **Runtime evidence from user**:
+  - `sqlite3.IntegrityError: NOT NULL constraint failed: oauth_provider.created_at`
+  - Failing insert target: `oauth_provider` during Google callback token save.
+- **Root cause**:
+  - ORM model `OAuthProvider` lacked `created_at`, while deployed SQLite schema requires it as non-null.
+- **Action**:
+  - Added `created_at = Column(DateTime, nullable=False, default=datetime.utcnow)` to `backend/database/models.py`.
+- **Commands**:
+  - `python -m compileall backend/database/models.py` (pass)
+- **Verification**:
+  - `ReadLints` for `backend/database/models.py` reported no diagnostics.

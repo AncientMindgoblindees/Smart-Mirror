@@ -54,6 +54,7 @@ class OAuthProvider(Base):
     token_expiry = Column(DateTime, nullable=True)
     scopes = Column(String(256), nullable=True)
     status = Column(String(16), nullable=False, default="active")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class ClothingItem(Base):
