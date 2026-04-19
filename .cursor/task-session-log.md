@@ -266,3 +266,13 @@
   - `npm --prefix ui run build` (pass)
 - **Verification**:
   - `ReadLints` on all edited files reported no lint errors.
+
+## 2026-04-19 — Camera overlay UX (boot + on-frame countdown)
+
+- **Action**: Mirror capture overlay shows “Booting the camera” during boot; countdown is a bottom badge so the live preview stays visible; fixed stale `cameraCountdown` check in `onCameraError` via ref.
+- **Changes**:
+  - `ui/src/features/camera/CameraOverlay.tsx`: boot copy; countdown uses `camera-countdown-badge` (Photo in / value / sec) instead of full-bleed status overlay.
+  - `ui/src/features/camera/camera-overlay.css`: styles for `.camera-countdown-badge`, label, value, unit (`pointer-events: none`, high-contrast numerals).
+  - `ui/src/app/MirrorApp.tsx`: `cameraCountdownRef` synced each render; `onCameraError` uses `hadActiveCountdown` from ref before clearing state.
+- **Commands**: `Set-Location ui; npm run build` (PowerShell; pass).
+- **Verification**: `ReadLints` on touched TSX files — no issues; production build succeeded.

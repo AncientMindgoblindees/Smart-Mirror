@@ -64,6 +64,8 @@ export default function MirrorApp() {
     setCameraError,
   } =
     useOverlayState();
+  const cameraCountdownRef = useRef<number | null>(null);
+  cameraCountdownRef.current = cameraCountdown;
   const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
   const [fullScreenTryOnUrl, setFullScreenTryOnUrl] = useState<string | null>(null);
 
@@ -154,11 +156,12 @@ export default function MirrorApp() {
       setShowCamera(false);
     },
     onCameraError: (message) => {
+      const hadActiveCountdown = cameraCountdownRef.current !== null;
       setCameraLoading(false);
       setCameraCountdown(null);
       setCameraError(summarizeCameraError(message));
       // If this error happened during an active capture flow, return to UI instead of leaving camera overlay stuck.
-      if (cameraCountdown !== null) {
+      if (hadActiveCountdown) {
         setShowCamera(false);
         return;
       }

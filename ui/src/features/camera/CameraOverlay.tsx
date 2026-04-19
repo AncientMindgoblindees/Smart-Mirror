@@ -40,7 +40,7 @@ export const CameraOverlay: React.FC<{
             <div className="camera-status camera-status-loading">
               <div className="camera-loading-content">
                 <span className="camera-loading-spinner" aria-hidden="true" />
-                <span>{loading ? 'Camera Loading…' : 'Starting camera…'}</span>
+                <span>{loading ? 'Booting the camera' : 'Starting camera…'}</span>
               </div>
             </div>
           )}
@@ -53,7 +53,11 @@ export const CameraOverlay: React.FC<{
             </div>
           )}
           {typeof countdown === 'number' && countdown > 0 && (
-            <div className="camera-status camera-status-loading">Capture in {countdown}…</div>
+            <div className="camera-countdown-badge" role="status" aria-live="polite">
+              <span className="camera-countdown-label">Photo in</span>
+              <span className="camera-countdown-value">{countdown}</span>
+              <span className="camera-countdown-unit">sec</span>
+            </div>
           )}
         </div>
         <button type="button" className="camera-exit-btn" onClick={onClose}>
