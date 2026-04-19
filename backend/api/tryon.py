@@ -27,7 +27,14 @@ def get_latest_person_image_file(db: Session = Depends(get_db)):
     if record is None:
         raise HTTPException(status_code=404, detail="No person image available")
     path = person_image_service.resolve_safe_image_path(record)
-    return FileResponse(path)
+    return FileResponse(
+        path,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @router.get("/person-image/{image_id}")

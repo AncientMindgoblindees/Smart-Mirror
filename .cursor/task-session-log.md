@@ -155,3 +155,29 @@
 - **Commands**:
   - `python -m compileall backend/services/pi_camera.py` (pass)
   - `bash -n scripts/start-mirror-app.sh` (pass)
+
+## 2026-04-19 — Accelerate latest photo propagation
+
+- **Action**: Implemented UI and backend changes to reduce capture-to-visible delay for latest person photo propagation.
+- **Code Changes**:
+  - `C:/Users/tjmel/Downloads/smart-mirror-config/src/features/camera/cameraApi.ts`: reduced app-triggered capture countdown from 5s to 3s.
+  - `C:/Users/tjmel/Downloads/smart-mirror-config/src/App.tsx`: on `CAMERA_CAPTURED`, now increments `personImageNonce` to auto-reload latest person image without manual refresh.
+  - `backend/config.py`: added `PI_CAMERA_MAX_DIM` and `PI_CAMERA_JPEG_QUALITY` settings.
+  - `backend/services/pi_camera.py`: added scaled capture dimensions, CLI JPEG quality flag, and latest-photo transport optimization (resize + JPEG recompress for `latest_person.jpg`).
+  - `backend/api/tryon.py`: added `no-store/no-cache` headers on `/api/tryon/person-image/latest`.
+  - `backend/requirements.txt`: added `Pillow` dependency for image optimization.
+- **Commands**:
+  - `npm run build` in `C:/Users/tjmel/Downloads/smart-mirror-config` (pass; existing CSS `@import` order warning only).
+  - `python -m compileall backend/config.py backend/api/tryon.py backend/services/pi_camera.py` in `C:/Cursor_Projects/Smart-Mirror` (pass).
+- **Verification**:
+  - `ReadLints` on all edited files in both repos reported no lint errors.
+- **Decision**:
+  - Chose balanced defaults for speed/quality (`PI_CAMERA_MAX_DIM=1280`, `PI_CAMERA_JPEG_QUALITY=82`) to reduce payload size while keeping try-on quality acceptable.
+
+## 2026-04-19 — Env example update for photo propagation tuning
+
+- **Action**: Added new camera optimization environment variables to `.env.example` for discoverability and easy tuning.
+- **Changes**:
+  - Added `PI_CAMERA_MAX_DIM=1280` with comment clarifying long-edge resize behavior.
+  - Added `PI_CAMERA_JPEG_QUALITY=82` with comment clarifying valid quality range.
+- **Reasoning**: Keeps runtime defaults and documented sample env aligned after introducing balanced image transport optimization.

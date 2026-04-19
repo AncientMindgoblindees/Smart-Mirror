@@ -10,6 +10,11 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from backend import config
+try:
+    from PIL import Image, ImageOps
+except Exception:  # noqa: BLE001
+    Image = None  # type: ignore[assignment]
+    ImageOps = None  # type: ignore[assignment]
 
 
 class PiCameraError(RuntimeError):
@@ -43,8 +48,13 @@ class PiCameraAdapter:
 
         try:
             cam = Picamera2()
+            width, height = _scaled_capture_dimensions(
+                config.PI_CAMERA_CAPTURE_WIDTH,
+                config.PI_CAMERA_CAPTURE_HEIGHT,
+                config.PI_CAMERA_MAX_DIM,
+            )
             still_cfg = cam.create_still_configuration(
-                main={"size": (config.PI_CAMERA_CAPTURE_WIDTH, config.PI_CAMERA_CAPTURE_HEIGHT)}
+                main={"size": (width, height)}
             )
             cam.configure(still_cfg)
             cam.start()
@@ -75,6 +85,8 @@ class PiCameraAdapter:
             str(width),
             "--height",
             str(height),
+            "--quality",
+            str(_clamped_jpeg_quality(config.PI_CAMERA_JPEG_QUALITY)),
             "-o",
             str(target_path),
         ]
@@ -135,11 +147,17 @@ class PiCameraAdapter:
                                 f"{_format_holders('holders', _camera_holders_snapshot())}"
                             ) from exc
                     else:
-                        self._capture_with_rpicam_cli(
-                            tmp_path,
+                        width, height = _scaled_capture_dimensions(
                             config.PI_CAMERA_CAPTURE_WIDTH,
                             config.PI_CAMERA_CAPTURE_HEIGHT,
+                            config.PI_CAMERA_MAX_DIM,
                         )
+                        self._capture_with_rpicam_cli(
+                            tmp_path,
+                            width,
+                            height,
+                        )
+                    _optimize_latest_person_image_for_transport(tmp_path, target_path)
                     tmp_path.replace(target_path)
                 finally:
                     if tmp_path.exists():
@@ -256,3 +274,32 @@ def _stop_pipewire_user_services() -> bool:
     cmd = ["systemctl", "--user", "stop", "pipewire", "pipewire-pulse", "wireplumber"]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     return proc.returncode == 0
+
+
+def _clamped_jpeg_quality(value: int) -> int:
+    return max(20, min(95, int(value)))
+
+
+def _scaled_capture_dimensions(width: int, height: int, max_dim: int) -> tuple[int, int]:
+    width = max(1, int(width))
+    height = max(1, int(height))
+    max_dim = int(max_dim)
+    largest = max(width, height)
+    if max_dim <= 0 or largest <= max_dim:
+        return width, height
+    scale = max_dim / largest
+    return max(1, int(width * scale)), max(1, int(height * scale))
+
+
+def _optimize_latest_person_image_for_transport(tmp_path: Path, target_path: Path) -> None:
+    if target_path.name != "latest_person.jpg" or Image is None or ImageOps is None:
+        return
+    quality = _clamped_jpeg_quality(config.PI_CAMERA_JPEG_QUALITY)
+    max_dim = int(config.PI_CAMERA_MAX_DIM)
+    with Image.open(tmp_path) as img:
+        processed = ImageOps.exif_transpose(img)
+        if max_dim > 0:
+            processed.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+        if processed.mode not in ("RGB", "L"):
+            processed = processed.convert("RGB")
+        processed.save(tmp_path, format="JPEG", quality=quality, optimize=True)
