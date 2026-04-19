@@ -57,46 +57,6 @@
   pointer-events: none;
 }
 
-.camera-countdown-badge {
-  position: absolute;
-  left: 50%;
-  bottom: 12%;
-  transform: translateX(-50%);
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.15rem;
-  padding: 0.65rem 1.35rem 0.85rem;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(0, 0, 0, 0.55);
-  pointer-events: none;
-  min-width: 5.5rem;
-}
-
-.camera-countdown-label {
-  font-size: clamp(0.75rem, 2.2vw, 0.95rem);
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.75);
-}
-
-.camera-countdown-value {
-  font-size: clamp(2.75rem, 14vw, 5.5rem);
-  font-weight: 800;
-  line-height: 1;
-  color: #fff;
-  font-variant-numeric: tabular-nums;
-}
-
-.camera-countdown-unit {
-  font-size: clamp(0.8rem, 2.4vw, 1rem);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.65);
-}
-
 .camera-status {
   position: absolute;
   inset: 0;
@@ -108,50 +68,6 @@
   z-index: 1;
   font-size: 1.05rem;
   pointer-events: none;
-}
-
-/* Full boot dwell above preview and countdown so ticks do not leak through early. */
-.camera-status-boot {
-  z-index: 4;
-  background: rgba(0, 0, 0, 0.82);
-}
-
-.camera-status-boot .camera-loading-content {
-  color: #f9fafb;
-  font-size: clamp(1rem, 2.8vw, 1.35rem);
-  font-weight: 600;
-  padding: 0.65rem 1.1rem;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: rgba(0, 0, 0, 0.65);
-}
-
-.camera-status-loading {
-  color: var(--color-text-secondary);
-}
-
-.camera-loading-content {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.5rem 0.85rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.4);
-}
-
-.camera-loading-spinner {
-  width: 0.9rem;
-  height: 0.9rem;
-  border-radius: 999px;
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  border-top-color: rgba(255, 255, 255, 0.95);
-  animation: camera-spin 0.8s linear infinite;
-}
-
-@keyframes camera-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .camera-status-error {
