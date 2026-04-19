@@ -625,3 +625,20 @@
   - `python -m compileall backend/database/models.py` (pass)
 - **Verification**:
   - `ReadLints` for `backend/database/models.py` reported no diagnostics.
+
+## 2026-04-19 — OAuth success redirect to hosted companion URL
+
+- **Action**: Added automatic post-auth redirect for browser OAuth callbacks.
+- **Changes**:
+  - `backend/api/oauth_web.py`:
+    - Added `_post_auth_redirect_url()` that resolves from:
+      - `OAUTH_SUCCESS_REDIRECT_URL`
+      - `SMART_MIRROR_WEB_URL`
+      - fallback `https://smart-mirror.tech`
+    - Google and Microsoft success callbacks now `302` redirect to the resolved URL after tokens are stored.
+  - `.env.example`:
+    - Added `OAUTH_SUCCESS_REDIRECT_URL=https://smart-mirror.tech`.
+- **Commands**:
+  - `python -m compileall backend/api/oauth_web.py` (pass)
+- **Verification**:
+  - `ReadLints` on touched files reported no diagnostics.

@@ -9,6 +9,7 @@ Redirect URIs must be registered in Google Cloud Console and Azure App Registrat
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 import time
 from typing import Any
@@ -75,6 +76,18 @@ def _success_html(title: str, body: str) -> HTMLResponse:
 <style>body{{font-family:system-ui,sans-serif;background:#111;color:#eee;max-width:28rem;margin:3rem auto;padding:1.5rem;text-align:center;}}</style></head>
 <body><h1>{title}</h1><p>{body}</p></body></html>"""
     )
+
+
+def _post_auth_redirect_url() -> str | None:
+    """
+    Optional URL to redirect to after successful browser OAuth callback.
+    Defaults to smart-mirror.tech for hosted companion flow.
+    """
+    return (
+        os.getenv("OAUTH_SUCCESS_REDIRECT_URL")
+        or os.getenv("SMART_MIRROR_WEB_URL")
+        or "https://smart-mirror.tech"
+    ).strip() or None
 
 
 @router.get("/google/start")
@@ -145,10 +158,10 @@ async def oauth_google_callback(request: Request, code: str | None = None, state
             status_code=500,
             detail="Google login completed, but backend failed while saving tokens. Check backend logs.",
         )
-    return _success_html(
-        "Google connected",
-        "You can return to the Mirror Config app. This window is safe to close.",
-    )
+    redirect_url = _post_auth_redirect_url()
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=302)
+    return _success_html("Google connected", "You can return to the Mirror Config app.")
 
 
 @router.get("/microsoft/start")
@@ -213,7 +226,7 @@ async def oauth_microsoft_callback(
         scope=body.get("scope"),
     )
     await auth_manager.store_tokens_from_web("microsoft", token)
-    return _success_html(
-        "Microsoft connected",
-        "You can return to the Mirror Config app. This window is safe to close.",
-    )
+    redirect_url = _post_auth_redirect_url()
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=302)
+    return _success_html("Microsoft connected", "You can return to the Mirror Config app.")
