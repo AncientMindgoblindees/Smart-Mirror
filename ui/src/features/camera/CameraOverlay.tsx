@@ -29,10 +29,11 @@ export const CameraOverlay: React.FC<{
       <div className="camera-stage">
         <div className="camera-video-wrap">
           <img
-            key={frameSrc}
             src={frameSrc}
             className="camera-video"
             aria-label="Camera preview"
+            decoding="async"
+            referrerPolicy="no-referrer"
             onLoad={() => {
               markLoaded();
               onPreviewFrameLoaded?.();

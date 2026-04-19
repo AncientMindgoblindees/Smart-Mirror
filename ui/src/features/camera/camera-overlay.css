@@ -140,6 +140,7 @@
 }
 
 .camera-status-error {
+  z-index: 6;
   color: #f87171;
   background: rgba(0, 0, 0, 0.55);
 }

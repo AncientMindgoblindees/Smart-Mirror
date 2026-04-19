@@ -296,3 +296,8 @@
 - **Action**: Exposed `booting` on `GET /api/camera/status`; MirrorApp polls status every 400ms so boot + countdown stay in sync if `/ws/control` drops messages; WebSocket handler accepts Blob frames; boot label contrast + preview box sizing tweaks.
 - **Changes**: `backend/schemas/camera.py`, `backend/services/camera_service.py`, `ui/src/app/MirrorApp.tsx`, `ui/src/hooks/useControlEvents.ts`, `ui/src/features/camera/camera-overlay.css`, `ui/src/api/backendTypes.ts`.
 - **Commands**: `python -m compileall` (pass); `npm run build` in `ui` (pass).
+
+## 2026-04-19 — Preview: sequential JPEG loads (fix blank live feed)
+
+- **Action**: Replaced timer-only `src` updates (and per-tick `key` remount) with load-chained polling in `useCameraStream` so the next frame is requested only after `onLoad`/`onError`; raised preview error overlay z-index; `decoding="async"` + `referrerPolicy` on preview `<img>`.
+- **Commands**: `npm run build` in `ui` (pass).
