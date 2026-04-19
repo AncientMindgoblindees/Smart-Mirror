@@ -18,6 +18,8 @@ export type {
 } from './controlEventProtocol';
 
 type ControlEventHandlers = {
+  onCameraLoadingStarted?: () => void;
+  onCameraLoadingReady?: () => void;
   onCameraCountdownStarted?: (countdownSeconds: number) => void;
   onCameraCountdownTick?: (remaining: number) => void;
   onCameraCaptured?: () => void;
@@ -43,6 +45,12 @@ export function useControlEvents(handlers: ControlEventHandlers): void {
     onMessage: (ev) => {
       const parsed = parseControlEvent(ev.data as string);
       switch (parsed.type) {
+        case 'CAMERA_LOADING_STARTED':
+          ref.current.onCameraLoadingStarted?.();
+          break;
+        case 'CAMERA_LOADING_READY':
+          ref.current.onCameraLoadingReady?.();
+          break;
         case 'CAMERA_COUNTDOWN_STARTED':
           ref.current.onCameraCountdownStarted?.(parsed.countdownSeconds);
           break;

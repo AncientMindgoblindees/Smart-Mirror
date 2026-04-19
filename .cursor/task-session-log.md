@@ -196,3 +196,19 @@
   - `npm run build` in `C:/Users/tjmel/Downloads/smart-mirror-config` (pass; existing CSS `@import` order warning only)
 - **Verification**:
   - `ReadLints` on edited backend and frontend files reported no lint errors.
+
+## 2026-04-19 — Mirror-side continuous feed + app countdown 5s
+
+- **Action**: Adjusted implementation to match intent split:
+  - countdown control remains in companion app (`smart-mirror-config`)
+  - continuous feed display remains on Smart Mirror UI (`ui`)
+- **Changes**:
+  - `C:/Users/tjmel/Downloads/smart-mirror-config/src/features/camera/cameraApi.ts`: set `countdown_seconds` to `5`.
+  - `ui/src/hooks/controlEventProtocol.ts`: added parsing for `CAMERA_LOADING_STARTED` and `CAMERA_LOADING_READY`.
+  - `ui/src/hooks/useControlEvents.ts`: added optional handlers for camera loading lifecycle events.
+  - `ui/src/app/MirrorApp.tsx`: on `CAMERA_LOADING_STARTED`, opens camera overlay immediately (before countdown) so continuous preview is visible while user adjusts pose; keeps overlay until capture completes.
+- **Commands**:
+  - `npm --prefix ui run build` (pass)
+  - `npm run build` in `C:/Users/tjmel/Downloads/smart-mirror-config` (pass; existing CSS `@import` order warning only)
+- **Verification**:
+  - `ReadLints` on all touched files reported no lint errors.

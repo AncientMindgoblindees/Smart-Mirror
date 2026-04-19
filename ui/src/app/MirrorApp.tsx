@@ -118,6 +118,15 @@ export default function MirrorApp() {
   });
 
   useControlEvents({
+    onCameraLoadingStarted: () => {
+      setShowCamera(true);
+      setCameraCountdown(null);
+      setCameraError(null);
+    },
+    onCameraLoadingReady: () => {
+      setShowCamera(true);
+      setCameraError(null);
+    },
     onCameraCountdownStarted: (seconds) => {
       setShowCamera(true);
       setCameraCountdown(seconds);

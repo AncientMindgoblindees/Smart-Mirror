@@ -26,6 +26,8 @@ export type TryOnResultPayload = {
 };
 
 export type ParsedControlEvent =
+  | { type: 'CAMERA_LOADING_STARTED' }
+  | { type: 'CAMERA_LOADING_READY' }
   | { type: 'CAMERA_COUNTDOWN_STARTED'; countdownSeconds: number }
   | { type: 'CAMERA_COUNTDOWN_TICK'; remaining: number }
   | { type: 'CAMERA_CAPTURED' }
@@ -58,6 +60,10 @@ export function parseControlEvent(rawText: string): ParsedControlEvent {
     const data = JSON.parse(rawText) as { type?: string; payload?: Record<string, unknown> };
     const payload = data.payload ?? {};
     switch (data.type) {
+      case 'CAMERA_LOADING_STARTED':
+        return { type: 'CAMERA_LOADING_STARTED' };
+      case 'CAMERA_LOADING_READY':
+        return { type: 'CAMERA_LOADING_READY' };
       case 'CAMERA_COUNTDOWN_STARTED':
         return { type: 'CAMERA_COUNTDOWN_STARTED', countdownSeconds: readNumber(payload.countdown_seconds, 3) };
       case 'CAMERA_COUNTDOWN_TICK':
