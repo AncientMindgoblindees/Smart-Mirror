@@ -34,6 +34,7 @@ if [[ -f "${PID_FILE}" ]]; then
 fi
 
 pkill -f chromium 2>/dev/null || true
+rm -rf ~/.cache/chromium/*
 pkill -f cloudflared 2>/dev/null || true
 pkill -f "uvicorn backend.main:app" 2>/dev/null || true
 pkill -f "python3 main.py" 2>/dev/null || true

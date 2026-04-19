@@ -56,7 +56,7 @@ LEONARDO_GENERATION_POLL_SEC = float(os.getenv("LEONARDO_GENERATION_POLL_SEC", "
 LEONARDO_GENERATION_TIMEOUT_SEC = float(os.getenv("LEONARDO_GENERATION_TIMEOUT_SEC", "120"))
 
 # Portrait-oriented default framing for mirror composition.
-PI_CAMERA_CAPTURE_WIDTH = int(os.getenv("PI_CAMERA_CAPTURE_WIDTH", "1080"))
+PI_CAMERA_CAPTURE_WIDTH = int(os.getenv("PI_CAMERA_CAPTURE_WIDTH", "1440"))
 PI_CAMERA_CAPTURE_HEIGHT = int(os.getenv("PI_CAMERA_CAPTURE_HEIGHT", "1920"))
 PI_CAMERA_MAX_DIM = int(os.getenv("PI_CAMERA_MAX_DIM", "1280"))
 # Long-edge cap for Picamera2 lores frames used for MJPEG live view only (/api/camera/live).
@@ -69,7 +69,7 @@ CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC = float(
     os.getenv("CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC", "2.5")
 )
 # Max MJPEG frames per second from GET /api/camera/live (Pi CPU / USB bandwidth).
-CAMERA_MJPEG_MAX_FPS = float(os.getenv("CAMERA_MJPEG_MAX_FPS", "10"))
+CAMERA_MJPEG_MAX_FPS = float(os.getenv("CAMERA_MJPEG_MAX_FPS", "30"))
 
 TRYON_LOCAL_KEEP_LAST = int(os.getenv("TRYON_LOCAL_KEEP_LAST", "10"))
 
