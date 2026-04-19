@@ -557,3 +557,20 @@
   - `npm run build` in `ui/` (pass)
 - **Verification**:
   - `ReadLints` on touched backend files and env example reported no diagnostics.
+
+## 2026-04-19 — Remove old UI camera overlay loading/countdown architecture
+
+- **Action**: Removed residual browser-side camera loading/countdown UI architecture now that native `rpicam` preview + native countdown overlay own those concerns.
+- **Changes**:
+  - `ui/src/app/hooks/useOverlayState.ts`: removed `cameraLoading` and `cameraCountdown` state.
+  - `ui/src/app/MirrorApp.tsx`:
+    - removed camera loading/countdown state plumbing and dev boot timer logic,
+    - removed camera overlay loading/countdown props,
+    - replaced countdown-based flow checks with a simple capture-flow activity ref.
+  - `ui/src/features/camera/CameraOverlay.tsx`: removed loading spinner and countdown badge rendering; overlay now only shows native preview hint + optional error.
+  - `ui/src/features/camera/index.ts`: removed `useCameraStream` export.
+  - Deleted `ui/src/features/camera/useCameraStream.ts` (legacy MJPEG browser preview hook).
+- **Commands**:
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on touched UI files reported no diagnostics.

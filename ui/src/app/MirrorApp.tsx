@@ -57,24 +57,11 @@ export default function MirrorApp() {
   const {
     showCamera,
     setShowCamera,
-    cameraLoading,
-    setCameraLoading,
-    cameraCountdown,
-    setCameraCountdown,
     cameraError,
     setCameraError,
   } =
     useOverlayState();
-  const cameraCountdownRef = useRef<number | null>(null);
-  cameraCountdownRef.current = cameraCountdown;
-  const cameraDevBootTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
-
-  const clearCameraDevBootTimer = useCallback(() => {
-    if (cameraDevBootTimerRef.current !== null) {
-      window.clearTimeout(cameraDevBootTimerRef.current);
-      cameraDevBootTimerRef.current = null;
-    }
-  }, []);
+  const captureFlowActiveRef = useRef(false);
   const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
   const [fullScreenTryOnUrl, setFullScreenTryOnUrl] = useState<string | null>(null);
 
@@ -159,42 +146,34 @@ export default function MirrorApp() {
 
   useControlEvents({
     onCameraLoadingStarted: () => {
-      clearCameraDevBootTimer();
+      captureFlowActiveRef.current = true;
       setShowCamera(true);
-      setCameraLoading(true);
-      setCameraCountdown(null);
       setCameraError(null);
     },
     onCameraLoadingReady: () => {
       setShowCamera(true);
-      setCameraLoading(false);
       setCameraError(null);
     },
-    onCameraCountdownStarted: (seconds) => {
+    onCameraCountdownStarted: () => {
+      captureFlowActiveRef.current = true;
       setShowCamera(true);
-      setCameraLoading(false);
-      setCameraCountdown(seconds);
       setCameraError(null);
     },
-    onCameraCountdownTick: (remaining) => {
+    onCameraCountdownTick: () => {
+      captureFlowActiveRef.current = true;
       setShowCamera(true);
-      setCameraCountdown(remaining);
     },
     onCameraCaptured: () => {
-      clearCameraDevBootTimer();
-      setCameraLoading(false);
-      setCameraCountdown(null);
+      captureFlowActiveRef.current = false;
       setCameraError(null);
       setShowCamera(false);
     },
     onCameraError: (message) => {
-      clearCameraDevBootTimer();
-      const hadActiveCountdown = cameraCountdownRef.current !== null;
-      setCameraLoading(false);
-      setCameraCountdown(null);
+      const hadCaptureFlow = captureFlowActiveRef.current;
+      captureFlowActiveRef.current = false;
       setCameraError(summarizeCameraError(message));
       // If this error happened during an active capture flow, return to UI instead of leaving camera overlay stuck.
-      if (hadActiveCountdown) {
+      if (hadCaptureFlow) {
         setShowCamera(false);
         return;
       }
@@ -208,8 +187,6 @@ export default function MirrorApp() {
       refreshAuth();
     },
   });
-
-  useEffect(() => () => clearCameraDevBootTimer(), [clearCameraDevBootTimer]);
 
   const toggleWidget = (id: string) => {
     setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)));
@@ -244,24 +221,14 @@ export default function MirrorApp() {
           onToggleCamera={() => {
             const shouldOpen = !showCamera;
             if (shouldOpen) {
-              clearCameraDevBootTimer();
               setShowCamera(true);
-              setCameraLoading(true);
-              setCameraCountdown(null);
               setCameraError(null);
               void startDevNativePreview()
-                .then(() => {
-                  setCameraLoading(false);
-                })
                 .catch((err: unknown) => {
-                  setCameraLoading(false);
                   setCameraError(err instanceof Error ? err.message : 'Native preview failed to start');
                 });
               return;
             }
-            clearCameraDevBootTimer();
-            setCameraLoading(false);
-            setCameraCountdown(null);
             setCameraError(null);
             setShowCamera(false);
             void stopDevNativePreview();
@@ -282,13 +249,8 @@ export default function MirrorApp() {
 
       {showCamera && (
         <CameraOverlay
-          loading={cameraLoading}
-          countdown={cameraCountdown}
           errorMessage={cameraError}
           onClose={() => {
-            clearCameraDevBootTimer();
-            setCameraLoading(false);
-            setCameraCountdown(null);
             setCameraError(null);
             setShowCamera(false);
             void stopDevNativePreview();
