@@ -519,3 +519,21 @@
   - `python -m compileall backend/services/pi_camera.py` (pass)
 - **Verification**:
   - `ReadLints` on `backend/services/pi_camera.py` reported no diagnostics.
+
+## 2026-04-19 — Dev tools native preview control endpoints + UI wiring
+
+- **Action**: Added dev-tools control path for native camera preview so mirror dev camera toggle starts/stops `rpicam` preview directly.
+- **Changes**:
+  - `backend/schemas/camera.py`: added `CameraPreviewRequest`.
+  - `backend/api/camera.py`:
+    - added `POST /api/camera/preview/start` (uses `pi_camera.start_native_preview`, returns 503 with detailed error when native preview cannot start),
+    - added `POST /api/camera/preview/stop`.
+  - `ui/src/app/MirrorApp.tsx`:
+    - dev tools camera toggle now calls preview start/stop endpoints;
+    - opens overlay immediately, shows loading while start request is in-flight, and surfaces backend error text in overlay;
+    - overlay close now stops native preview endpoint.
+- **Commands**:
+  - `python -m compileall backend/api/camera.py backend/schemas/camera.py` (pass)
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on touched files reported no diagnostics.

@@ -10,6 +10,11 @@ class CameraCaptureRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, max_length=128)
 
 
+class CameraPreviewRequest(BaseModel):
+    source: str = Field("mirror-dev-panel", min_length=1, max_length=64)
+    session_id: Optional[str] = Field(default=None, max_length=128)
+
+
 class CameraStatusOut(BaseModel):
     active: bool
     booting: bool = Field(

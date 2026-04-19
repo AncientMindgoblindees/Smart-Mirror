@@ -4,8 +4,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend import config
-from backend.schemas.camera import CameraCaptureRequest, CameraStatusOut
+from backend.schemas.camera import CameraCaptureRequest, CameraPreviewRequest, CameraStatusOut
 from backend.services.camera_service import camera_state
+from backend.services.pi_camera import PiCameraError, pi_camera
 
 router = APIRouter(prefix="/camera", tags=["camera"])
 
@@ -25,6 +26,23 @@ async def post_camera_capture(req: CameraCaptureRequest) -> dict:
     if not result.get("accepted"):
         raise HTTPException(status_code=409, detail=result.get("reason", "capture busy"))
     return {"status": "accepted"}
+
+
+@router.post("/preview/start", summary="Start native camera preview (dev tools)")
+async def post_camera_preview_start(req: CameraPreviewRequest) -> dict:
+    if not config.CAMERA_NATIVE_PREVIEW:
+        raise HTTPException(status_code=409, detail="CAMERA_NATIVE_PREVIEW is disabled")
+    try:
+        started = await asyncio.to_thread(pi_camera.start_native_preview)
+    except PiCameraError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"status": "ok", "preview_running": bool(started), "source": req.source}
+
+
+@router.post("/preview/stop", summary="Stop native camera preview (dev tools)")
+async def post_camera_preview_stop(req: CameraPreviewRequest) -> dict:
+    await asyncio.to_thread(pi_camera.stop_native_preview)
+    return {"status": "ok", "preview_running": False, "source": req.source}
 
 
 _MJPEG_BOUNDARY = b"mjpegframe"

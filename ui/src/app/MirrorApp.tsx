@@ -21,6 +21,7 @@ import { TooltipProvider } from '@/components/ui/Tooltip';
 import { useMirrorDisplayMode } from './hooks/useMirrorDisplayMode';
 import { useAuthActions } from './hooks/useAuthActions';
 import { useOverlayState } from './hooks/useOverlayState';
+import { getApiBase } from '@/config/backendOrigin';
 import './mirror-app.css';
 
 function readDevPanelInitial(): boolean {
@@ -128,6 +129,26 @@ export default function MirrorApp() {
     });
   }, []);
 
+  const startDevNativePreview = useCallback(async () => {
+    const res = await fetch(`${getApiBase()}/camera/preview/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'mirror-dev-panel' }),
+    });
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => ({}))) as { detail?: string };
+      throw new Error(payload.detail || `Preview start failed (${res.status})`);
+    }
+  }, []);
+
+  const stopDevNativePreview = useCallback(async () => {
+    await fetch(`${getApiBase()}/camera/preview/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'mirror-dev-panel' }),
+    }).catch(() => {});
+  }, []);
+
   useMirrorInput({
     toggleDim,
     toggleSleep,
@@ -221,23 +242,29 @@ export default function MirrorApp() {
       {showDevPanel && (
         <ToolsPanel
           onToggleCamera={() => {
-            setShowCamera((prev) => {
-              const next = !prev;
-              if (next) {
-                clearCameraDevBootTimer();
-                setCameraLoading(true);
-                cameraDevBootTimerRef.current = window.setTimeout(() => {
-                  cameraDevBootTimerRef.current = null;
+            const shouldOpen = !showCamera;
+            if (shouldOpen) {
+              clearCameraDevBootTimer();
+              setShowCamera(true);
+              setCameraLoading(true);
+              setCameraCountdown(null);
+              setCameraError(null);
+              void startDevNativePreview()
+                .then(() => {
                   setCameraLoading(false);
-                }, 2500);
-              } else {
-                clearCameraDevBootTimer();
-                setCameraLoading(false);
-                setCameraCountdown(null);
-                setCameraError(null);
-              }
-              return next;
-            });
+                })
+                .catch((err: unknown) => {
+                  setCameraLoading(false);
+                  setCameraError(err instanceof Error ? err.message : 'Native preview failed to start');
+                });
+              return;
+            }
+            clearCameraDevBootTimer();
+            setCameraLoading(false);
+            setCameraCountdown(null);
+            setCameraError(null);
+            setShowCamera(false);
+            void stopDevNativePreview();
           }}
           onToggleDim={toggleDim}
           onToggleSleep={toggleSleep}
@@ -264,6 +291,7 @@ export default function MirrorApp() {
             setCameraCountdown(null);
             setCameraError(null);
             setShowCamera(false);
+            void stopDevNativePreview();
           }}
         />
       )}
