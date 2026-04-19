@@ -7,13 +7,11 @@ export const CameraOverlay: React.FC<{
   countdown?: number | null;
   errorMessage?: string | null;
   loading?: boolean;
-  onPreviewFrameLoaded?: () => void;
 }> = ({
   onClose,
   countdown = null,
   errorMessage = null,
   loading = false,
-  onPreviewFrameLoaded: _onPreviewFrameLoaded,
 }) => {
   return (
     <div className="camera-overlay">

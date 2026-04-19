@@ -478,3 +478,44 @@
   - `npm run build` in `ui/` (pass)
 - **Verification**:
   - `ReadLints` on all touched files reported no diagnostics.
+
+## 2026-04-19 — Native preview reliability pass (status polling removal + strict startup)
+
+- **Issue**: User reported camera preview still failing and `/camera/status` being called ~3 times/second.
+- **Action**:
+  - Removed Mirror UI HTTP fallback polling for `/api/camera/status` from `ui/src/app/MirrorApp.tsx` (the 400ms interval loop).
+  - Removed obsolete `onPreviewFrameLoaded` wiring from `CameraOverlay` call/props since native preview mode has no browser frame source.
+  - Made native preview startup strict in `backend/services/camera_service.py`: if `CAMERA_NATIVE_PREVIEW=1` and `rpicam-hello` does not start, capture flow now fails fast with clear error event.
+  - Improved `backend/services/pi_camera.py` native preview error visibility: `rpicam-hello` stderr is captured and included when process exits immediately.
+- **Commands**:
+  - `python -m compileall backend/services/camera_service.py backend/services/pi_camera.py` (pass)
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on touched files reported no diagnostics.
+
+## 2026-04-19 — Fix rpicam-still even-width crash during capture
+
+- **Issue**: Runtime capture failed with `finalise_output: 420/422 image width should be even` while using scaled dimensions (example width `405`).
+- **Root Cause**: Camera sizing helpers could produce odd dimensions after scale/ratio calculations, which are invalid for YUV420 output in `rpicam-still`.
+- **Action**: Updated `backend/services/pi_camera.py` dimension helpers to force even dimensions:
+  - Added `_even_at_least_2()`.
+  - `_scaled_capture_dimensions()` now returns even width/height.
+  - `_lores_size_for_main()` now returns even width/height.
+- **Commands**:
+  - `python -m compileall backend/services/pi_camera.py` (pass)
+- **Verification**:
+  - `ReadLints` on `backend/services/pi_camera.py` reported no diagnostics.
+
+## 2026-04-19 — Add camera startup dimension log line
+
+- **Action**: Added one concise backend info log at native preview startup for effective camera dimensions.
+- **Change**:
+  - `backend/services/pi_camera.py` now logs:
+    - `capture=<w>x<h>`
+    - `preview=<w>x<h>` (derived lores)
+    - `lores_max=<value>`
+  - Log emits when `start_native_preview()` runs, which is the key capture-flow startup point.
+- **Commands**:
+  - `python -m compileall backend/services/pi_camera.py` (pass)
+- **Verification**:
+  - `ReadLints` on `backend/services/pi_camera.py` reported no diagnostics.

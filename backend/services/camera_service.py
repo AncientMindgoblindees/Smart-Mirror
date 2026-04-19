@@ -68,6 +68,8 @@ class CameraCaptureState:
             )
             if config.CAMERA_NATIVE_PREVIEW:
                 native_preview_started = await asyncio.to_thread(pi_camera.start_native_preview)
+                if not native_preview_started:
+                    raise RuntimeError("Native camera preview failed to start")
             else:
                 await asyncio.to_thread(pi_camera.prepare_for_capture)
             await control_registry.broadcast(

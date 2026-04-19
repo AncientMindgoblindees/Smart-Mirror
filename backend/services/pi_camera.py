@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import threading
 import time
+import logging
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -20,6 +21,13 @@ except Exception:  # noqa: BLE001
 class PiCameraError(RuntimeError):
     pass
 
+logger = logging.getLogger(__name__)
+
+
+def _even_at_least_2(value: int) -> int:
+    v = max(2, int(value))
+    return v if v % 2 == 0 else v - 1
+
 
 def _lores_size_for_main(main_w: int, main_h: int, max_edge: int) -> tuple[int, int]:
     """Pick lores dimensions with same aspect as main; long edge capped at max_edge."""
@@ -32,7 +40,7 @@ def _lores_size_for_main(main_w: int, main_h: int, max_edge: int) -> tuple[int, 
     else:
         h = cap
         w = max(1, int(round(cap * mw / mh)))
-    return w, h
+    return _even_at_least_2(w), _even_at_least_2(h)
 
 
 def _picamera2_save_preview_jpeg(cam, tmp_path: Path) -> None:
@@ -235,6 +243,15 @@ class PiCameraAdapter:
                     config.PI_CAMERA_CAPTURE_HEIGHT,
                     config.PI_CAMERA_MAX_DIM,
                 )
+                pw, ph = _lores_size_for_main(width, height, config.PI_CAMERA_PREVIEW_LORES_MAX)
+                logger.info(
+                    "camera native preview start: capture=%sx%s preview=%sx%s lores_max=%s",
+                    width,
+                    height,
+                    pw,
+                    ph,
+                    config.PI_CAMERA_PREVIEW_LORES_MAX,
+                )
                 cmd = [
                     bin_name,
                     "-t",
@@ -248,11 +265,22 @@ class PiCameraAdapter:
                 self._preview_proc = subprocess.Popen(  # noqa: S603
                     cmd,
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
                     text=True,
                 )
                 time.sleep(0.18)
-                return self._preview_proc.poll() is None
+                if self._preview_proc.poll() is None:
+                    return True
+                err = ""
+                try:
+                    if self._preview_proc.stderr is not None:
+                        err = (self._preview_proc.stderr.read() or "").strip()
+                except Exception:
+                    err = ""
+                self._preview_proc = None
+                if err:
+                    raise PiCameraError(f"rpicam-hello exited immediately: {err}")
+                raise PiCameraError("rpicam-hello exited immediately")
 
     def stop_native_preview(self) -> None:
         with self._lock:
@@ -442,9 +470,9 @@ def _scaled_capture_dimensions(width: int, height: int, max_dim: int) -> tuple[i
     max_dim = int(max_dim)
     largest = max(width, height)
     if max_dim <= 0 or largest <= max_dim:
-        return width, height
+        return _even_at_least_2(width), _even_at_least_2(height)
     scale = max_dim / largest
-    return max(1, int(width * scale)), max(1, int(height * scale))
+    return _even_at_least_2(width * scale), _even_at_least_2(height * scale)
 
 
 def _optimize_latest_person_image_for_transport(tmp_path: Path, target_path: Path) -> None:
