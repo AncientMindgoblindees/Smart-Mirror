@@ -45,8 +45,9 @@ Legacy `SYNC_STATE` remains supported for backward compatibility.
 ### Camera
 
 - `GET /api/camera/status`
-- `GET /api/camera/stream.mjpg` — MJPEG multipart stream for mirror `<img>` live view
-- `POST /api/camera/capture`
+- `GET /api/camera/live` — MJPEG multipart stream for mirror `<img>` live view (preferred)
+- `GET /api/camera/stream.mjpg` — same MJPEG stream (alternate URL)
+- `POST /api/camera/capture` — starts boot + countdown; final still is written on the Pi after countdown (not from the MJPEG stream)
   - body: `{ "countdown_seconds": number, "source": string, "session_id"?: string }`
 
 ### Clothing (wardrobe + Cloudinary + D1 sync)

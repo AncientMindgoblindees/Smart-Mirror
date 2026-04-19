@@ -59,7 +59,7 @@ LEONARDO_GENERATION_TIMEOUT_SEC = float(os.getenv("LEONARDO_GENERATION_TIMEOUT_S
 PI_CAMERA_CAPTURE_WIDTH = int(os.getenv("PI_CAMERA_CAPTURE_WIDTH", "1080"))
 PI_CAMERA_CAPTURE_HEIGHT = int(os.getenv("PI_CAMERA_CAPTURE_HEIGHT", "1920"))
 PI_CAMERA_MAX_DIM = int(os.getenv("PI_CAMERA_MAX_DIM", "1280"))
-# Long-edge cap for Picamera2 lores frames used inside the MJPEG stream (/api/camera/stream.mjpg).
+# Long-edge cap for Picamera2 lores frames used for MJPEG live view only (/api/camera/live).
 PI_CAMERA_PREVIEW_LORES_MAX = int(os.getenv("PI_CAMERA_PREVIEW_LORES_MAX", "640"))
 PI_CAMERA_JPEG_QUALITY = int(os.getenv("PI_CAMERA_JPEG_QUALITY", "82"))
 CAMERA_CAPTURE_BUTTON = os.getenv("CAMERA_CAPTURE_BUTTON", "UP").upper()
@@ -68,7 +68,7 @@ CAMERA_CAPTURE_COUNTDOWN_SEC = int(os.getenv("CAMERA_CAPTURE_COUNTDOWN_SEC", "3"
 CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC = float(
     os.getenv("CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC", "2.5")
 )
-# Max MJPEG preview frames per second from GET /api/camera/stream.mjpg (Pi CPU / USB bandwidth).
+# Max MJPEG frames per second from GET /api/camera/live (Pi CPU / USB bandwidth).
 CAMERA_MJPEG_MAX_FPS = float(os.getenv("CAMERA_MJPEG_MAX_FPS", "10"))
 
 TRYON_LOCAL_KEEP_LAST = int(os.getenv("TRYON_LOCAL_KEEP_LAST", "10"))

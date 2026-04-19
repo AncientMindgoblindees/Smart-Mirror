@@ -30,15 +30,8 @@ async def post_camera_capture(req: CameraCaptureRequest) -> dict:
 _MJPEG_BOUNDARY = b"mjpegframe"
 
 
-@router.get(
-    "/stream.mjpg",
-    summary="MJPEG preview stream (multipart) for browser <img> live view",
-)
-async def get_camera_mjpeg_stream() -> StreamingResponse:
-    """
-    One long-lived HTTP response; the browser decodes multipart JPEG parts as a live feed.
-    """
-
+def _mjpeg_streaming_response() -> StreamingResponse:
+    """Shared MJPEG body for `/live` and `/stream.mjpg` (same bytes, two URLs for proxy quirks)."""
     pause = 1.0 / max(1.0, float(config.CAMERA_MJPEG_MAX_FPS))
 
     async def frames():
@@ -62,3 +55,19 @@ async def get_camera_mjpeg_stream() -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get(
+    "/live",
+    summary="MJPEG live view (preferred for mirror UI; no dotted path segment)",
+)
+async def get_camera_mjpeg_live() -> StreamingResponse:
+    return _mjpeg_streaming_response()
+
+
+@router.get(
+    "/stream.mjpg",
+    summary="MJPEG live view (alternate URL; same as /live)",
+)
+async def get_camera_mjpeg_stream() -> StreamingResponse:
+    return _mjpeg_streaming_response()

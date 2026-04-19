@@ -312,3 +312,14 @@
 - **Action**: Dropped the discrete preview route; live HTTP view is only `GET /api/camera/stream.mjpg`. `CameraCaptureState.read_mjpeg_frame` wraps the Pi JPEG grab used inside the MJPEG generator.
 - **Docs**: `docs/control-contract.v2.md`, `docs/validation-checklist.md`; `.env.example` lores comment.
 - **Commands**: `python -m compileall backend/api/camera.py backend/services/camera_service.py`; `npm run build` in `ui` (pass).
+
+## 2026-04-19 — Camera 404 mitigation: /live + restore preview.jpg
+
+- **Action**: Added `GET /api/camera/live` (same MJPEG as `stream.mjpg`, no dotted segment); restored `GET /api/camera/preview.jpg` single-frame; UI `<img>` uses `/api/camera/live`.
+- **Reason**: Some setups 404’d after dropping `preview.jpg` only or blocking `.mjpg` paths; mirror UI now targets `/live` first.
+
+## 2026-04-19 — Drop GET /preview.jpg again; live MJPEG + still only after countdown
+
+- **Action**: Removed `GET /api/camera/preview.jpg`. Live view remains `GET /api/camera/live` (and `stream.mjpg`). Final person image still `pi_camera.capture_to` after countdown in `camera_service._run_capture` (unchanged).
+- **Files**: `backend/api/camera.py`, `backend/services/camera_service.py` (docstring), `backend/config.py`, `.env.example`, `docs/control-contract.v2.md`, `docs/validation-checklist.md`.
+- **Commands**: `python -m compileall backend/api/camera.py`; route list shows `/api/camera/status`, `/capture`, `/live`, `/stream.mjpg` only; `npm run build` in `ui` (pass).
