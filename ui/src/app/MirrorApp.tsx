@@ -66,6 +66,14 @@ export default function MirrorApp() {
     useOverlayState();
   const cameraCountdownRef = useRef<number | null>(null);
   cameraCountdownRef.current = cameraCountdown;
+  const cameraDevBootTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  const clearCameraDevBootTimer = useCallback(() => {
+    if (cameraDevBootTimerRef.current !== null) {
+      window.clearTimeout(cameraDevBootTimerRef.current);
+      cameraDevBootTimerRef.current = null;
+    }
+  }, []);
   const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
   const [fullScreenTryOnUrl, setFullScreenTryOnUrl] = useState<string | null>(null);
 
@@ -130,6 +138,7 @@ export default function MirrorApp() {
 
   useControlEvents({
     onCameraLoadingStarted: () => {
+      clearCameraDevBootTimer();
       setShowCamera(true);
       setCameraLoading(true);
       setCameraCountdown(null);
@@ -150,12 +159,14 @@ export default function MirrorApp() {
       setCameraCountdown(remaining);
     },
     onCameraCaptured: () => {
+      clearCameraDevBootTimer();
       setCameraLoading(false);
       setCameraCountdown(null);
       setCameraError(null);
       setShowCamera(false);
     },
     onCameraError: (message) => {
+      clearCameraDevBootTimer();
       const hadActiveCountdown = cameraCountdownRef.current !== null;
       setCameraLoading(false);
       setCameraCountdown(null);
@@ -175,6 +186,8 @@ export default function MirrorApp() {
       refreshAuth();
     },
   });
+
+  useEffect(() => () => clearCameraDevBootTimer(), [clearCameraDevBootTimer]);
 
   const toggleWidget = (id: string) => {
     setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)));
@@ -210,8 +223,14 @@ export default function MirrorApp() {
             setShowCamera((prev) => {
               const next = !prev;
               if (next) {
+                clearCameraDevBootTimer();
                 setCameraLoading(true);
+                cameraDevBootTimerRef.current = window.setTimeout(() => {
+                  cameraDevBootTimerRef.current = null;
+                  setCameraLoading(false);
+                }, 2500);
               } else {
+                clearCameraDevBootTimer();
                 setCameraLoading(false);
                 setCameraCountdown(null);
                 setCameraError(null);
@@ -238,8 +257,8 @@ export default function MirrorApp() {
           loading={cameraLoading}
           countdown={cameraCountdown}
           errorMessage={cameraError}
-          onPreviewFrameLoaded={() => setCameraLoading(false)}
           onClose={() => {
+            clearCameraDevBootTimer();
             setCameraLoading(false);
             setCameraCountdown(null);
             setCameraError(null);

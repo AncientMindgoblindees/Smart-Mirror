@@ -276,3 +276,17 @@
   - `ui/src/app/MirrorApp.tsx`: `cameraCountdownRef` synced each render; `onCameraError` uses `hadActiveCountdown` from ref before clearing state.
 - **Commands**: `Set-Location ui; npm run build` (PowerShell; pass).
 - **Verification**: `ReadLints` on touched TSX files — no issues; production build succeeded.
+
+## 2026-04-19 — Camera boot dwell, live preview tuning, smaller viewport
+
+- **Action**: Enforced minimum boot window before server countdown ticks; boot overlay stays above preview/countdown; faster preview polling during countdown; capped preview frame size; dev-panel camera uses same 2.5s boot dwell.
+- **Changes**:
+  - `backend/config.py`: `CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC` (default 2.5).
+  - `backend/services/camera_service.py`: after `CAMERA_LOADING_READY`, sleep remaining time so elapsed since `CAMERA_LOADING_STARTED` is at least configured boot before `CAMERA_COUNTDOWN_STARTED`.
+  - `.env.example`: documented `CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC`.
+  - `ui/src/app/MirrorApp.tsx`: removed clearing boot on preview `onLoad`; companion boot ends on `CAMERA_COUNTDOWN_STARTED`; dev camera opens with 2.5s timer + cleanup on WS capture/error/close/unmount.
+  - `ui/src/features/camera/CameraOverlay.tsx`: separate boot layer (`camera-status-boot`) vs “Starting camera…”; countdown badge only when `!loading`.
+  - `ui/src/features/camera/camera-overlay.css`: boot dim layer `z-index: 4`; smaller `.camera-video-wrap` caps.
+  - `ui/src/features/camera/useCameraStream.ts`: `turbo` option (200ms) when live countdown visible.
+- **Commands**: `python -m compileall backend/config.py backend/services/camera_service.py` (pass); `npm run build` in `ui` (pass).
+- **Verification**: `ReadLints` on edited TS — no issues.

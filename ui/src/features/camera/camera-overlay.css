@@ -20,8 +20,9 @@
 .camera-video-wrap {
   position: relative;
   flex: none;
-  width: min(74vw, calc((100vh - 9rem) * 9 / 16));
-  height: min(calc(100vh - 9rem), 92vh);
+  /* Cap size for on-wall readability; portrait slot stays stable across resolutions. */
+  width: min(52vw, 380px, calc((100vh - 11rem) * 9 / 16));
+  height: min(calc(100vh - 11rem), 68vh, 640px);
   aspect-ratio: 9 / 16;
   align-self: center;
   background: #111;
@@ -92,6 +93,12 @@
   z-index: 1;
   font-size: 1.05rem;
   pointer-events: none;
+}
+
+/* Full boot dwell above preview and countdown so ticks do not leak through early. */
+.camera-status-boot {
+  z-index: 4;
+  background: rgba(0, 0, 0, 0.72);
 }
 
 .camera-status-loading {

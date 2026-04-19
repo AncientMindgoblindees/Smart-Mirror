@@ -18,6 +18,10 @@ export const CameraOverlay: React.FC<{
 }) => {
   const { frameSrc, status, markLoaded, markError } = useCameraStream({
     aggressive: loading || (typeof countdown === 'number' && countdown > 0),
+    turbo:
+      !loading &&
+      typeof countdown === 'number' &&
+      countdown > 0,
   });
 
   return (
@@ -35,12 +39,19 @@ export const CameraOverlay: React.FC<{
             }}
             onError={markError}
           />
-          {(loading || status === 'loading') &&
-            !(typeof countdown === 'number' && countdown > 0) && (
+          {loading && (
+            <div className="camera-status camera-status-loading camera-status-boot">
+              <div className="camera-loading-content">
+                <span className="camera-loading-spinner" aria-hidden="true" />
+                <span>Booting the camera</span>
+              </div>
+            </div>
+          )}
+          {!loading && status === 'loading' && !(typeof countdown === 'number' && countdown > 0) && (
             <div className="camera-status camera-status-loading">
               <div className="camera-loading-content">
                 <span className="camera-loading-spinner" aria-hidden="true" />
-                <span>{loading ? 'Booting the camera' : 'Starting camera…'}</span>
+                <span>Starting camera…</span>
               </div>
             </div>
           )}
@@ -52,7 +63,7 @@ export const CameraOverlay: React.FC<{
               </div>
             </div>
           )}
-          {typeof countdown === 'number' && countdown > 0 && (
+          {!loading && typeof countdown === 'number' && countdown > 0 && (
             <div className="camera-countdown-badge" role="status" aria-live="polite">
               <span className="camera-countdown-label">Photo in</span>
               <span className="camera-countdown-value">{countdown}</span>

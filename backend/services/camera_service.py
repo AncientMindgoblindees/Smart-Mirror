@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -12,6 +13,7 @@ from backend.services.person_image_service import (
     clear_person_images,
     set_latest_person_image_path,
 )
+from backend import config
 from backend.services.pi_camera import pi_camera
 from backend.services.realtime import control_registry
 
@@ -50,6 +52,7 @@ class CameraCaptureState:
 
     async def _run_capture(self, countdown_seconds: int, source: str, session_id: Optional[str]) -> None:
         try:
+            capture_t0 = time.monotonic()
             await control_registry.broadcast(
                 {
                     "type": "CAMERA_LOADING_STARTED",
@@ -69,6 +72,10 @@ class CameraCaptureState:
                     "payload": {"source": source},
                 }
             )
+            elapsed = time.monotonic() - capture_t0
+            boot_remaining = float(config.CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC) - elapsed
+            if boot_remaining > 0:
+                await asyncio.sleep(boot_remaining)
             await control_registry.broadcast(
                 {
                     "type": "CAMERA_COUNTDOWN_STARTED",
