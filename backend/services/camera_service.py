@@ -145,7 +145,8 @@ class CameraCaptureState:
             self.countdown_remaining = 0
             self._task = None
 
-    async def capture_preview_bytes(self) -> bytes:
+    async def read_mjpeg_frame(self) -> bytes:
+        """One JPEG frame from the Pi pipeline for the MJPEG stream."""
         return await asyncio.to_thread(pi_camera.capture_preview_bytes)
 
     def clear_state(self) -> None:

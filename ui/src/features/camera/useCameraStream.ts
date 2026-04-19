@@ -4,8 +4,7 @@ import { getApiBase } from '@/config/backendOrigin';
 
 /**
  * Pi camera is not exposed to the browser as a MediaDevice — only the backend can open it.
- * We use one MJPEG HTTP stream (`/camera/stream.mjpg`) so `<img>` shows a continuous feed
- * without hammering `/preview.jpg` on a timer.
+ * Live view is one MJPEG stream: GET `/api/camera/stream.mjpg`.
  */
 export function useCameraStream() {
   const [rev, setRev] = useState(0);

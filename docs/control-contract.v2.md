@@ -45,6 +45,7 @@ Legacy `SYNC_STATE` remains supported for backward compatibility.
 ### Camera
 
 - `GET /api/camera/status`
+- `GET /api/camera/stream.mjpg` — MJPEG multipart stream for mirror `<img>` live view
 - `POST /api/camera/capture`
   - body: `{ "countdown_seconds": number, "source": string, "session_id"?: string }`
 

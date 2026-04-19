@@ -306,3 +306,9 @@
 
 - **Why**: Browser on the mirror cannot use `getUserMedia()` for the Pi camera; only the backend opens hardware. Discrete `/preview.jpg` requests were fragile. MJPEG is one long-lived HTTP response the browser decodes as a continuous `<img>` feed.
 - **Changes**: `GET /api/camera/stream.mjpg` (`StreamingResponse`, `multipart/x-mixed-replace`); `CAMERA_MJPEG_MAX_FPS` in `backend/config.py` + `.env.example`; `ui/src/features/camera/useCameraStream.ts` points `<img>` at stream URL with retry rev; `CameraOverlay` no longer passes polling options; `/preview.jpg` kept for one-shot use.
+
+## 2026-04-19 — Remove GET /api/camera/preview.jpg
+
+- **Action**: Dropped the discrete preview route; live HTTP view is only `GET /api/camera/stream.mjpg`. `CameraCaptureState.read_mjpeg_frame` wraps the Pi JPEG grab used inside the MJPEG generator.
+- **Docs**: `docs/control-contract.v2.md`, `docs/validation-checklist.md`; `.env.example` lores comment.
+- **Commands**: `python -m compileall backend/api/camera.py backend/services/camera_service.py`; `npm run build` in `ui` (pass).

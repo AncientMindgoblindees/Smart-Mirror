@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend import config
@@ -37,7 +37,6 @@ _MJPEG_BOUNDARY = b"mjpegframe"
 async def get_camera_mjpeg_stream() -> StreamingResponse:
     """
     One long-lived HTTP response; the browser decodes multipart JPEG parts as a live feed.
-    Avoids hundreds of separate /preview.jpg requests that abort each other on slow hardware.
     """
 
     pause = 1.0 / max(1.0, float(config.CAMERA_MJPEG_MAX_FPS))
@@ -45,7 +44,7 @@ async def get_camera_mjpeg_stream() -> StreamingResponse:
     async def frames():
         while True:
             try:
-                chunk = await camera_state.capture_preview_bytes()
+                chunk = await camera_state.read_mjpeg_frame()
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -63,24 +62,3 @@ async def get_camera_mjpeg_stream() -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
-
-
-@router.get("/preview.jpg", summary="Fetch a single live preview frame from Pi camera")
-async def get_camera_preview() -> Response:
-    try:
-        data = await camera_state.capture_preview_bytes()
-    except Exception as exc:  # noqa: BLE001
-        detail = str(exc)
-        code = "CAMERA_PREVIEW_UNAVAILABLE"
-        lowered = detail.lower()
-        if "resource busy" in lowered or "pipeline handler in use" in lowered or "failed to acquire camera" in lowered:
-            code = "CAMERA_BUSY_EXTERNAL_OWNER"
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": code,
-                "message": "Preview unavailable",
-                "detail": detail[:1500],
-            },
-        ) from exc
-    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
