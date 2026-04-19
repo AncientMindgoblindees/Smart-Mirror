@@ -70,6 +70,9 @@ CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC = float(
 )
 # Max MJPEG frames per second from GET /api/camera/live (Pi CPU / USB bandwidth).
 CAMERA_MJPEG_MAX_FPS = float(os.getenv("CAMERA_MJPEG_MAX_FPS", "30"))
+# If enabled, use native `rpicam-hello` preview window during capture flow
+# (mirror UI shows controls/countdown only; no browser live decode).
+CAMERA_NATIVE_PREVIEW = os.getenv("CAMERA_NATIVE_PREVIEW", "0").lower() in ("1", "true", "yes")
 
 TRYON_LOCAL_KEEP_LAST = int(os.getenv("TRYON_LOCAL_KEEP_LAST", "10"))
 

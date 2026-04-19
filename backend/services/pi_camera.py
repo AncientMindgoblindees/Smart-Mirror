@@ -70,6 +70,7 @@ class PiCameraAdapter:
         self._lock = threading.Lock()
         self._use_cli_fallback = False
         self._camera_init_error = ""
+        self._preview_proc: subprocess.Popen[str] | None = None
 
     def _ensure_camera(self):
         if self._use_cli_fallback:
@@ -206,6 +207,71 @@ class PiCameraAdapter:
                     if tmp_path.exists():
                         tmp_path.unlink(missing_ok=True)
 
+    def start_native_preview(self) -> bool:
+        with self._lock:
+            with _interprocess_camera_lock():
+                if self._preview_proc is not None and self._preview_proc.poll() is None:
+                    return True
+
+                bin_name = shutil.which("rpicam-hello")
+                if not bin_name:
+                    raise PiCameraError("rpicam-hello not found on PATH")
+
+                # Release Picamera2 handle before native preview claims camera.
+                cam = self._camera
+                self._camera = None
+                if cam is not None:
+                    try:
+                        cam.stop()
+                    except Exception:
+                        pass
+                    try:
+                        cam.close()
+                    except Exception:
+                        pass
+
+                width, height = _scaled_capture_dimensions(
+                    config.PI_CAMERA_CAPTURE_WIDTH,
+                    config.PI_CAMERA_CAPTURE_HEIGHT,
+                    config.PI_CAMERA_MAX_DIM,
+                )
+                cmd = [
+                    bin_name,
+                    "-t",
+                    "0",
+                    "--fullscreen",
+                    "--width",
+                    str(width),
+                    "--height",
+                    str(height),
+                ]
+                self._preview_proc = subprocess.Popen(  # noqa: S603
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                time.sleep(0.18)
+                return self._preview_proc.poll() is None
+
+    def stop_native_preview(self) -> None:
+        with self._lock:
+            proc = self._preview_proc
+            self._preview_proc = None
+            if proc is None:
+                return
+            if proc.poll() is not None:
+                return
+            proc.terminate()
+            try:
+                proc.wait(timeout=1.0)
+            except Exception:
+                proc.kill()
+                try:
+                    proc.wait(timeout=0.5)
+                except Exception:
+                    pass
+
     def prepare_for_capture(self) -> None:
         with self._lock:
             with _interprocess_camera_lock():
@@ -263,6 +329,19 @@ class PiCameraAdapter:
 
     def close(self) -> None:
         with self._lock:
+            proc = self._preview_proc
+            self._preview_proc = None
+            if proc is not None and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=1.0)
+                except Exception:
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=0.5)
+                    except Exception:
+                        pass
+
             cam = self._camera
             self._camera = None
             if cam is None:

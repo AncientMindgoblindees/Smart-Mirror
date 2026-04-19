@@ -12,6 +12,3 @@ cloudinary
 python-dotenv
 picamera2
 Pillow
-aiortc
-av
-numpy

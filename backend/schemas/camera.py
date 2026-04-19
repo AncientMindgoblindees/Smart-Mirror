@@ -19,13 +19,3 @@ class CameraStatusOut(BaseModel):
     countdown_remaining: int
     last_capture_id: Optional[str] = None
     last_capture_at: Optional[datetime] = None
-
-
-class CameraWebRtcOfferIn(BaseModel):
-    sdp: str = Field(..., min_length=1)
-    type: str = Field(..., min_length=1)
-
-
-class CameraWebRtcAnswerOut(BaseModel):
-    sdp: str
-    type: str

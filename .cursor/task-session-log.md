@@ -449,3 +449,32 @@
   - `npm run build` in `ui/` (pass)
 - **Verification**:
   - `ReadLints` on all touched backend/UI files reported no diagnostics.
+
+## 2026-04-19 — Native camera preview mode (no browser decode)
+
+- **Action**: Switched capture-flow preview strategy to native `rpicam-hello` mode and removed newly added WebRTC path.
+- **Why**: User requested `rpicam`-level smoothness and explicitly no UI-side live decode.
+- **Changes**:
+  - `backend/config.py`: added `CAMERA_NATIVE_PREVIEW` env flag.
+  - `backend/services/pi_camera.py`:
+    - added native preview process lifecycle (`start_native_preview`, `stop_native_preview`) using `rpicam-hello --fullscreen`.
+    - ensured Picamera2 handle is released before native preview starts.
+    - `close()` now also stops any active native preview process.
+  - `backend/services/camera_service.py`:
+    - capture flow now uses native preview when `CAMERA_NATIVE_PREVIEW=1`;
+    - stops native preview before final still capture and on cleanup.
+  - `ui/src/features/camera/CameraOverlay.tsx` and `camera-overlay.css`:
+    - removed browser video/image decode from overlay;
+    - overlay now shows control/status/countdown messaging only.
+  - Reverted WebRTC additions to keep install/runtime light:
+    - removed `POST /api/camera/webrtc/offer` and aiortc imports from `backend/api/camera.py`;
+    - removed WebRTC schema models from `backend/schemas/camera.py`;
+    - deleted `backend/services/camera_webrtc.py`;
+    - removed `aiortc`, `av`, `numpy` from `backend/requirements.txt`;
+    - simplified `ui/src/features/camera/useCameraStream.ts` back to MJPEG helper.
+  - `.env.example`: documented `CAMERA_NATIVE_PREVIEW=0` toggle.
+- **Commands**:
+  - `python -m compileall backend/config.py backend/api/camera.py backend/services/camera_service.py backend/services/pi_camera.py backend/schemas/camera.py` (pass)
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on all touched files reported no diagnostics.

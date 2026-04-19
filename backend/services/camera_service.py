@@ -54,6 +54,7 @@ class CameraCaptureState:
 
     async def _run_capture(self, countdown_seconds: int, source: str, session_id: Optional[str]) -> None:
         self.booting = True
+        native_preview_started = False
         try:
             capture_t0 = time.monotonic()
             await control_registry.broadcast(
@@ -65,7 +66,10 @@ class CameraCaptureState:
                     "payload": {"source": source},
                 }
             )
-            await asyncio.to_thread(pi_camera.prepare_for_capture)
+            if config.CAMERA_NATIVE_PREVIEW:
+                native_preview_started = await asyncio.to_thread(pi_camera.start_native_preview)
+            else:
+                await asyncio.to_thread(pi_camera.prepare_for_capture)
             await control_registry.broadcast(
                 {
                     "type": "CAMERA_LOADING_READY",
@@ -108,6 +112,10 @@ class CameraCaptureState:
                 await asyncio.sleep(1)
 
             capture_id = f"capture-{uuid4().hex[:12]}"
+            if native_preview_started:
+                await asyncio.to_thread(pi_camera.stop_native_preview)
+                native_preview_started = False
+                await asyncio.sleep(0.12)
             await asyncio.to_thread(pi_camera.capture_to, Path(LATEST_PERSON_IMAGE_PATH))
             db: Session = SessionLocal()
             try:
@@ -140,6 +148,8 @@ class CameraCaptureState:
                 }
             )
         finally:
+            if native_preview_started:
+                await asyncio.to_thread(pi_camera.stop_native_preview)
             self.active = False
             self.booting = False
             self.countdown_remaining = 0
