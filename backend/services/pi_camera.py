@@ -224,8 +224,13 @@ class PiCameraAdapter:
                 with NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                     tmp_path = Path(tmp.name)
                 try:
-                    # Portrait warmup frame matches mirror-oriented composition.
-                    self._capture_with_rpicam_cli(tmp_path, 180, 320)
+                    width, height = _scaled_capture_dimensions(
+                        config.PI_CAMERA_CAPTURE_WIDTH,
+                        config.PI_CAMERA_CAPTURE_HEIGHT,
+                        config.PI_CAMERA_MAX_DIM,
+                    )
+                    pw, ph = _lores_size_for_main(width, height, config.PI_CAMERA_PREVIEW_LORES_MAX)
+                    self._capture_with_rpicam_cli(tmp_path, pw, ph)
                 finally:
                     tmp_path.unlink(missing_ok=True)
 
@@ -245,8 +250,13 @@ class PiCameraAdapter:
                                 f"{_format_holders('holders', _camera_holders_snapshot())}"
                             ) from exc
                     else:
-                        # Portrait preview framing aligns with mirror UI composition.
-                        self._capture_with_rpicam_cli(tmp_path, 360, 640)
+                        width, height = _scaled_capture_dimensions(
+                            config.PI_CAMERA_CAPTURE_WIDTH,
+                            config.PI_CAMERA_CAPTURE_HEIGHT,
+                            config.PI_CAMERA_MAX_DIM,
+                        )
+                        pw, ph = _lores_size_for_main(width, height, config.PI_CAMERA_PREVIEW_LORES_MAX)
+                        self._capture_with_rpicam_cli(tmp_path, pw, ph)
                     return tmp_path.read_bytes()
                 finally:
                     tmp_path.unlink(missing_ok=True)

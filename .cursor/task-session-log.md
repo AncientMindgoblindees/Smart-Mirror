@@ -423,3 +423,13 @@
   - `npm run build` in `ui/` (pass)
 - **Verification**:
   - `ReadLints` on updated CSS reported no diagnostics.
+
+## 2026-04-19 — FOV env not affecting live preview under CLI fallback
+
+- **Issue**: User changed camera aspect settings in `.env`, but live preview appeared unchanged.
+- **Root Cause**: In `backend/services/pi_camera.py`, rpicam CLI fallback preview path used fixed dimensions (`180x320` warmup, `360x640` preview), ignoring configured camera aspect vars.
+- **Action**: Updated CLI fallback warmup and preview paths to derive dimensions from `PI_CAMERA_CAPTURE_WIDTH/HEIGHT` and `PI_CAMERA_PREVIEW_LORES_MAX` via `_scaled_capture_dimensions` + `_lores_size_for_main`.
+- **Commands**:
+  - `python -m compileall backend/services/pi_camera.py` (pass)
+- **Verification**:
+  - `ReadLints` on `backend/services/pi_camera.py` reported no diagnostics.
