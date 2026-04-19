@@ -73,6 +73,12 @@ CAMERA_MJPEG_MAX_FPS = float(os.getenv("CAMERA_MJPEG_MAX_FPS", "30"))
 # If enabled, use native `rpicam-hello` preview window during capture flow
 # (mirror UI shows controls/countdown only; no browser live decode).
 CAMERA_NATIVE_PREVIEW = os.getenv("CAMERA_NATIVE_PREVIEW", "0").lower() in ("1", "true", "yes")
+# If enabled, run a small native overlay window for countdown text on top of preview.
+CAMERA_NATIVE_COUNTDOWN_OVERLAY = os.getenv("CAMERA_NATIVE_COUNTDOWN_OVERLAY", "1").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 TRYON_LOCAL_KEEP_LAST = int(os.getenv("TRYON_LOCAL_KEEP_LAST", "10"))
 

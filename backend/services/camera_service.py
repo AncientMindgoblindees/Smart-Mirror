@@ -14,6 +14,7 @@ from backend.services.person_image_service import (
     set_latest_person_image_path,
 )
 from backend import config
+from backend.services.native_countdown_overlay import native_countdown_overlay
 from backend.services.pi_camera import pi_camera
 from backend.services.realtime import control_registry
 
@@ -56,6 +57,7 @@ class CameraCaptureState:
         self.booting = True
         native_preview_started = False
         try:
+            native_countdown_overlay.hide()
             capture_t0 = time.monotonic()
             await control_registry.broadcast(
                 {
@@ -98,8 +100,10 @@ class CameraCaptureState:
                     },
                 }
             )
+            native_countdown_overlay.show_value(countdown_seconds)
             for remaining in range(countdown_seconds, 0, -1):
                 self.countdown_remaining = remaining
+                native_countdown_overlay.show_value(remaining)
                 await control_registry.broadcast(
                     {
                         "type": "CAMERA_COUNTDOWN_TICK",
@@ -118,6 +122,7 @@ class CameraCaptureState:
                 await asyncio.to_thread(pi_camera.stop_native_preview)
                 native_preview_started = False
                 await asyncio.sleep(0.12)
+            native_countdown_overlay.hide()
             await asyncio.to_thread(pi_camera.capture_to, Path(LATEST_PERSON_IMAGE_PATH))
             db: Session = SessionLocal()
             try:
@@ -140,6 +145,7 @@ class CameraCaptureState:
                 }
             )
         except Exception as exc:  # noqa: BLE001
+            native_countdown_overlay.hide()
             await control_registry.broadcast(
                 {
                     "type": "CAMERA_ERROR",
@@ -150,6 +156,7 @@ class CameraCaptureState:
                 }
             )
         finally:
+            native_countdown_overlay.hide()
             if native_preview_started:
                 await asyncio.to_thread(pi_camera.stop_native_preview)
             self.active = False
@@ -185,6 +192,7 @@ class CameraCaptureState:
                 pass
         self._task = None
         self.clear_state()
+        native_countdown_overlay.stop()
         await asyncio.to_thread(pi_camera.close)
 
 

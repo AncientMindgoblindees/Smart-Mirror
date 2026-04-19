@@ -537,3 +537,23 @@
   - `npm run build` in `ui/` (pass)
 - **Verification**:
   - `ReadLints` on touched files reported no diagnostics.
+
+## 2026-04-19 — Native OS countdown overlay on top of rpicam (capture + dev preview compatibility)
+
+- **Action**: Added a lightweight native countdown overlay process and integrated it with camera capture lifecycle while keeping dev-tools native preview control flow.
+- **Changes**:
+  - Added `backend/tools/native_countdown_overlay.py` (Tk-based minimal always-on-top countdown window reading a small JSON state file).
+  - Added `backend/services/native_countdown_overlay.py` (backend manager for start/update/hide/stop overlay process).
+  - `backend/services/camera_service.py`:
+    - hides overlay at capture start,
+    - shows/updates overlay values on `CAMERA_COUNTDOWN_STARTED` and each `CAMERA_COUNTDOWN_TICK`,
+    - hides/stops overlay on capture success, error, and service shutdown.
+  - `backend/api/camera.py`:
+    - `preview/start` and `preview/stop` now clear overlay state for dev preview session consistency.
+  - `.env.example`:
+    - added `CAMERA_NATIVE_COUNTDOWN_OVERLAY=1`.
+- **Commands**:
+  - `python -m compileall backend/services/native_countdown_overlay.py backend/tools/native_countdown_overlay.py backend/services/camera_service.py backend/api/camera.py` (pass)
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on touched backend files and env example reported no diagnostics.
