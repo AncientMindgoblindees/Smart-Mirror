@@ -163,6 +163,19 @@ class PiCameraAdapter:
                     if tmp_path.exists():
                         tmp_path.unlink(missing_ok=True)
 
+    def prepare_for_capture(self) -> None:
+        with self._lock:
+            with _interprocess_camera_lock():
+                cam = self._ensure_camera()
+                if cam is not None:
+                    return
+                with NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                    tmp_path = Path(tmp.name)
+                try:
+                    self._capture_with_rpicam_cli(tmp_path, 320, 180)
+                finally:
+                    tmp_path.unlink(missing_ok=True)
+
     def capture_preview_bytes(self) -> bytes:
         with self._lock:
             with _interprocess_camera_lock():

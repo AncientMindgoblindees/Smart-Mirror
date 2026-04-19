@@ -52,6 +52,25 @@ class CameraCaptureState:
         try:
             await control_registry.broadcast(
                 {
+                    "type": "CAMERA_LOADING_STARTED",
+                    "version": 2,
+                    "sessionId": session_id,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "payload": {"source": source},
+                }
+            )
+            await asyncio.to_thread(pi_camera.prepare_for_capture)
+            await control_registry.broadcast(
+                {
+                    "type": "CAMERA_LOADING_READY",
+                    "version": 2,
+                    "sessionId": session_id,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "payload": {"source": source},
+                }
+            )
+            await control_registry.broadcast(
+                {
                     "type": "CAMERA_COUNTDOWN_STARTED",
                     "version": 2,
                     "sessionId": session_id,

@@ -181,3 +181,18 @@
   - Added `PI_CAMERA_MAX_DIM=1280` with comment clarifying long-edge resize behavior.
   - Added `PI_CAMERA_JPEG_QUALITY=82` with comment clarifying valid quality range.
 - **Reasoning**: Keeps runtime defaults and documented sample env aligned after introducing balanced image transport optimization.
+
+## 2026-04-19 — Camera loading gate before countdown
+
+- **Action**: Updated capture flow so countdown starts only after camera preparation completes, with explicit loading UX in companion app.
+- **Backend changes**:
+  - `backend/services/pi_camera.py`: added `prepare_for_capture()` to warm camera readiness before countdown (Picamera2 init path or lightweight CLI warmup shot).
+  - `backend/services/camera_service.py`: capture pipeline now broadcasts `CAMERA_LOADING_STARTED`, waits for `pi_camera.prepare_for_capture`, then broadcasts `CAMERA_LOADING_READY` before `CAMERA_COUNTDOWN_*` events.
+- **UI changes**:
+  - `C:/Users/tjmel/Downloads/smart-mirror-config/src/App.tsx`: added `cameraLoading` state; handles new loading events; shows `Camera Loading` indicator with spinning `Loader2`; disables capture button while loading/countdown; updates status copy.
+  - Removed optimistic local countdown start on button click; countdown now strictly follows backend events.
+- **Commands**:
+  - `python -m compileall backend/services/camera_service.py backend/services/pi_camera.py` (pass)
+  - `npm run build` in `C:/Users/tjmel/Downloads/smart-mirror-config` (pass; existing CSS `@import` order warning only)
+- **Verification**:
+  - `ReadLints` on edited backend and frontend files reported no lint errors.
