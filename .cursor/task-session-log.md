@@ -323,3 +323,42 @@
 - **Action**: Removed `GET /api/camera/preview.jpg`. Live view remains `GET /api/camera/live` (and `stream.mjpg`). Final person image still `pi_camera.capture_to` after countdown in `camera_service._run_capture` (unchanged).
 - **Files**: `backend/api/camera.py`, `backend/services/camera_service.py` (docstring), `backend/config.py`, `.env.example`, `docs/control-contract.v2.md`, `docs/validation-checklist.md`.
 - **Commands**: `python -m compileall backend/api/camera.py`; route list shows `/api/camera/status`, `/capture`, `/live`, `/stream.mjpg` only; `npm run build` in `ui` (pass).
+
+## 2026-04-19 — OAuth credential placement guidance (Google TV/Web)
+
+- **Action**: Verified where Google/Microsoft OAuth credentials are loaded and mapped setup docs for user guidance.
+- **Commands**: Read `.env.example`, `ui/.env.example`, `docs/oauth-google-microsoft-setup.md`, and `backend/api/oauth_web.py`; ripgrep search for `GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|MICROSOFT_CLIENT_ID|MICROSOFT_CLIENT_SECRET` in `backend/` and `ui/`.
+- **Result**: Confirmed OAuth credentials are backend-only in repo-root `.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`); no UI env vars for these; `ui/.env.example` only has optional `VITE_BACKEND_ORIGIN`.
+- **Decision**: Instruct user to use one Google client pair at a time in `.env` (Web client recommended first; swap to TV/Limited Input pair if QR/device flow fails).
+
+## 2026-04-19 — Clarified Google web vs QR flow mapping
+
+- **Action**: Verified current auth paths for companion direct sign-in vs on-screen QR sign-in.
+- **Commands**: Read `backend/services/providers/google_provider.py`, `backend/api/oauth_web.py`, and `ui/src/features/auth/AuthQROverlay.tsx`.
+- **Result**: Confirmed QR overlay uses Google Device Authorization Grant (`/device/code` + polling), while companion direct sign-in uses browser authorization-code callback flow (`/api/oauth/google/start` and `/callback`).
+- **Decision**: Advise that Web and TV credentials target different flows; current single env pair cannot support both credential sets simultaneously without a code change.
+
+## 2026-04-19 — Implement split Google OAuth credentials (web + TV)
+
+- **Action**: Added dedicated Google credential support per flow with fallback compatibility.
+- **Changes**:
+  - `backend/services/providers/google_provider.py`: added `get_google_device_oauth_credentials()` and `get_google_web_oauth_credentials()`; device flow now prefers `GOOGLE_TV_CLIENT_*` and falls back to `GOOGLE_CLIENT_*`.
+  - `backend/api/oauth_web.py`: Google browser flow now uses `GOOGLE_WEB_CLIENT_*` with fallback to `GOOGLE_CLIENT_*`; improved missing-config error detail.
+  - `.env.example`: documented `GOOGLE_WEB_CLIENT_*` and `GOOGLE_TV_CLIENT_*` plus legacy fallback pair.
+  - `docs/oauth-google-microsoft-setup.md`: updated setup guidance/checklist for split credential configuration.
+- **Commands**:
+  - `python -m compileall backend/services/providers/google_provider.py backend/api/oauth_web.py` (pass)
+- **Verification**:
+  - `ReadLints` on all touched files reported no lint errors.
+
+## 2026-04-19 — UI camera capture live-feed regression fix (Smart-Mirror only)
+
+- **Action**: Fixed mirror UI capture overlay state so live feed appears during capture-triggered flows (not companion app UI).
+- **Root Cause**: In `ui/src/app/MirrorApp.tsx`, capture flow kept `cameraLoading` true until countdown events, and the overlay call site no longer consumed preview-frame load to clear that gate.
+- **Changes**:
+  - `onCameraLoadingReady` now clears `cameraLoading`.
+  - `CameraOverlay` usage now passes `onPreviewFrameLoaded` callback to also clear `cameraLoading` when first frame arrives.
+- **Commands**:
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on `ui/src/app/MirrorApp.tsx` reported no lint errors.

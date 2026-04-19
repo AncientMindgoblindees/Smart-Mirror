@@ -21,6 +21,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from backend.services.auth_manager import auth_manager
 from backend.services.providers.base import TokenResponse
 from backend.services.providers.google_provider import SCOPES as GOOGLE_SCOPES
+from backend.services.providers.google_provider import get_google_web_oauth_credentials
 from backend.services.providers.microsoft_provider import SCOPES as MS_SCOPES
 
 logger = logging.getLogger(__name__)
@@ -78,11 +79,12 @@ def _success_html(title: str, body: str) -> HTMLResponse:
 
 @router.get("/google/start")
 async def oauth_google_start(request: Request) -> RedirectResponse:
-    import os
-
-    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_id, _ = get_google_web_oauth_credentials()
     if not client_id:
-        raise HTTPException(status_code=503, detail="GOOGLE_CLIENT_ID not configured")
+        raise HTTPException(
+            status_code=503,
+            detail="GOOGLE_WEB_CLIENT_ID (or GOOGLE_CLIENT_ID) not configured",
+        )
 
     redirect_uri = f"{_public_base(request)}/api/oauth/google/callback"
     state = _new_state("google")
@@ -101,16 +103,13 @@ async def oauth_google_start(request: Request) -> RedirectResponse:
 
 @router.get("/google/callback")
 async def oauth_google_callback(request: Request, code: str | None = None, state: str | None = None, error: str | None = None) -> Any:
-    import os
-
     if error:
         return _success_html("Sign-in cancelled", f"Provider returned: {error}")
     provider = _pop_state(state)
     if provider != "google" or not code:
         raise HTTPException(status_code=400, detail="Invalid or expired state")
 
-    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
-    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    client_id, client_secret = get_google_web_oauth_credentials()
     redirect_uri = f"{_public_base(request)}/api/oauth/google/callback"
 
     async with httpx.AsyncClient(timeout=20.0) as client:

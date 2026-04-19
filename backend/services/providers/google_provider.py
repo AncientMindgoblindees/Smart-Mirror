@@ -35,12 +35,39 @@ GOOGLE_CALENDAR_EVENTS_URL = (
 SCOPES = "https://www.googleapis.com/auth/calendar.readonly"
 
 
+def get_google_device_oauth_credentials() -> tuple[str, str]:
+    """
+    Credentials for Google Device Authorization Grant (QR / TV flow).
+
+    Preferred:
+      - GOOGLE_TV_CLIENT_ID / GOOGLE_TV_CLIENT_SECRET
+    Backward-compatible fallback:
+      - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
+    """
+    client_id = os.getenv("GOOGLE_TV_CLIENT_ID", "").strip() or os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GOOGLE_TV_CLIENT_SECRET", "").strip() or os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    return client_id, client_secret
+
+
+def get_google_web_oauth_credentials() -> tuple[str, str]:
+    """
+    Credentials for Google authorization-code flow (browser redirect flow).
+
+    Preferred:
+      - GOOGLE_WEB_CLIENT_ID / GOOGLE_WEB_CLIENT_SECRET
+    Backward-compatible fallback:
+      - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
+    """
+    client_id = os.getenv("GOOGLE_WEB_CLIENT_ID", "").strip() or os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GOOGLE_WEB_CLIENT_SECRET", "").strip() or os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    return client_id, client_secret
+
+
 class GoogleProvider(CalendarProvider):
     provider_name = "google"
 
     def __init__(self) -> None:
-        self._client_id = os.getenv("GOOGLE_CLIENT_ID", "")
-        self._client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+        self._client_id, self._client_secret = get_google_device_oauth_credentials()
 
     # ── Device Code Flow ────────────────────────────────────────────────
 

@@ -1,6 +1,11 @@
 # Google and Microsoft OAuth setup (mirror)
 
-Register apps in **your** Google Cloud and Microsoft Entra (Azure AD) accounts. The mirror reads `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, and `MICROSOFT_CLIENT_SECRET` from `.env`.
+Register apps in **your** Google Cloud and Microsoft Entra (Azure AD) accounts. The mirror reads OAuth credentials from `.env`:
+
+- Google web flow: `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_WEB_CLIENT_SECRET`
+- Google device/TV flow: `GOOGLE_TV_CLIENT_ID`, `GOOGLE_TV_CLIENT_SECRET`
+- Legacy Google fallback: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- Microsoft: `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`
 
 ## Callback URLs the mirror uses
 
@@ -44,10 +49,11 @@ The device-code flow (QR on mirror) often uses a **separate** OAuth client:
 - **Create credentials** → **TVs and Limited Input device** (or **Desktop** if that is what your console offers for device flow).
 - Copy that client’s ID and secret.
 
-**Important:** This repository’s backend uses **one** pair `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` for **both** browser and device flows. Google does not always allow the same client to support every flow.
+The backend now supports separate Google credentials by flow:
 
-- If **both** flows must work with **one** credential, try the **Web application** client first and test QR + browser; some projects work with a single Web client for both.
-- If device (QR) fails with a Web-only client, use the **TV / Limited Input** client ID/secret in `.env` for development focused on QR; use the **Web** client when you only need browser sign-in—or plan a future change to support two client IDs in code.
+- Browser sign-in path (`/api/oauth/google/start`) uses `GOOGLE_WEB_CLIENT_ID` / `GOOGLE_WEB_CLIENT_SECRET`.
+- QR/device flow uses `GOOGLE_TV_CLIENT_ID` / `GOOGLE_TV_CLIENT_SECRET`.
+- If split vars are not set, each flow falls back to `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
 
 ---
 
@@ -70,7 +76,7 @@ Device-code and authorization-code flows use the same app registration; one clie
 
 ## After configuration
 
-1. Copy `.env.example` to `.env` and fill in the four OAuth variables (and `MIRROR_TOKEN_SECRET` if needed).
+1. Copy `.env.example` to `.env` and fill in the OAuth variables you need (and `MIRROR_TOKEN_SECRET` if needed).
 2. Restart the mirror backend so `load_dotenv` picks up changes.
 3. Test **Accounts** in the companion app: QR on mirror, then browser sign-in, as needed.
 
@@ -80,8 +86,9 @@ Device-code and authorization-code flows use the same app registration; one clie
 
 - [ ] Google Calendar API enabled  
 - [ ] Google OAuth consent screen configured with calendar scope  
-- [ ] Google **Web** client: redirect URI(s) exactly as `{BASE}/api/oauth/google/callback`  
-- [ ] Google **TV/Limited Input** client created if QR/device flow requires it (same or separate `.env` as above)  
+- [ ] `GOOGLE_WEB_CLIENT_ID`/`GOOGLE_WEB_CLIENT_SECRET` set for browser sign-in  
+- [ ] `GOOGLE_TV_CLIENT_ID`/`GOOGLE_TV_CLIENT_SECRET` set for QR/device flow  
+- [ ] (Optional fallback) `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` set only if not using split vars  
 - [ ] Microsoft app registration: Web redirect URI(s) exactly as `{BASE}/api/oauth/microsoft/callback`  
 - [ ] Microsoft Graph delegated permissions + consent  
 - [ ] Secrets in `.env`, backend restarted  

@@ -147,6 +147,7 @@ export default function MirrorApp() {
     },
     onCameraLoadingReady: () => {
       setShowCamera(true);
+      setCameraLoading(false);
       setCameraError(null);
     },
     onCameraCountdownStarted: (seconds) => {
@@ -295,6 +296,11 @@ export default function MirrorApp() {
           loading={cameraLoading}
           countdown={cameraCountdown}
           errorMessage={cameraError}
+          onPreviewFrameLoaded={() => {
+            // Ensure capture-triggered overlays show live feed even if a ws loading
+            // message is delayed or dropped.
+            setCameraLoading(false);
+          }}
           onClose={() => {
             clearCameraDevBootTimer();
             setCameraLoading(false);
