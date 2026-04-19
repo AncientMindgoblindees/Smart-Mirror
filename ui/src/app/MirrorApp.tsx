@@ -53,7 +53,16 @@ function summarizeCameraError(message: string): string {
 
 export default function MirrorApp() {
   const { widgets, setWidgets } = useWidgetPersistence();
-  const { showCamera, setShowCamera, cameraCountdown, setCameraCountdown, cameraError, setCameraError } =
+  const {
+    showCamera,
+    setShowCamera,
+    cameraLoading,
+    setCameraLoading,
+    cameraCountdown,
+    setCameraCountdown,
+    cameraError,
+    setCameraError,
+  } =
     useOverlayState();
   const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
   const [fullScreenTryOnUrl, setFullScreenTryOnUrl] = useState<string | null>(null);
@@ -120,15 +129,18 @@ export default function MirrorApp() {
   useControlEvents({
     onCameraLoadingStarted: () => {
       setShowCamera(true);
+      setCameraLoading(true);
       setCameraCountdown(null);
       setCameraError(null);
     },
     onCameraLoadingReady: () => {
       setShowCamera(true);
+      setCameraLoading(false);
       setCameraError(null);
     },
     onCameraCountdownStarted: (seconds) => {
       setShowCamera(true);
+      setCameraLoading(false);
       setCameraCountdown(seconds);
       setCameraError(null);
     },
@@ -137,11 +149,13 @@ export default function MirrorApp() {
       setCameraCountdown(remaining);
     },
     onCameraCaptured: () => {
+      setCameraLoading(false);
       setCameraCountdown(null);
       setCameraError(null);
       setShowCamera(false);
     },
     onCameraError: (message) => {
+      setCameraLoading(false);
       setCameraCountdown(null);
       setCameraError(summarizeCameraError(message));
       // If this error happened during an active capture flow, return to UI instead of leaving camera overlay stuck.
@@ -207,9 +221,11 @@ export default function MirrorApp() {
 
       {showCamera && (
         <CameraOverlay
+          loading={cameraLoading}
           countdown={cameraCountdown}
           errorMessage={cameraError}
           onClose={() => {
+            setCameraLoading(false);
             setCameraCountdown(null);
             setCameraError(null);
             setShowCamera(false);

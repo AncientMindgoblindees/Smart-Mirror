@@ -2,17 +2,23 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { getApiBase } from '@/config/backendOrigin';
 
-export function useCameraStream() {
+type CameraStreamOptions = {
+  aggressive?: boolean;
+};
+
+export function useCameraStream(options?: CameraStreamOptions) {
   const [tick, setTick] = useState(0);
   const [hasError, setHasError] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
+  const aggressive = Boolean(options?.aggressive);
 
   const intervalMs = useMemo(() => {
+    if (aggressive) return 350;
     if (consecutiveErrors >= 3) return 5000;
     if (hasError) return 2000;
     return 450;
-  }, [consecutiveErrors, hasError]);
+  }, [aggressive, consecutiveErrors, hasError]);
 
   useEffect(() => {
     const id = window.setInterval(() => setTick((v) => v + 1), intervalMs);

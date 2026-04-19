@@ -7,12 +7,16 @@ export const CameraOverlay: React.FC<{
   onClose: () => void;
   countdown?: number | null;
   errorMessage?: string | null;
+  loading?: boolean;
 }> = ({
   onClose,
   countdown = null,
   errorMessage = null,
+  loading = false,
 }) => {
-  const { frameSrc, status, markLoaded, markError } = useCameraStream();
+  const { frameSrc, status, markLoaded, markError } = useCameraStream({
+    aggressive: loading || (typeof countdown === 'number' && countdown > 0),
+  });
 
   return (
     <div className="camera-overlay">
@@ -25,8 +29,13 @@ export const CameraOverlay: React.FC<{
             onLoad={markLoaded}
             onError={markError}
           />
-          {status === 'loading' && (
-            <div className="camera-status camera-status-loading">Starting camera…</div>
+          {(loading || status === 'loading') && (
+            <div className="camera-status camera-status-loading">
+              <div className="camera-loading-content">
+                <span className="camera-loading-spinner" aria-hidden="true" />
+                <span>{loading ? 'Camera Loading…' : 'Starting camera…'}</span>
+              </div>
+            </div>
           )}
           {status === 'error' && (
             <div className="camera-status camera-status-error">

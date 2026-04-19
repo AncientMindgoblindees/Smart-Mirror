@@ -212,3 +212,43 @@
   - `npm run build` in `C:/Users/tjmel/Downloads/smart-mirror-config` (pass; existing CSS `@import` order warning only)
 - **Verification**:
   - `ReadLints` on all touched files reported no lint errors.
+
+## 2026-04-19 — Mirror camera loading UX + live-feed reliability pass
+
+- **Action**: Added explicit loading UX to mirror camera overlay and strengthened preview update behavior to address “no live feed” during capture flow.
+- **Changes**:
+  - `ui/src/app/hooks/useOverlayState.ts`: added `cameraLoading` overlay state.
+  - `ui/src/app/MirrorApp.tsx`: wires `cameraLoading` through capture lifecycle events and into `CameraOverlay`; resets state on close/capture/error.
+  - `ui/src/features/camera/CameraOverlay.tsx`: added loading prop and visible spinner status (`Camera Loading…`) while camera prepares; enables aggressive preview polling during loading/countdown.
+  - `ui/src/features/camera/useCameraStream.ts`: accepts `aggressive` mode and uses faster fixed polling during active capture flow to recover from transient preview failures quickly.
+  - `ui/src/features/camera/camera-overlay.css`: added spinner styling and loading badge visuals.
+- **Commands**:
+  - `npm --prefix ui run build` (pass)
+- **Verification**:
+  - `ReadLints` on all edited mirror UI files reported no errors.
+
+## 2026-04-19 — Wider camera FOV framing
+
+- **Action**: Increased effective field of view by switching capture and preview defaults to 4:3 framing (less vertical crop than prior 16:9 defaults).
+- **Changes**:
+  - `backend/config.py`: changed default `PI_CAMERA_CAPTURE_HEIGHT` from `1080` to `1440` (with `PI_CAMERA_CAPTURE_WIDTH=1920` this is 4:3).
+  - `backend/services/pi_camera.py`: updated CLI warmup frame to `320x240` and live preview frame to `640x480` for matching 4:3 composition.
+  - `.env.example`: documented new 4:3 default for `PI_CAMERA_CAPTURE_HEIGHT=1440`.
+- **Commands**:
+  - `python -m compileall backend/config.py backend/services/pi_camera.py` (pass)
+- **Verification**:
+  - `ReadLints` on edited files reported no lint errors.
+
+## 2026-04-19 — Portrait mirror-resolution camera framing
+
+- **Action**: Shifted camera framing toward mirror-style vertical composition (portrait) instead of monitor-style landscape.
+- **Changes**:
+  - `backend/config.py`: changed camera defaults to portrait `PI_CAMERA_CAPTURE_WIDTH=1080`, `PI_CAMERA_CAPTURE_HEIGHT=1920`.
+  - `backend/services/pi_camera.py`: updated CLI warmup and preview sizes to portrait-oriented `180x320` and `360x640`.
+  - `ui/src/features/camera/camera-overlay.css`: camera viewport now fixed portrait (`aspect-ratio: 9/16`), centered within overlay, with `object-fit: cover` so framing feels mirror-native.
+  - `.env.example`: documented portrait defaults for capture width/height.
+- **Commands**:
+  - `python -m compileall backend/config.py backend/services/pi_camera.py` (pass)
+  - `npm --prefix ui run build` (pass)
+- **Verification**:
+  - `ReadLints` on all edited files reported no lint errors.
