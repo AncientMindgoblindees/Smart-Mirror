@@ -43,8 +43,9 @@ export function useControlEvents(handlers: ControlEventHandlers): void {
   const wsUrl = getWebSocketUrl('/ws/control');
   useReconnectingWebSocket(wsUrl, {
     onMessage: (ev) => {
-      const parsed = parseControlEvent(ev.data as string);
-      switch (parsed.type) {
+      const applyRaw = (rawText: string) => {
+        const parsed = parseControlEvent(rawText);
+        switch (parsed.type) {
         case 'CAMERA_LOADING_STARTED':
           ref.current.onCameraLoadingStarted?.();
           break;
@@ -98,6 +99,14 @@ export function useControlEvents(handlers: ControlEventHandlers): void {
           break;
         default:
           break;
+      }
+      };
+
+      const data = ev.data as string | Blob;
+      if (typeof data === 'string') {
+        applyRaw(data);
+      } else if (data instanceof Blob) {
+        void data.text().then(applyRaw);
       }
     },
   });

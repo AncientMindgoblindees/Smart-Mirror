@@ -290,3 +290,9 @@
   - `ui/src/features/camera/useCameraStream.ts`: `turbo` option (200ms) when live countdown visible.
 - **Commands**: `python -m compileall backend/config.py backend/services/camera_service.py` (pass); `npm run build` in `ui` (pass).
 - **Verification**: `ReadLints` on edited TS — no issues.
+
+## 2026-04-19 — Camera boot/preview reliability (status + WS)
+
+- **Action**: Exposed `booting` on `GET /api/camera/status`; MirrorApp polls status every 400ms so boot + countdown stay in sync if `/ws/control` drops messages; WebSocket handler accepts Blob frames; boot label contrast + preview box sizing tweaks.
+- **Changes**: `backend/schemas/camera.py`, `backend/services/camera_service.py`, `ui/src/app/MirrorApp.tsx`, `ui/src/hooks/useControlEvents.ts`, `ui/src/features/camera/camera-overlay.css`, `ui/src/api/backendTypes.ts`.
+- **Commands**: `python -m compileall` (pass); `npm run build` in `ui` (pass).

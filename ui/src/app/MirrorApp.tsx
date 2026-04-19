@@ -21,6 +21,7 @@ import { TooltipProvider } from '@/components/ui/Tooltip';
 import { useMirrorDisplayMode } from './hooks/useMirrorDisplayMode';
 import { useAuthActions } from './hooks/useAuthActions';
 import { useOverlayState } from './hooks/useOverlayState';
+import { getApiBase } from '@/config/backendOrigin';
 import './mirror-app.css';
 
 function readDevPanelInitial(): boolean {
@@ -188,6 +189,43 @@ export default function MirrorApp() {
   });
 
   useEffect(() => () => clearCameraDevBootTimer(), [clearCameraDevBootTimer]);
+
+  const showCameraRef = useRef(showCamera);
+  showCameraRef.current = showCamera;
+
+  /** HTTP fallback when /ws/control misses frames: drive boot + countdown from /api/camera/status. */
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`${getApiBase()}/camera/status`, { cache: 'no-store' });
+          if (!res.ok) return;
+          const s = (await res.json()) as {
+            active?: boolean;
+            booting?: boolean;
+            countdown_remaining?: number;
+          };
+          if (!s.active) return;
+          if (!showCameraRef.current) {
+            setShowCamera(true);
+            setCameraError(null);
+          }
+          if (s.booting) {
+            setCameraLoading(true);
+            setCameraCountdown(null);
+            return;
+          }
+          if (typeof s.countdown_remaining === 'number' && s.countdown_remaining > 0) {
+            setCameraLoading(false);
+            setCameraCountdown(s.countdown_remaining);
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
+    }, 400);
+    return () => window.clearInterval(id);
+  }, []);
 
   const toggleWidget = (id: string) => {
     setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)));

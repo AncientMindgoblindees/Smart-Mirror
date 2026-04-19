@@ -21,6 +21,7 @@ from backend.services.realtime import control_registry
 class CameraCaptureState:
     def __init__(self) -> None:
         self.active = False
+        self.booting = False
         self.countdown_remaining = 0
         self.last_capture_id: Optional[str] = None
         self.last_capture_at: Optional[datetime] = None
@@ -29,6 +30,7 @@ class CameraCaptureState:
     def as_dict(self) -> Dict[str, Any]:
         return {
             "active": self.active,
+            "booting": self.booting,
             "countdown_remaining": self.countdown_remaining,
             "last_capture_id": self.last_capture_id,
             "last_capture_at": self.last_capture_at,
@@ -51,6 +53,7 @@ class CameraCaptureState:
         return {"accepted": True}
 
     async def _run_capture(self, countdown_seconds: int, source: str, session_id: Optional[str]) -> None:
+        self.booting = True
         try:
             capture_t0 = time.monotonic()
             await control_registry.broadcast(
@@ -76,6 +79,7 @@ class CameraCaptureState:
             boot_remaining = float(config.CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC) - elapsed
             if boot_remaining > 0:
                 await asyncio.sleep(boot_remaining)
+            self.booting = False
             await control_registry.broadcast(
                 {
                     "type": "CAMERA_COUNTDOWN_STARTED",
@@ -137,6 +141,7 @@ class CameraCaptureState:
             )
         finally:
             self.active = False
+            self.booting = False
             self.countdown_remaining = 0
             self._task = None
 
@@ -145,6 +150,7 @@ class CameraCaptureState:
 
     def clear_state(self) -> None:
         self.active = False
+        self.booting = False
         self.countdown_remaining = 0
         self.last_capture_id = None
         self.last_capture_at = None

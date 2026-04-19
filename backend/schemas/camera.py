@@ -12,6 +12,10 @@ class CameraCaptureRequest(BaseModel):
 
 class CameraStatusOut(BaseModel):
     active: bool
+    booting: bool = Field(
+        default=False,
+        description="True while prepare + min boot dwell run; mirror UI should show boot overlay.",
+    )
     countdown_remaining: int
     last_capture_id: Optional[str] = None
     last_capture_at: Optional[datetime] = None

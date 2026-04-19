@@ -41,6 +41,7 @@ export interface UserSettingsUpdate {
 
 export interface CameraStatusOut {
   active: boolean;
+  booting?: boolean;
   countdown_remaining: number;
   last_capture_id?: string | null;
   last_capture_at?: string | null;
