@@ -301,3 +301,8 @@
 
 - **Action**: Replaced timer-only `src` updates (and per-tick `key` remount) with load-chained polling in `useCameraStream` so the next frame is requested only after `onLoad`/`onError`; raised preview error overlay z-index; `decoding="async"` + `referrerPolicy` on preview `<img>`.
 - **Commands**: `npm run build` in `ui` (pass).
+
+## 2026-04-19 — MJPEG stream instead of polling /preview.jpg
+
+- **Why**: Browser on the mirror cannot use `getUserMedia()` for the Pi camera; only the backend opens hardware. Discrete `/preview.jpg` requests were fragile. MJPEG is one long-lived HTTP response the browser decodes as a continuous `<img>` feed.
+- **Changes**: `GET /api/camera/stream.mjpg` (`StreamingResponse`, `multipart/x-mixed-replace`); `CAMERA_MJPEG_MAX_FPS` in `backend/config.py` + `.env.example`; `ui/src/features/camera/useCameraStream.ts` points `<img>` at stream URL with retry rev; `CameraOverlay` no longer passes polling options; `/preview.jpg` kept for one-shot use.

@@ -16,13 +16,7 @@ export const CameraOverlay: React.FC<{
   loading = false,
   onPreviewFrameLoaded,
 }) => {
-  const { frameSrc, status, markLoaded, markError } = useCameraStream({
-    aggressive: loading || (typeof countdown === 'number' && countdown > 0),
-    turbo:
-      !loading &&
-      typeof countdown === 'number' &&
-      countdown > 0,
-  });
+  const { frameSrc, status, markLoaded, markError } = useCameraStream();
 
   return (
     <div className="camera-overlay">

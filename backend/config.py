@@ -68,6 +68,8 @@ CAMERA_CAPTURE_COUNTDOWN_SEC = int(os.getenv("CAMERA_CAPTURE_COUNTDOWN_SEC", "3"
 CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC = float(
     os.getenv("CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC", "2.5")
 )
+# Max MJPEG preview frames per second from GET /api/camera/stream.mjpg (Pi CPU / USB bandwidth).
+CAMERA_MJPEG_MAX_FPS = float(os.getenv("CAMERA_MJPEG_MAX_FPS", "10"))
 
 TRYON_LOCAL_KEEP_LAST = int(os.getenv("TRYON_LOCAL_KEEP_LAST", "10"))
 
