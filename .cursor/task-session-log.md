@@ -433,3 +433,19 @@
   - `python -m compileall backend/services/pi_camera.py` (pass)
 - **Verification**:
   - `ReadLints` on `backend/services/pi_camera.py` reported no diagnostics.
+
+## 2026-04-19 — WebRTC transition for mirror live camera preview
+
+- **Action**: Implemented WebRTC-first camera preview path with automatic MJPEG fallback.
+- **Changes**:
+  - `backend/api/camera.py`: added `POST /api/camera/webrtc/offer` using `RTCPeerConnection` and `RTCSessionDescription`.
+  - `backend/services/camera_webrtc.py`: added `PiCameraPreviewTrack` (`VideoStreamTrack`) sourcing frames from `camera_state.read_mjpeg_frame()`.
+  - `backend/schemas/camera.py`: added `CameraWebRtcOfferIn` and `CameraWebRtcAnswerOut`.
+  - `backend/requirements.txt`: added `aiortc`, `av`, `numpy`.
+  - `ui/src/features/camera/useCameraStream.ts`: now negotiates WebRTC on mount and falls back to `/camera/live` MJPEG if negotiation/track startup fails.
+  - `ui/src/features/camera/CameraOverlay.tsx`: renders `<video>` for WebRTC mode and preserves `<img>` path for MJPEG fallback.
+- **Commands**:
+  - `python -m compileall backend/api/camera.py backend/services/camera_webrtc.py backend/schemas/camera.py` (pass)
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on all touched backend/UI files reported no diagnostics.

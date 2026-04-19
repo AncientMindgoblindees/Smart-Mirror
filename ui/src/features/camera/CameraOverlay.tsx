@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { useCameraStream } from './useCameraStream';
 import './camera-overlay.css';
@@ -16,24 +16,50 @@ export const CameraOverlay: React.FC<{
   loading = false,
   onPreviewFrameLoaded,
 }) => {
-  const { frameSrc, status, markLoaded, markError } = useCameraStream();
+  const { mode, stream, frameSrc, status, markLoaded, markError } = useCameraStream();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || mode !== 'webrtc') return;
+    el.srcObject = stream;
+    return () => {
+      if (el.srcObject) el.srcObject = null;
+    };
+  }, [mode, stream]);
 
   return (
     <div className="camera-overlay">
       <div className="camera-stage">
         <div className="camera-video-wrap">
-          <img
-            src={frameSrc}
-            className="camera-video"
-            aria-label="Camera preview"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            onLoad={() => {
-              markLoaded();
-              onPreviewFrameLoaded?.();
-            }}
-            onError={markError}
-          />
+          {mode === 'webrtc' ? (
+            <video
+              ref={videoRef}
+              className="camera-video"
+              aria-label="Camera preview"
+              autoPlay
+              muted
+              playsInline
+              onLoadedData={() => {
+                markLoaded();
+                onPreviewFrameLoaded?.();
+              }}
+              onError={markError}
+            />
+          ) : (
+            <img
+              src={frameSrc}
+              className="camera-video"
+              aria-label="Camera preview"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onLoad={() => {
+                markLoaded();
+                onPreviewFrameLoaded?.();
+              }}
+              onError={markError}
+            />
+          )}
           {loading && (
             <div className="camera-status camera-status-loading camera-status-boot">
               <div className="camera-loading-content">

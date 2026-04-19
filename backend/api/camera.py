@@ -1,13 +1,21 @@
 import asyncio
 
+from aiortc import RTCPeerConnection, RTCSessionDescription
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend import config
-from backend.schemas.camera import CameraCaptureRequest, CameraStatusOut
+from backend.schemas.camera import (
+    CameraCaptureRequest,
+    CameraStatusOut,
+    CameraWebRtcAnswerOut,
+    CameraWebRtcOfferIn,
+)
 from backend.services.camera_service import camera_state
+from backend.services.camera_webrtc import PiCameraPreviewTrack
 
 router = APIRouter(prefix="/camera", tags=["camera"])
+_webrtc_peers: set[RTCPeerConnection] = set()
 
 
 @router.get("/status", response_model=CameraStatusOut, summary="Get capture status")
@@ -71,3 +79,32 @@ async def get_camera_mjpeg_live() -> StreamingResponse:
 )
 async def get_camera_mjpeg_stream() -> StreamingResponse:
     return _mjpeg_streaming_response()
+
+
+@router.post(
+    "/webrtc/offer",
+    response_model=CameraWebRtcAnswerOut,
+    summary="Create WebRTC camera preview answer",
+)
+async def post_camera_webrtc_offer(payload: CameraWebRtcOfferIn) -> CameraWebRtcAnswerOut:
+    pc = RTCPeerConnection()
+    _webrtc_peers.add(pc)
+
+    @pc.on("connectionstatechange")
+    async def _on_state_change() -> None:  # pragma: no cover - callback from aiortc runtime
+        if pc.connectionState in {"failed", "closed", "disconnected"}:
+            await pc.close()
+            _webrtc_peers.discard(pc)
+
+    pc.addTrack(PiCameraPreviewTrack())
+
+    await pc.setRemoteDescription(
+        RTCSessionDescription(sdp=payload.sdp, type=payload.type)
+    )
+    answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
+    local = pc.localDescription
+    if local is None:
+        raise HTTPException(status_code=500, detail="WebRTC negotiation failed")
+
+    return CameraWebRtcAnswerOut(sdp=local.sdp, type=local.type)
