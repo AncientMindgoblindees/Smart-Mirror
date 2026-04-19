@@ -21,6 +21,44 @@ class PiCameraError(RuntimeError):
     pass
 
 
+def _lores_size_for_main(main_w: int, main_h: int, max_edge: int) -> tuple[int, int]:
+    """Pick lores dimensions with same aspect as main; long edge capped at max_edge."""
+    mw = max(1, int(main_w))
+    mh = max(1, int(main_h))
+    cap = max(32, int(max_edge))
+    if mw >= mh:
+        w = cap
+        h = max(1, int(round(cap * mh / mw)))
+    else:
+        h = cap
+        w = max(1, int(round(cap * mw / mh)))
+    return w, h
+
+
+def _picamera2_save_preview_jpeg(cam, tmp_path: Path) -> None:
+    """
+    Pull a fresh frame via capture_request (still pipeline can stale-cache capture_file).
+    Prefer lores stream when configured for lighter preview JPEGs.
+    """
+    req = cam.capture_request()
+    try:
+        try:
+            req.save("lores", str(tmp_path))
+        except Exception:
+            req.save("main", str(tmp_path))
+    finally:
+        req.release()
+
+
+def _picamera2_save_main_jpeg(cam, tmp_path: Path) -> None:
+    """Final still capture on main stream via capture_request."""
+    req = cam.capture_request()
+    try:
+        req.save("main", str(tmp_path))
+    finally:
+        req.release()
+
+
 class PiCameraAdapter:
     """
     Thin Picamera2 adapter with thread-safe capture operations.
@@ -53,9 +91,14 @@ class PiCameraAdapter:
                 config.PI_CAMERA_CAPTURE_HEIGHT,
                 config.PI_CAMERA_MAX_DIM,
             )
-            still_cfg = cam.create_still_configuration(
-                main={"size": (width, height)}
-            )
+            lw, lh = _lores_size_for_main(width, height, config.PI_CAMERA_PREVIEW_LORES_MAX)
+            try:
+                still_cfg = cam.create_still_configuration(
+                    main={"size": (width, height)},
+                    lores={"size": (lw, lh)},
+                )
+            except Exception:
+                still_cfg = cam.create_still_configuration(main={"size": (width, height)})
             cam.configure(still_cfg)
             cam.start()
         except Exception as exc:  # noqa: BLE001
@@ -140,7 +183,7 @@ class PiCameraAdapter:
                 try:
                     if cam is not None:
                         try:
-                            cam.capture_file(str(tmp_path))
+                            _picamera2_save_main_jpeg(cam, tmp_path)
                         except Exception as exc:
                             raise PiCameraError(
                                 f"picamera capture failed: {exc} | "
@@ -168,6 +211,15 @@ class PiCameraAdapter:
             with _interprocess_camera_lock():
                 cam = self._ensure_camera()
                 if cam is not None:
+                    try:
+                        with NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                            wtmp = Path(tmp.name)
+                        try:
+                            _picamera2_save_preview_jpeg(cam, wtmp)
+                        finally:
+                            wtmp.unlink(missing_ok=True)
+                    except Exception:
+                        pass
                     return
                 with NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                     tmp_path = Path(tmp.name)
@@ -186,7 +238,7 @@ class PiCameraAdapter:
                 try:
                     if cam is not None:
                         try:
-                            cam.capture_file(str(tmp_path))
+                            _picamera2_save_preview_jpeg(cam, tmp_path)
                         except Exception as exc:
                             raise PiCameraError(
                                 f"picamera preview failed: {exc} | "

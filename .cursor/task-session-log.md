@@ -239,6 +239,20 @@
 - **Verification**:
   - `ReadLints` on edited files reported no lint errors.
 
+## 2026-04-19 — Camera preview plan (live feed, loader, FOV)
+
+- **Action**: Implemented attached camera review plan: Picamera2 live preview via `capture_request`, lores stream for `/preview.jpg`, UI loader behavior, and reduced perceived zoom.
+- **Backend**:
+  - `backend/config.py`: added `PI_CAMERA_PREVIEW_LORES_MAX` (default 640).
+  - `backend/services/pi_camera.py`: still config tries `main` + `lores` (same aspect); preview uses `_picamera2_save_preview_jpeg` (`capture_request`, prefer `lores` then `main`); final still uses `_picamera2_save_main_jpeg`; `prepare_for_capture` discards one Picamera2 preview frame when using Picamera2.
+- **UI**:
+  - `ui/src/features/camera/camera-overlay.css`: `object-fit: contain` for full sensor frame in overlay.
+  - `ui/src/features/camera/CameraOverlay.tsx`: `key={frameSrc}`, `onPreviewFrameLoaded`, hide boot spinner when countdown overlay is active.
+  - `ui/src/app/MirrorApp.tsx`: do not clear `cameraLoading` on `CAMERA_LOADING_READY`; clear on first preview frame or countdown start; dev panel camera toggle sets loading when opening.
+- **Docs**: `.env.example` documents `PI_CAMERA_PREVIEW_LORES_MAX`.
+- **Commands**: `python -m compileall backend/config.py backend/services/pi_camera.py`; `npm --prefix ui run build` (pass).
+- **Verification**: `ReadLints` on touched files reported no issues.
+
 ## 2026-04-19 — Portrait mirror-resolution camera framing
 
 - **Action**: Shifted camera framing toward mirror-style vertical composition (portrait) instead of monitor-style landscape.

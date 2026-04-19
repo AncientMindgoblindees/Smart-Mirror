@@ -135,7 +135,6 @@ export default function MirrorApp() {
     },
     onCameraLoadingReady: () => {
       setShowCamera(true);
-      setCameraLoading(false);
       setCameraError(null);
     },
     onCameraCountdownStarted: (seconds) => {
@@ -204,7 +203,19 @@ export default function MirrorApp() {
 
       {showDevPanel && (
         <ToolsPanel
-          onToggleCamera={() => setShowCamera((v) => !v)}
+          onToggleCamera={() => {
+            setShowCamera((prev) => {
+              const next = !prev;
+              if (next) {
+                setCameraLoading(true);
+              } else {
+                setCameraLoading(false);
+                setCameraCountdown(null);
+                setCameraError(null);
+              }
+              return next;
+            });
+          }}
           onToggleDim={toggleDim}
           onToggleSleep={toggleSleep}
           widgets={widgets}
@@ -224,6 +235,7 @@ export default function MirrorApp() {
           loading={cameraLoading}
           countdown={cameraCountdown}
           errorMessage={cameraError}
+          onPreviewFrameLoaded={() => setCameraLoading(false)}
           onClose={() => {
             setCameraLoading(false);
             setCameraCountdown(null);
