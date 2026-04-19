@@ -127,17 +127,24 @@ async def oauth_google_callback(request: Request, code: str | None = None, state
         logger.warning("Google token exchange failed: %s %s", r.status_code, r.text)
         raise HTTPException(status_code=502, detail="Token exchange failed")
 
-    body = r.json()
-    refresh = body.get("refresh_token") or ""
-    if not refresh:
-        logger.warning("Google web login returned no refresh_token; user may need to revoke app and retry")
-    token = TokenResponse(
-        access_token=body["access_token"],
-        refresh_token=refresh,
-        expires_in=int(body.get("expires_in", 3600)),
-        scope=body.get("scope"),
-    )
-    await auth_manager.store_tokens_from_web("google", token)
+    try:
+        body = r.json()
+        refresh = body.get("refresh_token") or ""
+        if not refresh:
+            logger.warning("Google web login returned no refresh_token; user may need to revoke app and retry")
+        token = TokenResponse(
+            access_token=body["access_token"],
+            refresh_token=refresh,
+            expires_in=int(body.get("expires_in", 3600)),
+            scope=body.get("scope"),
+        )
+        await auth_manager.store_tokens_from_web("google", token)
+    except Exception:
+        logger.exception("Google callback failed while persisting tokens or starting sync")
+        raise HTTPException(
+            status_code=500,
+            detail="Google login completed, but backend failed while saving tokens. Check backend logs.",
+        )
     return _success_html(
         "Google connected",
         "You can return to the Mirror Config app. This window is safe to close.",

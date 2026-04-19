@@ -574,3 +574,26 @@
   - `npm run build` in `ui/` (pass)
 - **Verification**:
   - `ReadLints` on touched UI files reported no diagnostics.
+
+## 2026-04-19 — Investigate Google web OAuth callback 500
+
+- **Action**: Began debugging "Internal Server Error after authenticating" for browser Google OAuth flow.
+- **Commands / Reads**:
+  - Read `backend/api/oauth_web.py`, `backend/services/auth_manager.py`, `backend/services/sync_service.py`, `backend/services/crypto.py`, `backend/database/models.py`.
+  - Searched backend for OAuth and token exchange error paths with ripgrep.
+  - Read active IDE terminal transcript to look for immediate traceback context.
+- **Key findings**:
+  - `GET /api/oauth/google/callback` can return 500 from post-token-exchange processing (`auth_manager.store_tokens_from_web`) if token persistence or downstream sync startup raises.
+  - Current callback logs non-200 Google token responses but does not catch/log exceptions around token persistence path, so user sees a generic internal server error.
+  - Terminal transcript captured Git history only, not backend runtime traceback, so server log inspection is still required to identify the exact failing statement on the Pi.
+
+## 2026-04-19 — Add explicit Google callback error guard
+
+- **Action**: Wrapped post-token-exchange processing in `backend/api/oauth_web.py` with explicit `try/except` to prevent opaque callback failures.
+- **Change**:
+  - Added `logger.exception(...)` around token parsing + `auth_manager.store_tokens_from_web("google", token)` path.
+  - Raised `HTTPException(500, detail="Google login completed, but backend failed while saving tokens. Check backend logs.")` on failure for clearer diagnosis.
+- **Commands**:
+  - `python -m compileall backend/api/oauth_web.py` (pass)
+- **Verification**:
+  - `ReadLints` for `backend/api/oauth_web.py` reported no diagnostics.
