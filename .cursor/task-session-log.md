@@ -362,3 +362,49 @@
   - `npm run build` in `ui/` (pass)
 - **Verification**:
   - `ReadLints` on `ui/src/app/MirrorApp.tsx` reported no lint errors.
+
+## 2026-04-19 — Verification scan for stale preview.jpg callers
+
+- **Action**: Audited Smart-Mirror UI/backend source for any remaining `preview.jpg` camera endpoint usage.
+- **Commands**:
+  - `rg "preview\\.jpg|/preview|camera/preview"` in repo root and companion app repo.
+  - `rg "camera/live|stream\\.mjpg|camera/preview"` in `ui/`.
+  - `rg "@router\\.get\\(\"/preview\\.jpg\"\\)|\"/preview\\.jpg\"|\"/live\"|\"/stream\\.mjpg\""` in `backend/`.
+- **Result**: No source callers of `/api/camera/preview.jpg` found. Active paths are UI `GET /api/camera/live` and backend routes `/camera/live` and `/camera/stream.mjpg`. Remaining `preview.jpg` mentions are only historical notes in `.cursor/task-session-log.md`.
+
+## 2026-04-19 — Pi startup reliability hardening (Chromium profile + password store)
+
+- **Action**: Updated launcher/autostart defaults for reliable kiosk startup using persistent Chromium profile and basic password store.
+- **Changes**:
+  - `scripts/start-mirror-app.sh`:
+    - Added `MIRROR_CHROMIUM_PASSWORD_STORE` (default `basic`).
+    - Added `MIRROR_CHROMIUM_USER_DATA_DIR` (default `ROOT/data/chromium-profile`).
+    - Ensures profile dir exists before launch.
+    - Chromium flags now include `--user-data-dir`, `--password-store`, `--no-first-run`, and `--no-default-browser-check`.
+  - `deploy/raspberry-pi/smart-mirror.desktop.template`:
+    - `Exec=` now sets `MIRROR_CHROMIUM_PASSWORD_STORE=basic` and `MIRROR_CHROMIUM_USER_DATA_DIR=.../data/chromium-profile` via `env`.
+    - Added `StartupNotify=false` and `X-GNOME-Autostart-enabled=true`.
+  - `README.md`: documented new Chromium reliability env variables under Pi launcher/autostart section.
+- **Commands**:
+  - `bash -n scripts/start-mirror-app.sh` (pass)
+  - `bash -n deploy/raspberry-pi/install-pi-launcher.sh` (pass)
+- **Verification**:
+  - `ReadLints` on changed files returned no diagnostics.
+
+## 2026-04-19 — Hybrid shell flow: simple entry + restored reliability guards
+
+- **Action**: Updated existing shell scripts to preserve user-requested simple launch style while restoring reliability protections.
+- **Changes**:
+  - `scripts/start-mirror-app.sh`:
+    - Kept lockfile + cleanup-first startup pattern.
+    - Restored backend port owner detection before backend launch.
+    - Restored `uvicorn` availability checks with optional `ensure-mirror-python-env.sh` bootstrap.
+    - Restored backend readiness wait loop via `curl` against `/ui`.
+    - Restored Cloudflare tunnel supervisor loop with restart delay (`MIRROR_TUNNEL_RESTART_DELAY_SEC`).
+  - `scripts/stop-mirror-app.sh`:
+    - Added PID-file-based graceful termination helper for backend and tunnel supervisor before fallback `pkill`.
+- **Commands**:
+  - `bash -n scripts/start-mirror-app.sh` (pass)
+  - `bash -n scripts/stop-mirror-app.sh` (pass)
+- **Verification**:
+  - `ReadLints` on both scripts returned no diagnostics.

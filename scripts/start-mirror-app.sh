@@ -1,30 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+LOCKFILE="/tmp/smart_mirror.lock"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${MIRROR_PORT:-8002}"
-URL="http://127.0.0.1:${PORT}/ui/"
-PID_FILE="${ROOT_DIR}/data/mirror-backend.pid"
-LOCK_FILE="${ROOT_DIR}/data/mirror-backend.lock"
-LOG_FILE="${ROOT_DIR}/data/mirror-backend.log"
-TUNNEL_PID_FILE="${ROOT_DIR}/data/mirror-tunnel.pid"
-TUNNEL_LOG_FILE="${ROOT_DIR}/data/mirror-tunnel.log"
+URL="http://127.0.0.1:${PORT}/ui"
+LOG_DIR="${ROOT_DIR}/data"
+BACKEND_LOG_FILE="${LOG_DIR}/mirror-backend.log"
+TUNNEL_LOG_FILE="${LOG_DIR}/mirror-tunnel.log"
+PID_FILE="${LOG_DIR}/mirror-backend.pid"
+TUNNEL_PID_FILE="${LOG_DIR}/mirror-tunnel.pid"
 MIRROR_ENABLE_TUNNEL="${MIRROR_ENABLE_TUNNEL:-1}"
 MIRROR_TUNNEL_NAME="${MIRROR_TUNNEL_NAME:-smart-mirror-ui}"
-MIRROR_TUNNEL_RESTART_DELAY_SEC="${MIRROR_TUNNEL_RESTART_DELAY_SEC:-5}"
 MIRROR_CAMERA_AUTO_STOP_PIPEWIRE="${MIRROR_CAMERA_AUTO_STOP_PIPEWIRE:-1}"
+MIRROR_CHROMIUM_PASSWORD_STORE="${MIRROR_CHROMIUM_PASSWORD_STORE:-basic}"
+MIRROR_TUNNEL_RESTART_DELAY_SEC="${MIRROR_TUNNEL_RESTART_DELAY_SEC:-5}"
 
-mkdir -p "${ROOT_DIR}/data"
+mkdir -p "${LOG_DIR}"
 
-if [[ -x "${ROOT_DIR}/.venv/bin/python" ]]; then
-  PYTHON="${ROOT_DIR}/.venv/bin/python"
-elif [[ -n "${MIRROR_PYTHON:-}" ]]; then
-  PYTHON="${MIRROR_PYTHON}"
-else
-  PYTHON="python3"
+# Prevent duplicate runs.
+if [[ -f "${LOCKFILE}" ]]; then
+  echo "Smart Mirror already running. Exiting."
+  exit 1
 fi
+trap 'rm -f "${LOCKFILE}"' EXIT
+touch "${LOCKFILE}"
 
-backend_port_owner() {
+echo "Starting Smart Mirror..."
+
+# Kill leftover processes (prevents port/tunnel/browser conflicts).
+pkill -f cloudflared 2>/dev/null || true
+pkill -f chromium 2>/dev/null || true
+pkill -f "uvicorn backend.main:app" 2>/dev/null || true
+
+port_owner() {
   if command -v ss >/dev/null 2>&1; then
     ss -ltnp "( sport = :${PORT} )" 2>/dev/null | sed -n '2,$p' || true
     return
@@ -36,110 +45,72 @@ backend_port_owner() {
   echo ""
 }
 
-start_backend_if_needed() {
-  if [[ -f "${PID_FILE}" ]]; then
-    OLD_PID="$(cat "${PID_FILE}" || true)"
-    if [[ -n "${OLD_PID}" ]] && kill -0 "${OLD_PID}" 2>/dev/null; then
-      echo "Smart Mirror backend already running (PID ${OLD_PID})."
-      return 0
-    fi
-    rm -f "${PID_FILE}"
-  fi
-
-  OWNER_INFO="$(backend_port_owner)"
-  if [[ -n "${OWNER_INFO// /}" ]]; then
-    echo "Smart Mirror backend not started: port ${PORT} already has a listener."
-    echo "${OWNER_INFO}"
-    echo "If this is a stale process, run: bash ${ROOT_DIR}/scripts/stop-mirror-app.sh"
-    return 0
-  fi
-
-  if ! "${PYTHON}" -c "import uvicorn" 2>/dev/null; then
-    if [[ -z "${MIRROR_PYTHON:-}" && -f "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" ]]; then
-      bash "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" "${ROOT_DIR}"
-      PYTHON="${ROOT_DIR}/.venv/bin/python"
-    fi
-  fi
-  if ! "${PYTHON}" -c "import uvicorn" 2>/dev/null; then
-    echo "Smart Mirror: uvicorn is not installed for: ${PYTHON}" >&2
-    echo "Run the Pi installer (sets up venv + deps):" >&2
-    echo "  bash ${ROOT_DIR}/deploy/raspberry-pi/install-pi-launcher.sh" >&2
-    echo "Or manually:" >&2
-    echo "  bash ${ROOT_DIR}/scripts/ensure-mirror-python-env.sh ${ROOT_DIR}" >&2
-    exit 1
-  fi
-  (
-    cd "${ROOT_DIR}"
-    exec "${PYTHON}" -m uvicorn backend.main:app --host 127.0.0.1 --port "${PORT}"
-  ) >>"${LOG_FILE}" 2>&1 &
-  echo "$!" >"${PID_FILE}"
-}
-
-if command -v flock >/dev/null 2>&1; then
-  exec 9>"${LOCK_FILE}"
-  if ! flock -n 9; then
-    echo "Another Smart Mirror launcher instance is already starting backend; exiting."
-    exit 0
-  fi
-  start_backend_if_needed
-else
-  # Fallback when flock is unavailable; keep previous behavior.
-  start_backend_if_needed
-fi
-
 if [[ "${MIRROR_CAMERA_AUTO_STOP_PIPEWIRE}" == "1" ]] && command -v systemctl >/dev/null 2>&1; then
   systemctl --user stop pipewire pipewire-pulse wireplumber >/dev/null 2>&1 || true
 fi
 
-echo "Waiting for backend: ${URL}"
+if [[ -x "${ROOT_DIR}/.venv/bin/python" ]]; then
+  PYTHON="${ROOT_DIR}/.venv/bin/python"
+elif [[ -n "${MIRROR_PYTHON:-}" ]]; then
+  PYTHON="${MIRROR_PYTHON}"
+else
+  PYTHON="python3"
+fi
+
+if ! "${PYTHON}" -c "import uvicorn" 2>/dev/null; then
+  if [[ -f "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" ]]; then
+    bash "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" "${ROOT_DIR}"
+    PYTHON="${ROOT_DIR}/.venv/bin/python"
+  fi
+fi
+
+if ! "${PYTHON}" -c "import uvicorn" 2>/dev/null; then
+  echo "Smart Mirror: uvicorn is not installed for ${PYTHON}."
+  echo "Run: bash ${ROOT_DIR}/scripts/ensure-mirror-python-env.sh ${ROOT_DIR}"
+  exit 1
+fi
+
+OWNER_INFO="$(port_owner)"
+if [[ -n "${OWNER_INFO// /}" ]]; then
+  echo "Port ${PORT} is already in use; not starting backend."
+  echo "${OWNER_INFO}"
+  echo "Run: bash ${ROOT_DIR}/scripts/stop-mirror-app.sh"
+  exit 1
+fi
+
+(
+  cd "${ROOT_DIR}"
+  exec "${PYTHON}" -m uvicorn backend.main:app --host 127.0.0.1 --port "${PORT}"
+) >>"${BACKEND_LOG_FILE}" 2>&1 &
+echo "$!" >"${PID_FILE}"
+
+if [[ "${MIRROR_ENABLE_TUNNEL}" == "1" ]] && command -v cloudflared >/dev/null 2>&1; then
+  (
+    CHILD=""
+    trap '[[ -n "${CHILD}" ]] && kill "${CHILD}" 2>/dev/null; exit 0' TERM INT
+    while true; do
+      echo "$(date -Iseconds 2>/dev/null || date) starting cloudflared tunnel run ${MIRROR_TUNNEL_NAME}" >>"${TUNNEL_LOG_FILE}"
+      cloudflared tunnel run "${MIRROR_TUNNEL_NAME}" >>"${TUNNEL_LOG_FILE}" 2>&1 &
+      CHILD="$!"
+      wait "${CHILD}" || true
+      CHILD=""
+      echo "$(date -Iseconds 2>/dev/null || date) cloudflared exited; retry in ${MIRROR_TUNNEL_RESTART_DELAY_SEC}s" >>"${TUNNEL_LOG_FILE}"
+      sleep "${MIRROR_TUNNEL_RESTART_DELAY_SEC}"
+    done
+  ) &
+  echo "$!" >"${TUNNEL_PID_FILE}"
+fi
+
+# Wait for backend readiness.
 for _ in {1..50}; do
   if curl -fsS "${URL}" >/dev/null 2>&1; then
     break
   fi
   sleep 0.2
 done
-
 if ! curl -fsS "${URL}" >/dev/null 2>&1; then
-  echo "Backend failed to start. See ${LOG_FILE}"
+  echo "Backend failed to start. See ${BACKEND_LOG_FILE}"
   exit 1
-fi
-
-if [[ "${MIRROR_ENABLE_TUNNEL}" == "1" ]]; then
-  if command -v cloudflared >/dev/null 2>&1 && [[ -f "${HOME}/.cloudflared/config.yml" ]]; then
-    if [[ -f "${TUNNEL_PID_FILE}" ]]; then
-      OLD_TUNNEL_PID="$(cat "${TUNNEL_PID_FILE}" || true)"
-      if [[ -n "${OLD_TUNNEL_PID}" ]] && kill -0 "${OLD_TUNNEL_PID}" 2>/dev/null; then
-        echo "Cloudflare tunnel already running (PID ${OLD_TUNNEL_PID})."
-      else
-        rm -f "${TUNNEL_PID_FILE}"
-      fi
-    fi
-
-    if [[ ! -f "${TUNNEL_PID_FILE}" ]]; then
-      echo "Starting Cloudflare tunnel: ${MIRROR_TUNNEL_NAME}"
-      (
-        cd "${ROOT_DIR}"
-        CHILD=""
-        trap '[[ -n "${CHILD}" ]] && kill "${CHILD}" 2>/dev/null; exit 0' TERM INT
-        while true; do
-          echo "$(date -Iseconds 2>/dev/null || date) starting cloudflared tunnel run ${MIRROR_TUNNEL_NAME}" >>"${TUNNEL_LOG_FILE}"
-          cloudflared tunnel run "${MIRROR_TUNNEL_NAME}" >>"${TUNNEL_LOG_FILE}" 2>&1 &
-          CHILD="$!"
-          wait "${CHILD}" || true
-          CHILD=""
-          echo "$(date -Iseconds 2>/dev/null || date) cloudflared exited; retry in ${MIRROR_TUNNEL_RESTART_DELAY_SEC}s" >>"${TUNNEL_LOG_FILE}"
-          sleep "${MIRROR_TUNNEL_RESTART_DELAY_SEC}"
-        done
-      ) &
-      echo "$!" >"${TUNNEL_PID_FILE}"
-    fi
-  else
-    echo "Cloudflare tunnel not started (missing cloudflared or ~/.cloudflared/config.yml)."
-    echo "Setup command:"
-    echo "  bash ${ROOT_DIR}/scripts/setup-cloudflare-tunnel.sh --hostname mirror.smart-mirror.tech --service-url http://127.0.0.1:${PORT}"
-    echo "Apex + mirror both to API (PUT /api, /ui on same app):"
-    echo "  bash ${ROOT_DIR}/scripts/setup-cloudflare-tunnel.sh --hostname smart-mirror.tech --hostname mirror.smart-mirror.tech --service-url http://127.0.0.1:${PORT}"
-  fi
 fi
 
 if command -v chromium-browser >/dev/null 2>&1; then
@@ -151,16 +122,16 @@ else
   exit 1
 fi
 
-# Default: maximized resizable app window. Set MIRROR_FULLSCREEN=1 for kiosk-style fullscreen.
-CHROMIUM_WINDOW_FLAGS=(--start-maximized)
-if [[ "${MIRROR_FULLSCREEN:-}" == "1" ]]; then
-  CHROMIUM_WINDOW_FLAGS=(--start-fullscreen)
+CHROMIUM_WINDOW_FLAG="--start-fullscreen"
+if [[ "${MIRROR_FULLSCREEN:-1}" != "1" ]]; then
+  CHROMIUM_WINDOW_FLAG="--start-maximized"
 fi
 
-exec "${BROWSER_CMD}" \
-  --app="${URL}" \
-  "${CHROMIUM_WINDOW_FLAGS[@]}" \
-  --noerrdialogs \
-  --disable-session-crashed-bubble \
-  --disable-infobars \
-  --check-for-update-interval=31536000
+"${BROWSER_CMD}" \
+  "${CHROMIUM_WINDOW_FLAG}" \
+  --password-store="${MIRROR_CHROMIUM_PASSWORD_STORE}" \
+  --no-first-run \
+  --no-default-browser-check \
+  "${URL}" &
+
+echo "Smart Mirror started."

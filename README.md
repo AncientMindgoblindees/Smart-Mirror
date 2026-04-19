@@ -52,6 +52,16 @@ Enable autostart on login:
 bash deploy/raspberry-pi/install-pi-launcher.sh --autostart
 ```
 
+The launcher defaults to a persistent Chromium profile and basic password store
+for kiosk reliability:
+
+```
+MIRROR_CHROMIUM_PASSWORD_STORE=basic
+MIRROR_CHROMIUM_USER_DATA_DIR=/path/to/Smart-Mirror/data/chromium-profile
+```
+
+These can be overridden in your shell before launching `start-mirror-app.sh` if needed.
+
 ### Option 1: Full app (recommended)
 Runs FastAPI backend + serves the **built** React UI at `/ui` (API routes, WebSockets, etc.).
 
