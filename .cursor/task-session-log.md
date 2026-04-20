@@ -891,6 +891,18 @@
 - **Verification**:
   - `ReadLints` on touched backend files reported no diagnostics.
 
+## 2026-04-19 — Fix OAuth callback 500 from state tuple shape change
+
+- **Issue**: Google callback returned 500 after introducing source-aware OAuth state tracking.
+- **Root cause**:
+  - `_pending_state` entries were changed from 2-tuple to 3-tuple (`provider, exp, source`), but `_cleanup_state` still unpacked as 2 values.
+- **Change**:
+  - `backend/api/oauth_web.py`: updated `_cleanup_state` unpack from `(_, exp)` to `(_, exp, _)`.
+- **Commands**:
+  - `python -m compileall backend/api/oauth_web.py` (pass)
+- **Verification**:
+  - `ReadLints` on `backend/api/oauth_web.py` reported no diagnostics.
+
 ## 2026-04-19 — Clock widget 12h/24h format support
 
 - **User request**: Fix clock widget so it can display both 24-hour and 12-hour time.

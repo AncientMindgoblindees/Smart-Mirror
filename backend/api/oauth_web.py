@@ -41,7 +41,7 @@ MS_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 
 def _cleanup_state() -> None:
     now = time.monotonic()
-    dead = [k for k, (_, exp) in _pending_state.items() if exp < now]
+    dead = [k for k, (_, exp, _) in _pending_state.items() if exp < now]
     for k in dead:
         _pending_state.pop(k, None)
 
