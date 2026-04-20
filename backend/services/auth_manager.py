@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -32,6 +33,7 @@ class AuthManager:
         self._providers: Dict[str, CalendarProvider] = {}
         self._pending_polls: Dict[str, asyncio.Task[Any]] = {}
         self._pending_device_codes: Dict[str, DeviceCodeResponse] = {}
+        self._pending_web_logins: Dict[str, float] = {}
 
         self.register_provider(GoogleProvider())
         self.register_provider(MicrosoftProvider())
@@ -76,6 +78,25 @@ class AuthManager:
         )
         self._pending_polls[provider_name] = task
         return device_code_resp
+
+    def start_web_redirect_login(
+        self, provider_name: str, verification_uri: str, ttl_sec: int = 600
+    ) -> DeviceCodeResponse:
+        if provider_name not in self._providers:
+            raise ValueError(f"Unknown provider: {provider_name}")
+        # Keep pending status alive while user completes browser OAuth flow.
+        self.cancel_login(provider_name)
+        self._pending_web_logins[provider_name] = time.monotonic() + ttl_sec
+        dc = DeviceCodeResponse(
+            verification_uri=verification_uri,
+            user_code="",
+            device_code=f"web-{provider_name}",
+            expires_in=ttl_sec,
+            interval=5,
+            message="Scan QR to open sign-in page",
+        )
+        self._pending_device_codes[provider_name] = dc
+        return dc
 
     async def _poll_and_store(
         self, provider_name: str, dc: DeviceCodeResponse
@@ -147,6 +168,7 @@ class AuthManager:
 
     async def store_tokens_from_web(self, provider_name: str, token: TokenResponse) -> None:
         """Persist tokens from authorization-code (browser) flow and start sync."""
+        self.cancel_login(provider_name)
         self._store_tokens(provider_name, token)
         await control_registry.broadcast({
             "type": "AUTH_STATE_CHANGED",
@@ -166,6 +188,7 @@ class AuthManager:
         if task:
             task.cancel()
         self._pending_device_codes.pop(provider_name, None)
+        self._pending_web_logins.pop(provider_name, None)
 
     async def logout(self, provider_name: str) -> None:
         self.cancel_login(provider_name)
@@ -248,6 +271,17 @@ class AuthManager:
     # ── Status Queries ──────────────────────────────────────────────────
 
     def get_login_status(self, provider_name: str) -> Dict[str, Any]:
+        web_exp = self._pending_web_logins.get(provider_name)
+        if web_exp is not None:
+            if time.monotonic() <= web_exp:
+                dc = self._pending_device_codes.get(provider_name)
+                return {
+                    "provider": provider_name,
+                    "status": "pending",
+                    "message": dc.message if dc else None,
+                }
+            self._pending_web_logins.pop(provider_name, None)
+            self._pending_device_codes.pop(provider_name, None)
         if provider_name in self._pending_polls and not self._pending_polls[provider_name].done():
             dc = self._pending_device_codes.get(provider_name)
             return {

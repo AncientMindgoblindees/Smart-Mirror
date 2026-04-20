@@ -11,6 +11,7 @@ type Props = {
 };
 
 export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel }) => {
+  const hasUserCode = Boolean(pendingAuth?.deviceCode.user_code?.trim());
   return (
     <AnimatePresence>
       {pendingAuth && (
@@ -37,7 +38,9 @@ export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel }) => {
             </h2>
 
             <p className="auth-qr-instructions">
-              Scan this QR code with your phone, then enter the code below.
+              {hasUserCode
+                ? 'Scan this QR code with your phone, then enter the code below.'
+                : 'Scan this QR code with your phone to open the sign-in page.'}
             </p>
 
             <div className="auth-qr-code-wrapper">
@@ -50,9 +53,11 @@ export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel }) => {
               />
             </div>
 
-            <div className="auth-qr-user-code">
-              {pendingAuth.deviceCode.user_code}
-            </div>
+            {hasUserCode && (
+              <div className="auth-qr-user-code">
+                {pendingAuth.deviceCode.user_code}
+              </div>
+            )}
 
             <p className="auth-qr-url">
               Or visit: <span>{pendingAuth.deviceCode.verification_uri}</span>

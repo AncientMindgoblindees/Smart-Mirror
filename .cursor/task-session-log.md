@@ -836,6 +836,46 @@
 - **Verification**:
   - `ReadLints` on touched files reported no diagnostics.
 
+## 2026-04-19 — Option 3: QR launches browser OAuth for Google
+
+- **User request**: Implement QR flow that still uses scan UX but grants full web OAuth scopes (calendar + gmail).
+- **Backend changes**:
+  - `backend/api/auth.py`:
+    - For `POST /api/auth/login/google`, returns a QR verification URL pointing to `/api/oauth/google/start` instead of Google device-code endpoint.
+    - Added `OAUTH_PUBLIC_BASE_URL` override so QR links are phone-reachable when mirror runs on localhost.
+  - `backend/services/auth_manager.py`:
+    - Added `start_web_redirect_login(...)` pending-state path for QR-web auth.
+    - Added pending web-login tracking in `get_login_status` and cleanup in `cancel_login`.
+    - `store_tokens_from_web(...)` now clears pending login state before persisting tokens.
+- **UI changes**:
+  - `ui/src/features/auth/AuthQROverlay.tsx`:
+    - If no `user_code`, overlay instructions switch to “scan to open sign-in page”.
+    - Hides code block for browser-redirect QR flows.
+- **Config/docs**:
+  - `.env.example`: added `OAUTH_PUBLIC_BASE_URL`.
+  - `docs/oauth-google-microsoft-setup.md`: documented QR-to-web behavior and public-base requirement.
+- **Commands**:
+  - `python -m compileall backend/services/auth_manager.py backend/api/auth.py` (pass)
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on touched backend/UI/docs/env files reported no diagnostics.
+
+## 2026-04-19 — Conditional post-auth redirect by flow source
+
+- **User request**: If auth was initiated via QR, do not redirect on success; if started directly in browser, keep redirect behavior.
+- **Changes**:
+  - `backend/api/auth.py`:
+    - Google QR start link now includes `source=qr`.
+  - `backend/api/oauth_web.py`:
+    - OAuth `state` now tracks `source` (`browser` or `qr`) alongside provider + expiry.
+    - `google/start` and `microsoft/start` accept optional `source` query and store it in state.
+    - Google callback now redirects only when `source != qr`; QR flow returns static success page.
+    - Microsoft callback adapted to new state shape (behavior unchanged).
+- **Commands**:
+  - `python -m compileall backend/api/auth.py backend/api/oauth_web.py` (pass)
+- **Verification**:
+  - `ReadLints` on touched files reported no diagnostics.
+
 ## 2026-04-19 — Clock widget 12h/24h format support
 
 - **User request**: Fix clock widget so it can display both 24-hour and 12-hour time.

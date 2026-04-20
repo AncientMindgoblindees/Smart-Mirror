@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/oauth", tags=["oauth"])
 
 STATE_TTL_SEC = 600.0
-_pending_state: dict[str, tuple[str, float]] = {}
+_pending_state: dict[str, tuple[str, float, str]] = {}
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -46,24 +46,24 @@ def _cleanup_state() -> None:
         _pending_state.pop(k, None)
 
 
-def _new_state(provider: str) -> str:
+def _new_state(provider: str, source: str = "browser") -> str:
     _cleanup_state()
     tok = secrets.token_urlsafe(32)
-    _pending_state[tok] = (provider, time.monotonic() + STATE_TTL_SEC)
+    _pending_state[tok] = (provider, time.monotonic() + STATE_TTL_SEC, source)
     return tok
 
 
-def _pop_state(state: str | None) -> str | None:
+def _pop_state(state: str | None) -> tuple[str, str] | None:
     if not state:
         return None
     _cleanup_state()
     entry = _pending_state.pop(state, None)
     if entry is None:
         return None
-    provider, exp = entry
+    provider, exp, source = entry
     if time.monotonic() > exp:
         return None
-    return provider
+    return provider, source
 
 
 def _public_base(request: Request) -> str:
@@ -91,7 +91,7 @@ def _post_auth_redirect_url() -> str | None:
 
 
 @router.get("/google/start")
-async def oauth_google_start(request: Request) -> RedirectResponse:
+async def oauth_google_start(request: Request, source: str | None = None) -> RedirectResponse:
     client_id, _ = get_google_web_oauth_credentials()
     if not client_id:
         raise HTTPException(
@@ -100,7 +100,8 @@ async def oauth_google_start(request: Request) -> RedirectResponse:
         )
 
     redirect_uri = f"{_public_base(request)}/api/oauth/google/callback"
-    state = _new_state("google")
+    flow_source = "qr" if (source or "").strip().lower() == "qr" else "browser"
+    state = _new_state("google", flow_source)
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -118,8 +119,11 @@ async def oauth_google_start(request: Request) -> RedirectResponse:
 async def oauth_google_callback(request: Request, code: str | None = None, state: str | None = None, error: str | None = None) -> Any:
     if error:
         return _success_html("Sign-in cancelled", f"Provider returned: {error}")
-    provider = _pop_state(state)
-    if provider != "google" or not code:
+    state_info = _pop_state(state)
+    if not state_info or not code:
+        raise HTTPException(status_code=400, detail="Invalid or expired state")
+    provider, flow_source = state_info
+    if provider != "google":
         raise HTTPException(status_code=400, detail="Invalid or expired state")
 
     client_id, client_secret = get_google_web_oauth_credentials()
@@ -159,13 +163,16 @@ async def oauth_google_callback(request: Request, code: str | None = None, state
             detail="Google login completed, but backend failed while saving tokens. Check backend logs.",
         )
     redirect_url = _post_auth_redirect_url()
-    if redirect_url:
+    if redirect_url and flow_source != "qr":
         return RedirectResponse(redirect_url, status_code=302)
-    return _success_html("Google connected", "You can return to the Mirror Config app.")
+    return _success_html(
+        "Google connected",
+        "Sign-in complete. You can close this tab and return to the Mirror.",
+    )
 
 
 @router.get("/microsoft/start")
-async def oauth_microsoft_start(request: Request) -> RedirectResponse:
+async def oauth_microsoft_start(request: Request, source: str | None = None) -> RedirectResponse:
     import os
 
     client_id = os.getenv("MICROSOFT_CLIENT_ID", "").strip()
@@ -173,7 +180,8 @@ async def oauth_microsoft_start(request: Request) -> RedirectResponse:
         raise HTTPException(status_code=503, detail="MICROSOFT_CLIENT_ID not configured")
 
     redirect_uri = f"{_public_base(request)}/api/oauth/microsoft/callback"
-    state = _new_state("microsoft")
+    flow_source = "qr" if (source or "").strip().lower() == "qr" else "browser"
+    state = _new_state("microsoft", flow_source)
     params = {
         "client_id": client_id,
         "response_type": "code",
@@ -194,8 +202,11 @@ async def oauth_microsoft_callback(
 
     if error:
         return _success_html("Sign-in cancelled", f"Provider returned: {error}")
-    provider = _pop_state(state)
-    if provider != "microsoft" or not code:
+    state_info = _pop_state(state)
+    if not state_info or not code:
+        raise HTTPException(status_code=400, detail="Invalid or expired state")
+    provider, _flow_source = state_info
+    if provider != "microsoft":
         raise HTTPException(status_code=400, detail="Invalid or expired state")
 
     client_id = os.getenv("MICROSOFT_CLIENT_ID", "").strip()

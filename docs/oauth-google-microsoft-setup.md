@@ -57,6 +57,8 @@ The backend now supports separate Google credentials by flow:
 - QR/device flow uses `GOOGLE_TV_CLIENT_ID` / `GOOGLE_TV_CLIENT_SECRET`.
 - If split vars are not set, each flow falls back to `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
 - Current behavior requires **both** `calendar.readonly` and `gmail.readonly` scopes for both browser and QR/device Google sign-in.
+- Google QR flow now opens browser OAuth via a QR link to `/api/oauth/google/start`.  
+  If mirror runs on localhost, set `OAUTH_PUBLIC_BASE_URL=https://<your-public-host>` so phone QR opens a reachable URL.
 
 ---
 
