@@ -32,10 +32,12 @@ GOOGLE_CALENDAR_EVENTS_URL = (
     "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 )
 
-SCOPES = (
+GOOGLE_WEB_SCOPES = (
     "https://www.googleapis.com/auth/calendar.readonly "
     "https://www.googleapis.com/auth/gmail.readonly"
 )
+GOOGLE_DEVICE_SCOPES = GOOGLE_WEB_SCOPES
+GOOGLE_DEVICE_SCOPES_FALLBACK = "https://www.googleapis.com/auth/calendar.readonly"
 
 
 def get_google_device_oauth_credentials() -> tuple[str, str]:
@@ -75,11 +77,28 @@ class GoogleProvider(CalendarProvider):
     # ── Device Code Flow ────────────────────────────────────────────────
 
     async def request_device_code(self) -> DeviceCodeResponse:
+        data = {"client_id": self._client_id, "scope": GOOGLE_DEVICE_SCOPES}
         async with httpx.AsyncClient(timeout=15.0) as client:
             r = await client.post(
                 GOOGLE_DEVICE_CODE_URL,
-                data={"client_id": self._client_id, "scope": SCOPES},
+                data=data,
             )
+            # Some Google TV/device clients reject extra scopes (e.g. gmail.readonly).
+            # Fall back to calendar-only so QR login remains reliable.
+            if r.status_code >= 400:
+                body = {}
+                try:
+                    body = r.json()
+                except Exception:
+                    body = {}
+                if body.get("error") == "invalid_scope":
+                    logger.warning(
+                        "Google device code rejected scopes; falling back to calendar-only scope"
+                    )
+                    r = await client.post(
+                        GOOGLE_DEVICE_CODE_URL,
+                        data={"client_id": self._client_id, "scope": GOOGLE_DEVICE_SCOPES_FALLBACK},
+                    )
         r.raise_for_status()
         data = r.json()
         return DeviceCodeResponse(

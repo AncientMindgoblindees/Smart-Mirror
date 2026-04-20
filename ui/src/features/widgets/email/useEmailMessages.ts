@@ -46,6 +46,7 @@ export function useEmailMessages(): {
   const { loading } = usePollingQuery<EmailMessagesResponse>({
     fetcher: () => getEmailMessages({ limit: 24 }),
     pollMs: 30_000,
+    refreshEventName: 'mirror:auth_state_changed',
     onData: (resp) => {
       setMessages(resp.messages.map(mapItem));
       setHasProviders(resp.providers.length > 0);

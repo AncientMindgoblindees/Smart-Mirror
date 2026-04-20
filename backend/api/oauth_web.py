@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from backend.services.auth_manager import auth_manager
 from backend.services.providers.base import TokenResponse
-from backend.services.providers.google_provider import SCOPES as GOOGLE_SCOPES
+from backend.services.providers.google_provider import GOOGLE_WEB_SCOPES
 from backend.services.providers.google_provider import get_google_web_oauth_credentials
 from backend.services.providers.microsoft_provider import SCOPES as MS_SCOPES
 
@@ -105,7 +105,7 @@ async def oauth_google_start(request: Request) -> RedirectResponse:
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": GOOGLE_SCOPES,
+        "scope": GOOGLE_WEB_SCOPES,
         "state": state,
         "access_type": "offline",
         "prompt": "consent",

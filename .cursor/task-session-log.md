@@ -796,6 +796,30 @@
 - **Verification**:
   - `ReadLints` on `auth_manager.py` reported no diagnostics.
 
+## 2026-04-19 — Email disconnect refresh + overlap reduction + Google QR scope fallback
+
+- **User request**:
+  - Email widget should clear similarly on account disconnect.
+  - Reduce email text size to avoid overlapping/overlay conflicts.
+  - Google QR flow should work again.
+- **Changes**:
+  - `ui/src/features/widgets/email/useEmailMessages.ts`:
+    - Added `refreshEventName: 'mirror:auth_state_changed'` so email widget refetches immediately after connect/disconnect events.
+  - `ui/src/features/widgets/email/email-widget.css`:
+    - Reduced sender/subject/tag font sizes and paddings.
+    - Added stronger overflow constraints (`min-width: 0`, no-wrap tags, hidden source tag on medium).
+    - Adjusted count-based scaling down to prevent crowding.
+  - `backend/services/providers/google_provider.py`:
+    - Split scope constants: `GOOGLE_WEB_SCOPES` (calendar + gmail) and device scopes.
+    - Device code request now retries with calendar-only fallback on `invalid_scope` to keep QR login compatible with stricter TV clients.
+  - `backend/api/oauth_web.py`:
+    - Updated Google web start endpoint to use `GOOGLE_WEB_SCOPES`.
+- **Commands**:
+  - `python -m compileall backend/services/providers/google_provider.py backend/api/oauth_web.py` (pass)
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on touched backend/UI files reported no diagnostics.
+
 ## 2026-04-19 — Clock widget 12h/24h format support
 
 - **User request**: Fix clock widget so it can display both 24-hour and 12-hour time.
