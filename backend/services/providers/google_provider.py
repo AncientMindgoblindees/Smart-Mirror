@@ -10,7 +10,6 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import List
@@ -24,8 +23,6 @@ from backend.services.providers.base import (
     TokenResponse,
 )
 
-logger = logging.getLogger(__name__)
-
 GOOGLE_DEVICE_CODE_URL = "https://oauth2.googleapis.com/device/code"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_CALENDAR_EVENTS_URL = (
@@ -37,7 +34,6 @@ GOOGLE_WEB_SCOPES = (
     "https://www.googleapis.com/auth/gmail.readonly"
 )
 GOOGLE_DEVICE_SCOPES = GOOGLE_WEB_SCOPES
-GOOGLE_DEVICE_SCOPES_FALLBACK = "https://www.googleapis.com/auth/calendar.readonly"
 
 
 def get_google_device_oauth_credentials() -> tuple[str, str]:
@@ -83,8 +79,6 @@ class GoogleProvider(CalendarProvider):
                 GOOGLE_DEVICE_CODE_URL,
                 data=data,
             )
-            # Some Google TV/device clients reject extra scopes (e.g. gmail.readonly).
-            # Fall back to calendar-only so QR login remains reliable.
             if r.status_code >= 400:
                 body = {}
                 try:
@@ -93,28 +87,17 @@ class GoogleProvider(CalendarProvider):
                     body = {}
                 error_code = str(body.get("error", ""))
                 error_desc = str(body.get("error_description", ""))
-                scope_related = (
+                if (
                     error_code == "invalid_scope"
                     or "scope" in error_code.lower()
                     or "scope" in error_desc.lower()
-                )
-                if scope_related:
-                    logger.warning(
-                        "Google device code scope rejected (%s); falling back to calendar-only scope",
-                        error_code or "unknown_error",
+                ):
+                    raise RuntimeError(
+                        "Google QR/device auth must grant both calendar.readonly and gmail.readonly. "
+                        f"Google returned scope error ({error_code or 'unknown_scope_error'}): {error_desc or 'no description'}"
                     )
-                    r = await client.post(
-                        GOOGLE_DEVICE_CODE_URL,
-                        data={"client_id": self._client_id, "scope": GOOGLE_DEVICE_SCOPES_FALLBACK},
-                    )
-            if r.status_code >= 400:
-                details = ""
-                try:
-                    details = r.text
-                except Exception:
-                    details = ""
                 raise RuntimeError(
-                    f"Google device code request failed ({r.status_code}): {details or 'no response body'}"
+                    f"Google device code request failed ({r.status_code}): {error_desc or r.text or 'no response body'}"
                 )
         data = r.json()
         return DeviceCodeResponse(

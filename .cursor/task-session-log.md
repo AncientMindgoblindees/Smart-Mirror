@@ -821,6 +821,21 @@
 - **Verification**:
   - `ReadLints` on touched backend/UI files reported no diagnostics.
 
+## 2026-04-19 — Enforce Gmail+Calendar scopes for Google QR and web
+
+- **User request**: Require both calendar and email access for both Google web and QR flows.
+- **Changes**:
+  - `backend/services/providers/google_provider.py`:
+    - Removed calendar-only device-scope fallback path.
+    - Device code request now fails explicitly on scope rejection with a clear message that both `calendar.readonly` and `gmail.readonly` are required.
+    - Removed unused logger/import after fallback removal.
+  - `docs/oauth-google-microsoft-setup.md`:
+    - Added explicit note that current Google behavior requires both scopes for browser and QR/device sign-in.
+- **Commands**:
+  - `python -m compileall backend/services/providers/google_provider.py` (pass)
+- **Verification**:
+  - `ReadLints` on touched files reported no diagnostics.
+
 ## 2026-04-19 — Clock widget 12h/24h format support
 
 - **User request**: Fix clock widget so it can display both 24-hour and 12-hour time.

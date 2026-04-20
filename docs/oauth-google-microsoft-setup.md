@@ -56,6 +56,7 @@ The backend now supports separate Google credentials by flow:
 - Browser sign-in path (`/api/oauth/google/start`) uses `GOOGLE_WEB_CLIENT_ID` / `GOOGLE_WEB_CLIENT_SECRET`.
 - QR/device flow uses `GOOGLE_TV_CLIENT_ID` / `GOOGLE_TV_CLIENT_SECRET`.
 - If split vars are not set, each flow falls back to `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+- Current behavior requires **both** `calendar.readonly` and `gmail.readonly` scopes for both browser and QR/device Google sign-in.
 
 ---
 
