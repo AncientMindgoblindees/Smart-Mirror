@@ -2,6 +2,7 @@ import type {
   AuthLoginStatus,
   AuthProviderStatus,
   CalendarEventsResponse,
+  EmailMessagesResponse,
   CalendarTasksResponse,
   CameraCaptureRequest,
   CameraStatusOut,
@@ -93,5 +94,14 @@ export function getCalendarTasks(opts?: {
 }): Promise<CalendarTasksResponse> {
   return jsonRequest<CalendarTasksResponse>(
     withQuery('/calendar/tasks', { provider: opts?.provider }),
+  );
+}
+
+export function getEmailMessages(opts?: {
+  provider?: string;
+  limit?: number;
+}): Promise<EmailMessagesResponse> {
+  return jsonRequest<EmailMessagesResponse>(
+    withQuery('/email/messages', { provider: opts?.provider, limit: opts?.limit }),
   );
 }

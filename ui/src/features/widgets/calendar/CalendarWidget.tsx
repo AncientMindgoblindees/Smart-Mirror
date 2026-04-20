@@ -1,6 +1,7 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { WidgetConfig } from '../types';
+import type { CalendarTimeFormat } from '@/api/transforms/calendar';
 import { estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
 import { useCalendarEvents } from './useCalendarEvents';
 import type { CalendarEventDisplay } from './useCalendarEvents';
@@ -21,13 +22,9 @@ function resolveCalendarPageSize(config: WidgetConfig): number {
   return Math.min(base, cap);
 }
 
-function getRelativeLabel(timeStr: string): string | null {
-  if (timeStr === 'All day') return null;
-  const now = new Date();
-  const [h, m] = timeStr.split(':').map(Number);
-  const eventDate = new Date(now);
-  eventDate.setHours(h, m, 0, 0);
-  const diffMin = Math.round((eventDate.getTime() - now.getTime()) / 60000);
+function getRelativeLabel(event: CalendarEventDisplay): string | null {
+  if (event.allDay || event.startMs === null) return null;
+  const diffMin = Math.round((event.startMs - Date.now()) / 60000);
 
   if (diffMin > -15 && diffMin <= 0) return 'Now';
   if (diffMin > 0 && diffMin <= 60) return `in ${diffMin}m`;
@@ -41,7 +38,8 @@ const EmptyState: React.FC = () => (
 );
 
 export const CalendarWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
-  const { events, loading } = useCalendarEvents();
+  const timeFormat: CalendarTimeFormat = config.timeFormat === '12h' ? '12h' : '24h';
+  const { events, loading } = useCalendarEvents(timeFormat);
   const pageSize = resolveCalendarPageSize(config);
   const { pageItems, pageIndex, pageCount } = useDisplayPagination<CalendarEventDisplay>(
     events,
@@ -70,7 +68,7 @@ export const CalendarWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ 
           transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
         >
           {pageItems.map((item, idx) => {
-            const relLabel = getRelativeLabel(item.time);
+            const relLabel = getRelativeLabel(item);
             const isNow = relLabel === 'Now';
             const color = ACCENT_COLORS[idx % ACCENT_COLORS.length];
 

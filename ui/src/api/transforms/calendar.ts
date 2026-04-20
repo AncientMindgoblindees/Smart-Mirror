@@ -8,6 +8,7 @@ export type CalendarEventDisplay = {
   dayLabel: string;
   timeLabel: string;
   detailLabel: string;
+  startMs: number | null;
 };
 
 export type ReminderDisplay = {
@@ -16,11 +17,24 @@ export type ReminderDisplay = {
   source?: string;
 };
 
-function formatTime(iso: string | null | undefined, allDay: boolean): string {
+export type CalendarTimeFormat = '12h' | '24h';
+
+function parseStartMs(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const ms = d.getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function formatTime(
+  iso: string | null | undefined,
+  allDay: boolean,
+  timeFormat: CalendarTimeFormat,
+): string {
   if (allDay || !iso) return 'All day';
   try {
     const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' });
   } catch {
     return '';
   }
@@ -43,10 +57,11 @@ function formatTimeRange(
   startIso: string | null | undefined,
   endIso: string | null | undefined,
   allDay: boolean,
+  timeFormat: CalendarTimeFormat,
 ): string {
   if (allDay) return 'All day';
-  const start = formatTime(startIso, false);
-  const end = formatTime(endIso, false);
+  const start = formatTime(startIso, false, timeFormat);
+  const end = formatTime(endIso, false, timeFormat);
   if (start && end) return `${start} - ${end}`;
   return start || end || 'Time TBD';
 }
@@ -58,16 +73,20 @@ function formatDetailLabel(item: CalendarEventItem): string {
   return source;
 }
 
-export function toCalendarEventDisplay(item: CalendarEventItem): CalendarEventDisplay {
-  const timeLabel = formatTimeRange(item.start_time, item.end_time, item.all_day);
+export function toCalendarEventDisplay(
+  item: CalendarEventItem,
+  timeFormat: CalendarTimeFormat = '24h',
+): CalendarEventDisplay {
+  const timeLabel = formatTimeRange(item.start_time, item.end_time, item.all_day, timeFormat);
   return {
-    time: formatTime(item.start_time, item.all_day),
+    time: formatTime(item.start_time, item.all_day, timeFormat),
     event: item.title,
     allDay: item.all_day,
     source: item.source,
     dayLabel: formatDayLabel(item.start_time),
     timeLabel,
     detailLabel: formatDetailLabel(item),
+    startMs: parseStartMs(item.start_time),
   };
 }
 

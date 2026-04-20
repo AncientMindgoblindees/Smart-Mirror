@@ -59,6 +59,15 @@ def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
             config_json={"freeform": {"x": 56, "y": 68, "width": 41, "height": 26}},
         ),
         WidgetConfig(
+            widget_id="email",
+            enabled=True,
+            position_row=2,
+            position_col=3,
+            size_rows=1,
+            size_cols=1,
+            config_json={"freeform": {"x": 56, "y": 42, "width": 30, "height": 18}},
+        ),
+        WidgetConfig(
             widget_id="virtual_try_on",
             enabled=True,
             position_row=2,
@@ -95,6 +104,24 @@ def get_all_widgets(db: Session) -> List[WidgetConfig]:
     )
     if not widgets:
         widgets = _seed_default_widgets(db)
+    elif not any(w.widget_id == "email" for w in widgets):
+        db.add(
+            WidgetConfig(
+                widget_id="email",
+                enabled=True,
+                position_row=2,
+                position_col=3,
+                size_rows=1,
+                size_cols=1,
+                config_json={"freeform": {"x": 56, "y": 42, "width": 30, "height": 18}},
+            )
+        )
+        db.commit()
+        widgets = (
+            db.query(WidgetConfig)
+            .order_by(WidgetConfig.position_row, WidgetConfig.position_col, WidgetConfig.id)
+            .all()
+        )
     return widgets
 
 

@@ -36,7 +36,7 @@ MS_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 GRAPH_CALENDAR_URL = "https://graph.microsoft.com/v1.0/me/calendar/events"
 GRAPH_TODO_LISTS_URL = "https://graph.microsoft.com/v1.0/me/todo/lists"
 
-SCOPES = "Calendars.Read Tasks.Read offline_access"
+SCOPES = "Calendars.Read Tasks.Read Mail.Read offline_access"
 
 
 class MicrosoftProvider(CalendarProvider):

@@ -27,10 +27,12 @@ Register **every** URL you will use (e.g. both `http://pi-ip:8002/...` and `http
 ## Google Cloud Console
 
 1. Open [Google Cloud Console](https://console.cloud.google.com/) → select or create a project.
-2. **APIs & Services** → **Library** → enable **Google Calendar API** (required for calendar sync).
+2. **APIs & Services** → **Library** → enable **Google Calendar API** and **Gmail API**.
 3. **APIs & Services** → **OAuth consent screen**  
    - User type: **External** (or Internal if Workspace only).  
-   - Add scopes used by the app: at minimum `https://www.googleapis.com/auth/calendar.readonly`.  
+   - Add scopes used by the app:
+     - `https://www.googleapis.com/auth/calendar.readonly`
+     - `https://www.googleapis.com/auth/gmail.readonly`
    - Add test users while in “Testing” if you are not publishing the app.
 4. **APIs & Services** → **Credentials** → **Create credentials**.
 
@@ -68,7 +70,7 @@ The backend now supports separate Google credentials by flow:
 6. **Redirect URIs** — add (exact match):
    - `http://<PI_LAN_IP>:8002/api/oauth/microsoft/callback`
    - `https://<your-tunnel-host>/api/oauth/microsoft/callback` (if applicable)
-7. **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated**: add at least **Calendars.Read**, **Tasks.Read**, **offline_access** (and **User.Read** if the portal suggests it). **Grant admin consent** if your tenant requires it.
+7. **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated**: add at least **Calendars.Read**, **Tasks.Read**, **Mail.Read**, **offline_access** (and **User.Read** if the portal suggests it). **Grant admin consent** if your tenant requires it.
 
 Device-code and authorization-code flows use the same app registration; one client ID/secret is enough for both paths implemented on the mirror.
 
@@ -84,13 +86,13 @@ Device-code and authorization-code flows use the same app registration; one clie
 
 ## Checklist
 
-- [ ] Google Calendar API enabled  
-- [ ] Google OAuth consent screen configured with calendar scope  
+- [ ] Google Calendar API + Gmail API enabled  
+- [ ] Google OAuth consent screen configured with calendar + gmail scopes  
 - [ ] `GOOGLE_WEB_CLIENT_ID`/`GOOGLE_WEB_CLIENT_SECRET` set for browser sign-in  
 - [ ] `GOOGLE_TV_CLIENT_ID`/`GOOGLE_TV_CLIENT_SECRET` set for QR/device flow  
 - [ ] (Optional fallback) `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` set only if not using split vars  
 - [ ] Microsoft app registration: Web redirect URI(s) exactly as `{BASE}/api/oauth/microsoft/callback`  
-- [ ] Microsoft Graph delegated permissions + consent  
+- [ ] Microsoft Graph delegated permissions (`Calendars.Read`, `Tasks.Read`, `Mail.Read`, `offline_access`) + consent  
 - [ ] Secrets in `.env`, backend restarted  
 
 If redirect fails with `redirect_uri_mismatch`, the URI in the console does not match the URL the browser used (including port and `http` vs `https`).

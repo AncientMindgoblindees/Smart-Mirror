@@ -169,7 +169,7 @@ def _parse_forecast(
 async def fetch_weather_snapshot(
     api_key: str, q: str, imperial: bool
 ) -> tuple[Optional[WeatherSnapshotOut], Optional[str]]:
-    params = {"key": api_key, "q": q, "days": 3}
+    params = {"key": api_key, "q": q, "days": 7}
     url = f"{WEATHERAPI_BASE}/forecast.json"
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:

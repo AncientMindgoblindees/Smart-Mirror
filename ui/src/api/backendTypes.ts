@@ -151,3 +151,17 @@ export interface CalendarTasksResponse {
   providers: string[];
   last_sync?: string | null;
 }
+
+export interface EmailMessageItem {
+  source: string;
+  sender: string;
+  subject: string;
+  received_at?: string | null;
+  unread: boolean;
+  high_priority: boolean;
+}
+
+export interface EmailMessagesResponse {
+  messages: EmailMessageItem[];
+  providers: string[];
+}

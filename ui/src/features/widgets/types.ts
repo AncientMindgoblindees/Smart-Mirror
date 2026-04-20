@@ -42,6 +42,8 @@ export interface WidgetConfig {
   unit?: 'metric' | 'imperial';
   /** Clock widget: display format persisted in `config_json` by the companion app. */
   format?: '12h' | '24h';
+  /** Calendar widget: event time display format persisted in `config_json`. */
+  timeFormat?: '12h' | '24h';
 }
 
 export interface WidgetMetadata {

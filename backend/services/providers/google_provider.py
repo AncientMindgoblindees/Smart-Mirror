@@ -32,7 +32,10 @@ GOOGLE_CALENDAR_EVENTS_URL = (
     "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 )
 
-SCOPES = "https://www.googleapis.com/auth/calendar.readonly"
+SCOPES = (
+    "https://www.googleapis.com/auth/calendar.readonly "
+    "https://www.googleapis.com/auth/gmail.readonly"
+)
 
 
 def get_google_device_oauth_credentials() -> tuple[str, str]:

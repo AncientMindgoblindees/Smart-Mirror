@@ -1,16 +1,20 @@
 import { getCalendarEvents } from '@/api/mirrorApi';
 import type { CalendarEventsResponse } from '@/api/backendTypes';
-import { toCalendarEventDisplay, type CalendarEventDisplay } from '@/api/transforms/calendar';
+import {
+  toCalendarEventDisplay,
+  type CalendarEventDisplay,
+  type CalendarTimeFormat,
+} from '@/api/transforms/calendar';
 import { useCalendarFeed } from './useCalendarFeed';
 
-export function useCalendarEvents(): {
+export function useCalendarEvents(timeFormat: CalendarTimeFormat = '24h'): {
   events: CalendarEventDisplay[];
   hasProviders: boolean;
   loading: boolean;
 } {
   const { items, hasProviders, loading } = useCalendarFeed<CalendarEventsResponse, CalendarEventDisplay>({
     fetcher: () => getCalendarEvents({ days: 3 }),
-    mapItems: (resp) => resp.events.map(toCalendarEventDisplay),
+    mapItems: (resp) => resp.events.map((event) => toCalendarEventDisplay(event, timeFormat)),
   });
   return { events: items, hasProviders, loading };
 }

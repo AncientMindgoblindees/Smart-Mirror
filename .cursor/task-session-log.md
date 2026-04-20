@@ -723,6 +723,45 @@
 - **Verification**:
   - `ReadLints` on `CalendarWidget.tsx` reported no diagnostics.
 
+## 2026-04-19 — Add Email widget (Gmail + Outlook unread/high-priority)
+
+- **User request**: Create an email widget that shows unread or high-priority messages from Gmail/Outlook with sender + subject, and size-aware page caps similar to calendar.
+- **Backend changes**:
+  - Added `backend/api/email.py` with `GET /api/email/messages`:
+    - Uses connected provider tokens via `auth_manager.get_valid_token`.
+    - Google: Gmail API (`in:inbox (is:unread OR is:important)`), extracts sender/subject/date from metadata.
+    - Microsoft: Graph `/me/messages` filtered by unread or `importance='high'`.
+    - Aggregates/sorts by received timestamp and returns unified response.
+  - Added `backend/schemas/email.py` (`EmailMessageOut`, `EmailMessagesResponse`).
+  - Wired router in `backend/main.py`.
+  - Expanded OAuth scopes for required email access:
+    - Google provider scope now includes `https://www.googleapis.com/auth/gmail.readonly`.
+    - Microsoft provider scope now includes `Mail.Read`.
+  - Added `email` widget to backend default seed layout for fresh DBs in `backend/services/widget_service.py`.
+  - Added existing-install safeguard in `get_all_widgets`: if `email` widget is missing, backend inserts a default `email` row automatically.
+- **Frontend changes**:
+  - Added API types + client methods:
+    - `ui/src/api/backendTypes.ts` (`EmailMessageItem`, `EmailMessagesResponse`)
+    - `ui/src/api/mirrorApi.ts` (`getEmailMessages`)
+  - Added new widget implementation:
+    - `ui/src/features/widgets/email/useEmailMessages.ts`
+    - `ui/src/features/widgets/email/EmailWidget.tsx`
+    - `ui/src/features/widgets/email/email-widget.css`
+    - `ui/src/features/widgets/email/index.ts`
+  - Registered widget in `ui/src/features/widgets/registry.ts`.
+  - Added `email` default placement and layout-preset positions in `ui/src/features/widgets/constants.ts`.
+  - Pagination caps by size match calendar behavior:
+    - `small: 3`, `medium: 5`, `large: 6`.
+- **Docs/config updates**:
+  - `.env.example`: note to re-auth after enabling email permissions.
+  - `docs/oauth-google-microsoft-setup.md`: added Gmail API + Mail.Read requirements and checklist updates.
+- **Commands**:
+  - `python -m compileall backend/api/email.py backend/schemas/email.py backend/main.py backend/services/providers/google_provider.py backend/services/providers/microsoft_provider.py backend/services/widget_service.py` (pass)
+  - `python -m compileall backend/services/widget_service.py` (pass)
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on all touched files reported no diagnostics.
+
 ## 2026-04-19 — Clock widget 12h/24h format support
 
 - **User request**: Fix clock widget so it can display both 24-hour and 12-hour time.
@@ -747,3 +786,36 @@
   - Retried with PowerShell-compatible separator and `$LASTEXITCODE` guard; succeeded.
 - **Verification**:
   - `ReadLints` on all touched files reported no diagnostics.
+
+## 2026-04-19 — Calendar widget time format selector (12h/24h)
+
+- **User request**: Make calendar widget time display align with clock format expectations, or provide a selector in the calendar widget.
+- **Decision**: Implemented a dedicated calendar time-format selector (`timeFormat`) end-to-end, defaulting to `24h`, to avoid adding cross-widget runtime coupling.
+- **Changes (mirror UI)**:
+  - `ui/src/features/widgets/types.ts`: added `timeFormat?: '12h' | '24h'` for calendar config.
+  - `ui/src/api/transforms.ts`: parse/persist `config_json.timeFormat` in backend round-trip mapping.
+  - `ui/src/api/transforms/calendar.ts`:
+    - added `CalendarTimeFormat`,
+    - parameterized event time formatting for `12h`/`24h`,
+    - added `startMs` field used for relative labels independent of formatted text.
+  - `ui/src/features/widgets/calendar/useCalendarEvents.ts`: accepts `timeFormat` and maps events via `toCalendarEventDisplay(event, timeFormat)`.
+  - `ui/src/features/widgets/calendar/CalendarWidget.tsx`:
+    - reads `config.timeFormat` (fallback `24h`),
+    - uses it for event display,
+    - updated relative-time logic to use `startMs` to remain correct for both formats.
+  - Added test `ui/src/api/transforms/calendar.test.ts` for 24h, 12h (AM/PM), and all-day formatting.
+- **Changes (companion app)**:
+  - `C:/Users/tjmel/Downloads/smart-mirror-config/src/App.tsx`:
+    - added `CALENDAR_TIME_FORMAT_ITEMS`,
+    - added calendar settings dropdown for `timeFormat`,
+    - updated default calendar template config to include `timeFormat: '24h'`.
+  - `C:/Users/tjmel/Downloads/smart-mirror-config/src/lib/mirrorLayout.tsx`:
+    - updated default calendar snapshot config to include `timeFormat: '24h'`.
+- **Commands**:
+  - `npm run test -- src/api/transforms/calendar.test.ts` in `ui/` (pass)
+  - `npm run build` in `ui/` (pass)
+  - `npm run build` in `smart-mirror-config/` (pass)
+- **Notes**:
+  - Companion build continues to show pre-existing CSS `@import` order warning (unchanged by this task).
+- **Verification**:
+  - `ReadLints` on all touched files in both repos reported no diagnostics.

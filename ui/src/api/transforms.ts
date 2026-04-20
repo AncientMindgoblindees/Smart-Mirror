@@ -127,6 +127,8 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
   const unit =
     cj.unit === 'imperial' || cj.unit === 'metric' ? (cj.unit as 'metric' | 'imperial') : undefined;
   const format = cj.format === '12h' || cj.format === '24h' ? (cj.format as '12h' | '24h') : undefined;
+  const timeFormat =
+    cj.timeFormat === '12h' || cj.timeFormat === '24h' ? (cj.timeFormat as '12h' | '24h') : undefined;
   const normalizedType = normalizeWidgetTypeId(w.widget_id);
   return {
     id: `w-${w.id}`,
@@ -147,6 +149,7 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
     ...(location !== undefined ? { location } : {}),
     ...(unit !== undefined ? { unit } : {}),
     ...(format !== undefined ? { format } : {}),
+    ...(timeFormat !== undefined ? { timeFormat } : {}),
   };
 }
 
@@ -162,6 +165,7 @@ export function widgetToBackend(w: WidgetConfig): WidgetConfigUpdate {
   if (w.location !== undefined) config_json.location = w.location;
   if (w.unit !== undefined) config_json.unit = w.unit;
   if (w.format !== undefined) config_json.format = w.format;
+  if (w.timeFormat !== undefined) config_json.timeFormat = w.timeFormat;
   return {
     id: w.backendId ?? undefined,
     widget_id: normalizeWidgetTypeId(w.type),

@@ -2,6 +2,7 @@ import type { WidgetMetadata } from './types';
 import { clockWidget } from './clock';
 import { weatherWidget } from './weather';
 import { calendarWidget } from './calendar';
+import { emailWidget } from './email';
 import { remindersWidget } from './reminders';
 import { stickyNoteWidget } from './sticky-note';
 import { dailyQuoteWidget } from './daily-quote';
@@ -16,6 +17,7 @@ export const WIDGET_REGISTRY: Record<string, WidgetMetadata> = {
   clock: clockWidget,
   weather: weatherWidget,
   calendar: calendarWidget,
+  email: emailWidget,
   news: newsWidget,
   virtual_try_on: virtualTryOnWidget,
   reminders: remindersWidget,
