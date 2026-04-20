@@ -762,6 +762,40 @@
 - **Verification**:
   - `ReadLints` on all touched files reported no diagnostics.
 
+## 2026-04-19 — Companion app dropdown missing `email` widget
+
+- **Issue**: User reported new `email` widget not appearing in companion app "Add widget" dropdown.
+- **Root cause**:
+  - Companion app (`smart-mirror-config`) has its own template catalog and id-to-label/icon mapping separate from mirror runtime.
+  - `email` had been added in mirror/backend code but not in companion app template lists.
+- **Changes** (`C:/Users/tjmel/Downloads/smart-mirror-config`):
+  - `src/lib/customWidgetTemplates.ts`:
+    - Added `email` to `WidgetTemplateKind`.
+    - Added `email-core` template entry for the dropdown.
+  - `src/lib/mirrorLayout.tsx`:
+    - Added display label map entry for `email`.
+    - Added `Mail` icon mapping for `email`.
+    - Added `email` default snapshot.
+  - `src/App.tsx`:
+    - Added `case 'email'` in add-widget template creation with default config.
+- **Commands**:
+  - `npm run build` in companion app repo (pass; existing CSS `@import` warning only).
+- **Verification**:
+  - `ReadLints` on touched companion app files reported no diagnostics.
+
+## 2026-04-19 — Clear provider-backed widgets on account disconnect
+
+- **User request**: Disconnecting a provider (e.g., Google) should immediately remove tied data from widgets (calendar/tasks) instead of leaving stale rows visible.
+- **Change** (`backend/services/auth_manager.py`):
+  - In `logout(provider_name)`:
+    - Added deletion of provider rows from `CalendarEvent` table.
+    - Kept OAuth provider token row deletion.
+    - Added `CALENDAR_UPDATED` broadcast with zero counts after disconnect, so UI refresh listeners clear widgets immediately.
+- **Commands**:
+  - `python -m compileall backend/services/auth_manager.py` (pass)
+- **Verification**:
+  - `ReadLints` on `auth_manager.py` reported no diagnostics.
+
 ## 2026-04-19 — Clock widget 12h/24h format support
 
 - **User request**: Fix clock widget so it can display both 24-hour and 12-hour time.

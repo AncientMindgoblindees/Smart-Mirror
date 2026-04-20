@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from backend.database.models import OAuthProvider
+from backend.database.models import CalendarEvent, OAuthProvider
 from backend.database.session import SessionLocal
 from backend.services.crypto import decrypt_token, encrypt_token
 from backend.services.providers.base import (
@@ -178,13 +178,26 @@ class AuthManager:
             row = db.query(OAuthProvider).filter_by(provider=provider_name).first()
             if row:
                 db.delete(row)
-                db.commit()
+            # Remove provider-synced calendar/task rows so widgets clear immediately on disconnect.
+            db.query(CalendarEvent).filter_by(provider=provider_name).delete(
+                synchronize_session=False
+            )
+            db.commit()
         finally:
             db.close()
 
         await control_registry.broadcast({
             "type": "AUTH_STATE_CHANGED",
             "payload": {"provider": provider_name, "status": "disconnected"},
+        })
+        await control_registry.broadcast({
+            "type": "CALENDAR_UPDATED",
+            "payload": {
+                "provider": provider_name,
+                "events_count": 0,
+                "tasks_count": 0,
+                "synced_at": datetime.now(timezone.utc).isoformat(),
+            },
         })
 
     # ── Token Access ────────────────────────────────────────────────────
