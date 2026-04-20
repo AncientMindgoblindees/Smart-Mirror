@@ -91,15 +91,31 @@ class GoogleProvider(CalendarProvider):
                     body = r.json()
                 except Exception:
                     body = {}
-                if body.get("error") == "invalid_scope":
+                error_code = str(body.get("error", ""))
+                error_desc = str(body.get("error_description", ""))
+                scope_related = (
+                    error_code == "invalid_scope"
+                    or "scope" in error_code.lower()
+                    or "scope" in error_desc.lower()
+                )
+                if scope_related:
                     logger.warning(
-                        "Google device code rejected scopes; falling back to calendar-only scope"
+                        "Google device code scope rejected (%s); falling back to calendar-only scope",
+                        error_code or "unknown_error",
                     )
                     r = await client.post(
                         GOOGLE_DEVICE_CODE_URL,
                         data={"client_id": self._client_id, "scope": GOOGLE_DEVICE_SCOPES_FALLBACK},
                     )
-        r.raise_for_status()
+            if r.status_code >= 400:
+                details = ""
+                try:
+                    details = r.text
+                except Exception:
+                    details = ""
+                raise RuntimeError(
+                    f"Google device code request failed ({r.status_code}): {details or 'no response body'}"
+                )
         data = r.json()
         return DeviceCodeResponse(
             verification_uri=data["verification_url"],

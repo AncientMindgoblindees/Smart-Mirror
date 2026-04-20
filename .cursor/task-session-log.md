@@ -812,6 +812,7 @@
   - `backend/services/providers/google_provider.py`:
     - Split scope constants: `GOOGLE_WEB_SCOPES` (calendar + gmail) and device scopes.
     - Device code request now retries with calendar-only fallback on `invalid_scope` to keep QR login compatible with stricter TV clients.
+    - Further hardened: retries fallback on broader scope-related errors (`error`/`error_description` containing `scope`) and raises explicit runtime details on persistent failures to avoid opaque 502s.
   - `backend/api/oauth_web.py`:
     - Updated Google web start endpoint to use `GOOGLE_WEB_SCOPES`.
 - **Commands**:
