@@ -642,3 +642,108 @@
   - `python -m compileall backend/api/oauth_web.py` (pass)
 - **Verification**:
   - `ReadLints` on touched files reported no diagnostics.
+
+## 2026-04-19 — Add Microsoft callback error guard parity
+
+- **Action**: Applied Google-style callback hardening to Microsoft browser OAuth callback.
+- **Changes**:
+  - Wrapped Microsoft token parse + `auth_manager.store_tokens_from_web("microsoft", ...)` in `try/except`.
+  - Added `logger.exception("Microsoft callback failed while persisting tokens or starting sync")`.
+  - Added explicit `HTTPException(500)` detail: `Microsoft login completed, but backend failed while saving tokens. Check backend logs.`
+- **Commands**:
+  - `python -m compileall backend/api/oauth_web.py` (pass)
+- **Verification**:
+  - `ReadLints` for `backend/api/oauth_web.py` reported no diagnostics.
+
+## 2026-04-19 — Reduce calendar/event propagation latency after OAuth
+
+- **User concern**: Calendar/tasks take too long to appear after Google auth; suspected auth/sync timing issue.
+- **Findings**:
+  - OAuth succeeded and sync loop did start, but post-auth population relied on async loop timing + frontend event delivery.
+  - UI fallback polling interval was `60_000ms`, so missed WS refresh events could delay visible updates.
+  - Google provider currently returns calendar events only; `fetch_tasks()` intentionally returns empty (Google Tasks API not integrated).
+- **Changes**:
+  - `backend/services/auth_manager.py`:
+    - After storing OAuth tokens (both device and web flows), now runs `sync_manager.force_sync(provider_name)` immediately.
+    - Starts periodic sync loop afterward with delayed first loop run (`run_immediately=False`).
+  - `backend/services/sync_service.py`:
+    - Added `run_immediately` parameter to `start_provider_sync` and `_sync_loop`.
+    - Preserved existing default behavior for existing callers.
+  - `ui/src/features/widgets/calendar/useCalendarFeed.ts`:
+    - Reduced fallback poll interval from `60_000ms` to `15_000ms`.
+- **Commands**:
+  - `python -m compileall backend/services/auth_manager.py backend/services/sync_service.py` (pass)
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on touched backend/UI files reported no diagnostics.
+
+## 2026-04-19 — Calendar widget auto-scaling + richer event labeling
+
+- **User request**: Calendar widget should use available space more effectively based on event count (e.g., 3 or 4 events fill widget), keep more events on one page where possible, and show clearer day/time details.
+- **Changes**:
+  - `ui/src/api/transforms/calendar.ts`:
+    - Added derived labels per event: `dayLabel` (Today/Tomorrow/date), `timeLabel` (time range or all-day), and `detailLabel` (source + location when available).
+  - `ui/src/features/widgets/calendar/CalendarWidget.tsx`:
+    - Updated event row rendering to show day, time range, title, and metadata line.
+    - Added `data-count` on page container for item-count-aware sizing.
+  - `ui/src/features/widgets/calendar/calendar-widget.css`:
+    - Made rows flex to consume available vertical space (`flex: 1`) so fewer events scale up and fill the widget.
+    - Added count-based typography presets (`data-count` 1..6) and styles for new metadata fields.
+  - `ui/src/features/widgets/useDisplayPagination.ts`:
+    - Increased max events per page from 4 to 6 for larger widget sizes.
+- **Commands**:
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on touched files reported no diagnostics.
+
+## 2026-04-19 — Calendar widget size-specific density tuning
+
+- **User follow-up**: Tune visual density separately for `small` / `medium` / `large` widget sizes.
+- **Changes** (`ui/src/features/widgets/calendar/calendar-widget.css`):
+  - `small`: tighter spacing, reduced text sizes, hidden relative-time badge and metadata line to protect readability.
+  - `medium`: balanced column width and two-line event clamp.
+  - `large`: expanded left time/day column, larger typography, and metadata line retained with higher readability.
+- **Commands**:
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on updated CSS reported no diagnostics.
+
+## 2026-04-19 — Calendar per-size hard page caps
+
+- **User follow-up**: Add explicit max events-per-page per widget size.
+- **Changes**:
+  - `ui/src/features/widgets/calendar/CalendarWidget.tsx`:
+    - Added `PAGE_SIZE_CAP_BY_PRESET` mapping:
+      - `small: 3`
+      - `medium: 5`
+      - `large: 6`
+    - Added `resolveCalendarPageSize(config)` to clamp dynamic area-based page size to the size preset cap.
+- **Commands**:
+  - `npm run build` in `ui/` (pass)
+- **Verification**:
+  - `ReadLints` on `CalendarWidget.tsx` reported no diagnostics.
+
+## 2026-04-19 — Clock widget 12h/24h format support
+
+- **User request**: Fix clock widget so it can display both 24-hour and 12-hour time.
+- **Root cause**:
+  - Companion app already persists `config_json.format` (`12h`/`24h`) for clock settings, but mirror UI ignored it and hardcoded `hour12: false`.
+  - Mirror transform layer also dropped `format` on round-trip writes, so format settings could be lost.
+- **Changes**:
+  - `ui/src/features/widgets/types.ts`: added `WidgetConfig.format?: '12h' | '24h'`.
+  - `ui/src/api/transforms.ts`: parse/persist `config_json.format` in `widgetFromBackend` and `widgetToBackend`.
+  - `ui/src/features/widgets/clock/ClockWidget.tsx`:
+    - consume `config.format`,
+    - added `getClockDisplayParts()` helper to compute hour/minute/second and AM/PM,
+    - render AM/PM marker in 12-hour mode,
+    - keep 24-hour output unchanged by default.
+  - `ui/src/features/widgets/clock/clock-widget.css`: added `.clock-meridiem` styling.
+  - `ui/src/features/widgets/clock/ClockWidget.test.ts`: added focused unit tests for 24-hour formatting and 12-hour AM/PM conversion.
+- **Commands**:
+  - `npm run test -- src/features/widgets/clock/ClockWidget.test.ts` (pass)
+  - `npm run build` in `ui/` (pass)
+- **Errors + retries**:
+  - Initial chained command failed in PowerShell because `&&` is not supported in this shell.
+  - Retried with PowerShell-compatible separator and `$LASTEXITCODE` guard; succeeded.
+- **Verification**:
+  - `ReadLints` on all touched files reported no diagnostics.

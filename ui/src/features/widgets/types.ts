@@ -40,6 +40,8 @@ export interface WidgetConfig {
   /** Weather widget: persisted in `config_json` by the companion app. */
   location?: string;
   unit?: 'metric' | 'imperial';
+  /** Clock widget: display format persisted in `config_json` by the companion app. */
+  format?: '12h' | '24h';
 }
 
 export interface WidgetMetadata {

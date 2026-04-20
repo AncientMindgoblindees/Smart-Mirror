@@ -98,7 +98,10 @@ class AuthManager:
 
             # Import here to avoid circular import at module level
             from backend.services.sync_service import sync_manager
-            await sync_manager.start_provider_sync(provider_name)
+            # Run one sync right away so widgets populate immediately after linking.
+            await sync_manager.force_sync(provider_name)
+            # Then keep background periodic sync running on the normal interval.
+            await sync_manager.start_provider_sync(provider_name, run_immediately=False)
 
         except (TimeoutError, RuntimeError) as exc:
             logger.warning("OAuth flow failed for %s: %s", provider_name, exc)
@@ -151,7 +154,10 @@ class AuthManager:
         })
         from backend.services.sync_service import sync_manager
 
-        await sync_manager.start_provider_sync(provider_name)
+        # Run one sync right away so widgets populate immediately after linking.
+        await sync_manager.force_sync(provider_name)
+        # Then keep background periodic sync running on the normal interval.
+        await sync_manager.start_provider_sync(provider_name, run_immediately=False)
 
     # ── Cancel / Logout ─────────────────────────────────────────────────
 

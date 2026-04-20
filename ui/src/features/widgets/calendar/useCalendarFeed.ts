@@ -22,7 +22,7 @@ export function useCalendarFeed<TResp extends FeedResponse, TItem>(
   const [hasProviders, setHasProviders] = useState(false);
   const { loading } = usePollingQuery({
     fetcher: opts.fetcher,
-    pollMs: 60_000,
+    pollMs: 15_000,
     refreshEventName: 'mirror:calendar_updated',
     onData: (resp) => {
       setItems(opts.mapItems(resp));

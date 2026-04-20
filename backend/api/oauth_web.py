@@ -218,14 +218,21 @@ async def oauth_microsoft_callback(
         logger.warning("Microsoft token exchange failed: %s %s", r.status_code, r.text)
         raise HTTPException(status_code=502, detail="Token exchange failed")
 
-    body = r.json()
-    token = TokenResponse(
-        access_token=body["access_token"],
-        refresh_token=body.get("refresh_token", ""),
-        expires_in=int(body.get("expires_in", 3600)),
-        scope=body.get("scope"),
-    )
-    await auth_manager.store_tokens_from_web("microsoft", token)
+    try:
+        body = r.json()
+        token = TokenResponse(
+            access_token=body["access_token"],
+            refresh_token=body.get("refresh_token", ""),
+            expires_in=int(body.get("expires_in", 3600)),
+            scope=body.get("scope"),
+        )
+        await auth_manager.store_tokens_from_web("microsoft", token)
+    except Exception:
+        logger.exception("Microsoft callback failed while persisting tokens or starting sync")
+        raise HTTPException(
+            status_code=500,
+            detail="Microsoft login completed, but backend failed while saving tokens. Check backend logs.",
+        )
     redirect_url = _post_auth_redirect_url()
     if redirect_url:
         return RedirectResponse(redirect_url, status_code=302)

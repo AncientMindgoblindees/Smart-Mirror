@@ -5,7 +5,9 @@ export function estimatePageSize(widthPct: number, heightPct: number): number {
   if (area < 260) return 1;
   if (area < 430) return 2;
   if (area < 620) return 3;
-  return 4;
+  if (area < 900) return 4;
+  if (area < 1200) return 5;
+  return 6;
 }
 
 export function useDisplayPagination<T>(
