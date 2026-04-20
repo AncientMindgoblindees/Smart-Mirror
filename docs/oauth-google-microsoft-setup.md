@@ -51,7 +51,7 @@ The device-code flow (QR on mirror) often uses a **separate** OAuth client:
 
 ---
 
-## Microsoft Entra ID (Azure)
+## Microsoft Entra ID (Azure) (Decommisioned due to Admin access is revoked on Student Accounts.)
 
 1. Open [Azure Portal](https://portal.azure.com/) → **Microsoft Entra ID** → **App registrations** → **New registration**.
 2. **Name:** e.g. `Smart Mirror`.  
@@ -70,7 +70,7 @@ Device-code and authorization-code flows use the same app registration; one clie
 
 ## After configuration
 
-1. Copy `.env.example` to `.env` and fill in the four OAuth variables (and `MIRROR_TOKEN_SECRET` if needed).
+1. Copy `.env.example` to `.env` and fill in the four Google OAuth variables (and `MIRROR_TOKEN_SECRET` if needed).
 2. Restart the mirror backend so `load_dotenv` picks up changes.
 3. Test **Accounts** in the companion app: QR on mirror, then browser sign-in, as needed.
 
@@ -82,8 +82,6 @@ Device-code and authorization-code flows use the same app registration; one clie
 - [ ] Google OAuth consent screen configured with calendar scope  
 - [ ] Google **Web** client: redirect URI(s) exactly as `{BASE}/api/oauth/google/callback`  
 - [ ] Google **TV/Limited Input** client created if QR/device flow requires it (same or separate `.env` as above)  
-- [ ] Microsoft app registration: Web redirect URI(s) exactly as `{BASE}/api/oauth/microsoft/callback`  
-- [ ] Microsoft Graph delegated permissions + consent  
 - [ ] Secrets in `.env`, backend restarted  
 
 If redirect fails with `redirect_uri_mismatch`, the URI in the console does not match the URL the browser used (including port and `http` vs `https`).
