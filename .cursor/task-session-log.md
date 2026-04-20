@@ -876,6 +876,21 @@
 - **Verification**:
   - `ReadLints` on touched files reported no diagnostics.
 
+## 2026-04-19 — Fix missing QR overlay signal for Google QR-web flow
+
+- **Issue**: Pressing Google QR did not show QR overlay on mirror screen.
+- **Root cause**:
+  - New QR-to-web auth path used `start_web_redirect_login` but did not broadcast `OAUTH_DEVICE_CODE`, so mirror UI never received the event that opens `AuthQROverlay`.
+- **Changes**:
+  - `backend/services/auth_manager.py`:
+    - `start_web_redirect_login` is now async and broadcasts `OAUTH_DEVICE_CODE` payload just like device-code login.
+  - `backend/api/auth.py`:
+    - Updated Google login route to `await auth_manager.start_web_redirect_login(...)`.
+- **Commands**:
+  - `python -m compileall backend/services/auth_manager.py backend/api/auth.py` (pass)
+- **Verification**:
+  - `ReadLints` on touched backend files reported no diagnostics.
+
 ## 2026-04-19 — Clock widget 12h/24h format support
 
 - **User request**: Fix clock widget so it can display both 24-hour and 12-hour time.

@@ -32,7 +32,7 @@ async def start_login(provider: str, request: Request) -> Any:
             configured_base = os.getenv("OAUTH_PUBLIC_BASE_URL", "").strip()
             base = configured_base or str(request.base_url).rstrip("/")
             start_url = f"{base}/api/oauth/google/start?source=qr"
-            dc = auth_manager.start_web_redirect_login("google", start_url)
+            dc = await auth_manager.start_web_redirect_login("google", start_url)
         else:
             dc = await auth_manager.start_login(provider)
     except Exception as exc:

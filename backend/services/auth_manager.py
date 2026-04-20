@@ -79,7 +79,7 @@ class AuthManager:
         self._pending_polls[provider_name] = task
         return device_code_resp
 
-    def start_web_redirect_login(
+    async def start_web_redirect_login(
         self, provider_name: str, verification_uri: str, ttl_sec: int = 600
     ) -> DeviceCodeResponse:
         if provider_name not in self._providers:
@@ -96,6 +96,17 @@ class AuthManager:
             message="Scan QR to open sign-in page",
         )
         self._pending_device_codes[provider_name] = dc
+        await control_registry.broadcast({
+            "type": "OAUTH_DEVICE_CODE",
+            "payload": {
+                "provider": provider_name,
+                "verification_uri": dc.verification_uri,
+                "user_code": dc.user_code,
+                "expires_in": dc.expires_in,
+                "interval": dc.interval,
+                "message": dc.message,
+            },
+        })
         return dc
 
     async def _poll_and_store(
