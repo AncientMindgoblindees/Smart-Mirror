@@ -2,6 +2,10 @@ import { useEffect, useRef } from 'react';
 
 import { getWebSocketUrl } from '@/config/backendOrigin';
 
+export const MIRROR_TACTILE_ACTIONS = ['open', 'up', 'down', 'select', 'back'] as const;
+
+export type MirrorTactileAction = (typeof MIRROR_TACTILE_ACTIONS)[number];
+
 export type MirrorButtonInput = {
   source: 'keyboard' | 'gpio';
   semanticAction?: string;
@@ -14,12 +18,60 @@ export type MirrorInputActions = {
   getSleepMode: () => boolean;
 };
 
+const SEMANTIC_ACTION_ALIASES: Record<string, readonly string[]> = {
+  open: ['open', 'menu_open', 'profile_menu_open'],
+  menu_open: ['open', 'menu_open', 'profile_menu_open'],
+  profile_menu_open: ['open', 'profile_menu_open', 'menu_open'],
+  up: ['up', 'menu_up'],
+  menu_up: ['up', 'menu_up'],
+  down: ['down', 'menu_down'],
+  menu_down: ['down', 'menu_down'],
+  select: ['select', 'menu_select'],
+  menu_select: ['select', 'menu_select'],
+  back: ['back', 'menu_back', 'menu_close'],
+  menu_back: ['back', 'menu_back', 'menu_close'],
+  menu_close: ['back', 'menu_close', 'menu_back'],
+  display_toggle_dim: ['display_toggle_dim', 'toggle_dim'],
+  toggle_dim: ['display_toggle_dim', 'toggle_dim'],
+  display_toggle_sleep: ['display_toggle_sleep', 'toggle_sleep'],
+  toggle_sleep: ['display_toggle_sleep', 'toggle_sleep'],
+};
+
+function normalizeSemanticActions(actions: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const action of actions) {
+    if (!action || action === 'none') continue;
+
+    const aliases = SEMANTIC_ACTION_ALIASES[action] ?? [action];
+    for (const alias of aliases) {
+      if (seen.has(alias)) continue;
+      seen.add(alias);
+      normalized.push(alias);
+    }
+  }
+
+  return normalized;
+}
+
+function createMirrorButtonInput(
+  source: MirrorButtonInput['source'],
+  payload: Pick<MirrorButtonInput, 'semanticAction' | 'semanticActions' | 'effect'>,
+): MirrorButtonInput {
+  return {
+    source,
+    semanticAction: payload.semanticAction,
+    semanticActions: normalizeSemanticActions([
+      ...(payload.semanticActions ?? []),
+      payload.semanticAction,
+    ]),
+    effect: payload.effect,
+  };
+}
+
 function emitKeyboardAction(ref: { current: MirrorInputActions }, action: string): void {
-  ref.current.onButtonInput({
-    source: 'keyboard',
-    semanticAction: action,
-    semanticActions: [action],
-  });
+  ref.current.onButtonInput(createMirrorButtonInput('keyboard', { semanticAction: action }));
 }
 
 export function useMirrorInput(actions: MirrorInputActions) {
@@ -118,12 +170,13 @@ export function useMirrorInput(actions: MirrorInputActions) {
             semantic_action?: string;
             semantic_actions?: string[];
           };
-          ref.current.onButtonInput({
-            source: 'gpio',
-            semanticAction: data.semantic_action,
-            semanticActions: Array.isArray(data.semantic_actions) ? data.semantic_actions : [],
-            effect: data.effect,
-          });
+          ref.current.onButtonInput(
+            createMirrorButtonInput('gpio', {
+              semanticAction: data.semantic_action,
+              semanticActions: Array.isArray(data.semantic_actions) ? data.semantic_actions : [],
+              effect: data.effect,
+            }),
+          );
         } catch {
           /* ignore invalid button frames */
         }

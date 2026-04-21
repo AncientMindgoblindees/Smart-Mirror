@@ -1,0 +1,549 @@
+.tactile-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(94, 225, 217, 0.08), transparent 42%),
+    radial-gradient(circle at 50% 72%, rgba(96, 165, 250, 0.08), transparent 48%),
+    rgba(1, 3, 8, 0.78);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.tactile-menu__frame {
+  position: relative;
+  width: min(420px, calc(100vw - 2rem));
+  min-height: min(700px, calc(100vh - 2.5rem));
+  padding: 1rem;
+  border-radius: 2rem;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.04)),
+    rgba(7, 12, 18, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.58),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 50px rgba(94, 225, 217, 0.08);
+}
+
+.tactile-menu__glass {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.14), transparent 34%),
+    linear-gradient(140deg, rgba(125, 243, 235, 0.08), transparent 40%, rgba(96, 165, 250, 0.08));
+  pointer-events: none;
+}
+
+.tactile-menu__header,
+.tactile-menu__meta-row,
+.tactile-menu__switcher,
+.tactile-menu__content,
+.tactile-menu__footer {
+  position: relative;
+  z-index: 1;
+}
+
+.tactile-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.tactile-menu__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast, 150ms) ease,
+    border-color var(--duration-fast, 150ms) ease,
+    transform var(--duration-fast, 150ms) ease;
+}
+
+.tactile-menu__icon-button:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.tactile-menu__brand {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tactile-menu__brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 1rem;
+  color: var(--color-accent-bright, #7df3eb);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(125, 243, 235, 0.32), transparent 60%),
+    rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(125, 243, 235, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.tactile-menu__brand-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.tactile-menu__brand-copy span,
+.tactile-menu__eyebrow,
+.tactile-menu__meta-label,
+.tactile-menu__rail-meta,
+.tactile-menu__pairing-meta {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.tactile-menu__brand-copy strong,
+.tactile-menu__detail-copy h2,
+.tactile-menu__empty-state strong,
+.tactile-menu__empty-rail strong {
+  color: rgba(255, 255, 255, 0.96);
+  font-family: var(--font-display, sans-serif);
+}
+
+.tactile-menu__brand-copy strong {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.tactile-menu__meta-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.tactile-menu__meta-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.85rem 1rem;
+  border-radius: 1.15rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tactile-menu__meta-chip strong {
+  font-size: 0.86rem;
+  color: rgba(255, 255, 255, 0.88);
+  font-weight: 600;
+}
+
+.tactile-menu__meta-chip--status {
+  justify-content: center;
+}
+
+.tactile-menu__status-dot {
+  width: 0.48rem;
+  height: 0.48rem;
+  margin-bottom: 0.15rem;
+  border-radius: 50%;
+  background: var(--color-accent-bright, #7df3eb);
+  box-shadow: 0 0 16px rgba(125, 243, 235, 0.45);
+}
+
+.tactile-menu__switcher {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  padding: 0.35rem;
+  margin-top: 1rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tactile-menu__switch {
+  min-height: 2.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast, 150ms) ease,
+    color var(--duration-fast, 150ms) ease;
+}
+
+.tactile-menu__switch.is-active {
+  background:
+    linear-gradient(180deg, rgba(125, 243, 235, 0.22), rgba(125, 243, 235, 0.08)),
+    rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 0 24px rgba(94, 225, 217, 0.12);
+}
+
+.tactile-menu__content {
+  display: flex;
+  min-height: 29rem;
+  margin-top: 1rem;
+}
+
+.tactile-menu__view {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.tactile-menu__detail-card {
+  padding: 1.15rem;
+  border-radius: 1.5rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.04)),
+    rgba(8, 15, 24, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 14px 40px rgba(0, 0, 0, 0.25);
+}
+
+.tactile-menu__identity-head,
+.tactile-menu__pairing-header {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.tactile-menu__avatar,
+.tactile-menu__system-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 1.05rem;
+  color: rgba(255, 255, 255, 0.94);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(96, 165, 250, 0.3), transparent 55%),
+    rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.tactile-menu__detail-copy {
+  min-width: 0;
+}
+
+.tactile-menu__detail-copy h2 {
+  margin: 0.2rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.tactile-menu__detail-copy p,
+.tactile-menu__detail-body,
+.tactile-menu__empty-state span,
+.tactile-menu__empty-rail span {
+  margin: 0.35rem 0 0;
+  color: rgba(255, 255, 255, 0.62);
+  line-height: 1.45;
+}
+
+.tactile-menu__pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.95rem;
+}
+
+.tactile-menu__pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.7rem;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tactile-menu__pill--accent {
+  color: #08141c;
+  background: rgba(125, 243, 235, 0.88);
+  border-color: rgba(125, 243, 235, 0.95);
+}
+
+.tactile-menu__pill--muted {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.tactile-menu__detail-body {
+  margin-top: 0.95rem;
+  font-size: 0.93rem;
+}
+
+.tactile-menu__detail-card--system {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.tactile-menu__rail {
+  position: relative;
+  height: calc(74px * 5);
+  padding: 0.4rem 0;
+  overflow: hidden;
+  mask-image: linear-gradient(180deg, transparent 0%, black 16%, black 84%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 16%, black 84%, transparent 100%);
+}
+
+.tactile-menu__rail-focus {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50% - 37px);
+  height: 74px;
+  border-radius: 1.35rem;
+  background:
+    linear-gradient(90deg, rgba(125, 243, 235, 0.12), rgba(255, 255, 255, 0.03)),
+    rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(125, 243, 235, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 22px rgba(94, 225, 217, 0.08);
+}
+
+.tactile-menu__rail-track {
+  position: relative;
+}
+
+.tactile-menu__rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  height: 74px;
+  padding: 0 1rem;
+}
+
+.tactile-menu__rail-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tactile-menu__rail-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.tactile-menu__rail-meta {
+  letter-spacing: 0.08em;
+}
+
+.tactile-menu__rail-badge {
+  flex-shrink: 0;
+  min-width: 3.6rem;
+  text-align: center;
+  padding: 0.4rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tactile-menu__rail--empty {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.tactile-menu__empty-state,
+.tactile-menu__empty-rail {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-height: 7rem;
+  padding: 1rem;
+  border-radius: 1.2rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.tactile-menu__pairing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+  min-height: 2rem;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.14);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  color: rgba(206, 228, 255, 0.94);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tactile-menu__qr-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  margin-top: 1rem;
+  border-radius: 1.35rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+    rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tactile-menu__pairing-code {
+  margin-top: 1rem;
+  padding: 0.8rem 1rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.96);
+  font-family: var(--font-mono, monospace);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-align: center;
+}
+
+.tactile-menu__pairing-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 1rem;
+}
+
+.tactile-menu__footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.tactile-menu__legend-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 4rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.2rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    transform var(--duration-fast, 150ms) ease,
+    border-color var(--duration-fast, 150ms) ease,
+    background var(--duration-fast, 150ms) ease;
+}
+
+.tactile-menu__legend-button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.tactile-menu__legend-button--select {
+  background:
+    linear-gradient(180deg, rgba(125, 243, 235, 0.16), rgba(125, 243, 235, 0.04)),
+    rgba(255, 255, 255, 0.06);
+  border-color: rgba(125, 243, 235, 0.16);
+}
+
+.tactile-menu__legend-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.tactile-menu__legend-dots i {
+  display: inline-block;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.tactile-menu__legend-dots i.is-strong {
+  background: rgba(125, 243, 235, 0.96);
+  box-shadow: 0 0 14px rgba(125, 243, 235, 0.36);
+}
+
+@media (max-width: 520px) {
+  .tactile-menu__frame {
+    min-height: calc(100vh - 1.5rem);
+    border-radius: 1.5rem;
+  }
+
+  .tactile-menu__meta-row,
+  .tactile-menu__footer {
+    grid-template-columns: 1fr;
+  }
+
+  .tactile-menu__content {
+    min-height: 27rem;
+  }
+
+  .tactile-menu__pairing-code {
+    font-size: 1.1rem;
+    letter-spacing: 0.18em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tactile-menu,
+  .tactile-menu__frame,
+  .tactile-menu__icon-button,
+  .tactile-menu__switch,
+  .tactile-menu__legend-button {
+    transition-duration: 0ms !important;
+    animation: none !important;
+  }
+}

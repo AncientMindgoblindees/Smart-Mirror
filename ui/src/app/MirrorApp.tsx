@@ -1,20 +1,23 @@
-import React, { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CheckCircle2,
-  ChevronRight,
   Link2,
+  RefreshCw,
   Sparkles,
   UserCircle2,
   UserPlus,
   Waves,
   X,
+  type LucideIcon,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+
 import type { MirrorProfile } from '@/api/backendTypes';
 import { TooltipProvider } from '@/components/ui/Tooltip';
-import { AuthQROverlay, useAuthState } from '@/features/auth';
 import { CameraOverlay } from '@/features/camera';
 import { DeviceConnectionOverlay, useDeviceConnectionState } from '@/features/connection';
+import { SPRING_SNAPPY, SPRING_SOFT } from '@/features/connection/motionPresets';
 import { ToolsPanel } from '@/features/dev-panel';
 import { DEV_PANEL_STORAGE_KEY, WidgetFrame, useWidgetPersistence } from '@/features/widgets';
 import { useControlEvents } from '@/hooks/useControlEvents';
@@ -22,47 +25,29 @@ import { type MirrorButtonInput, useMirrorInput } from '@/hooks/useMirrorInput';
 import { useParallax } from '@/hooks/useParallax';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
 import { getApiBase } from '@/config/backendOrigin';
+import { useAuthState } from '@/features/auth';
 import { useAuthActions } from './hooks/useAuthActions';
 import { useMirrorDisplayMode } from './hooks/useMirrorDisplayMode';
 import { useMirrorSession } from './hooks/useMirrorSession';
 import { useOverlayState } from './hooks/useOverlayState';
 import './mirror-app.css';
 
-type MenuSection = 'users' | 'create' | 'animations' | 'about';
-type MenuMode = 'sections' | 'profiles' | 'create' | 'animations';
+type OverlayView = 'identity' | 'system';
+type IdentityIntent = 'activate' | 'pair';
+type IdentitySubstate = 'list' | 'pairing';
 type AnimationMode = 'aurora' | 'pulse' | 'drift';
+type SystemAction = 'profiles' | 'google' | 'guest' | 'animation' | 'refresh' | 'resume';
 
-const MENU_SECTIONS: Array<{
-  id: MenuSection;
-  title: string;
-  description: string;
-  icon: typeof UserCircle2;
-}> = [
-  {
-    id: 'users',
-    title: 'Users',
-    description: 'Choose who is visible on this mirror and link Google for that profile.',
-    icon: UserCircle2,
-  },
-  {
-    id: 'create',
-    title: 'Create Profile',
-    description: 'Enroll a new household profile into this mirror registry.',
-    icon: UserPlus,
-  },
-  {
-    id: 'animations',
-    title: 'Animations',
-    description: 'Pick the startup ambiance and menu motion style.',
-    icon: Sparkles,
-  },
-  {
-    id: 'about',
-    title: 'Logo',
-    description: 'Mirror identity, hardware status, and quick resume controls.',
-    icon: Waves,
-  },
-];
+type SystemMenuItem = {
+  id: SystemAction;
+  label: string;
+  helper: string;
+  status: string;
+  icon: LucideIcon;
+};
+
+const NATURAL_ACCENT = '#E6D5B8';
+const PROFILE_TONES = ['#5F5042', '#75624F', '#8D755C', '#6A6F5A', '#59665C', '#6A5B52'];
 
 const ANIMATION_PRESETS: Array<{
   id: AnimationMode;
@@ -116,6 +101,223 @@ function profileLabel(profile: MirrorProfile): string {
 function nextIndex(current: number, delta: number, length: number): number {
   if (length <= 0) return 0;
   return (current + delta + length) % length;
+}
+
+function profileInitials(profile: MirrorProfile): string {
+  const label = profileLabel(profile).trim();
+  const [first = '', second = ''] = label.split(/\s+/);
+  const initials = `${first[0] ?? ''}${second[0] ?? ''}`.trim();
+  return (initials || label.slice(0, 2)).toUpperCase();
+}
+
+function avatarTone(index: number): string {
+  return PROFILE_TONES[index % PROFILE_TONES.length] ?? PROFILE_TONES[0];
+}
+
+function legendDot(active: boolean) {
+  return (
+    <span
+      className={`inline-flex h-2.5 w-2.5 rounded-full border ${
+        active ? 'border-transparent bg-[#E6D5B8] shadow-[0_0_18px_rgba(230,213,184,0.8)]' : 'border-white/35 bg-transparent'
+      }`}
+      aria-hidden="true"
+    />
+  );
+}
+
+function FooterLegend() {
+  return (
+    <div className="flex items-center justify-center gap-6 text-[10px] uppercase tracking-[0.28em] text-white/50">
+      <div className="flex items-center gap-2">
+        {legendDot(false)}
+        <span>Previous</span>
+      </div>
+      <div className="flex items-center gap-2 text-white/80">
+        {legendDot(true)}
+        <span>Select</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {legendDot(false)}
+        <span>Next</span>
+      </div>
+    </div>
+  );
+}
+
+function SystemMenuRow({
+  item,
+  active,
+  onClick,
+}: {
+  item: SystemMenuItem;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const Icon = item.icon;
+
+  return (
+    <motion.button
+      type="button"
+      layout
+      transition={SPRING_SNAPPY}
+      onClick={onClick}
+      className="relative w-full overflow-hidden rounded-[24px] border border-white/8 bg-white/[0.02] px-4 py-4 text-left"
+      animate={{
+        y: active ? -2 : 0,
+        scale: active ? 1.01 : 1,
+        backgroundColor: active ? 'rgba(230, 213, 184, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+        borderColor: active ? 'rgba(230, 213, 184, 0.55)' : 'rgba(255, 255, 255, 0.08)',
+      }}
+    >
+      {active && (
+        <motion.span
+          layoutId="system-menu-selection"
+          className="absolute inset-0 rounded-[24px] border border-[#E6D5B8]/70 bg-[#E6D5B8]/10"
+          transition={SPRING_SNAPPY}
+        />
+      )}
+      <div className="relative z-10 flex items-center gap-4">
+        <motion.div
+          className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/8 bg-white/6"
+          animate={{
+            scale: active ? 1.08 : 1,
+            opacity: active ? 1 : 0.5,
+            color: active ? '#FFFFFF' : 'rgba(255,255,255,0.55)',
+          }}
+          transition={SPRING_SNAPPY}
+        >
+          <Icon size={28} />
+        </motion.div>
+        <motion.span
+          className="flex-1 text-[18px] leading-none"
+          animate={{ opacity: active ? 1 : 0.58, color: active ? '#FFFFFF' : 'rgba(255,255,255,0.85)' }}
+          transition={SPRING_SOFT}
+        >
+          {item.label}
+        </motion.span>
+        <motion.span
+          className="rounded-full px-3 py-1 text-[12px] font-medium uppercase tracking-[0.18em]"
+          animate={{
+            opacity: active ? 1 : 0.75,
+            backgroundColor: active ? NATURAL_ACCENT : 'rgba(255,255,255,0.08)',
+            color: active ? '#1F170F' : 'rgba(255,255,255,0.65)',
+          }}
+          transition={SPRING_SOFT}
+        >
+          {item.status}
+        </motion.span>
+      </div>
+    </motion.button>
+  );
+}
+
+function IdentityTile({
+  profile,
+  index,
+  active,
+  live,
+  googleConnected,
+  onClick,
+}: {
+  profile: MirrorProfile;
+  index: number;
+  active: boolean;
+  live: boolean;
+  googleConnected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      layout
+      transition={SPRING_SNAPPY}
+      onClick={onClick}
+      className="relative w-full overflow-hidden rounded-[28px] border border-white/8 bg-white/[0.02] px-4 py-4 text-left"
+      animate={{
+        y: active ? -2 : 0,
+        backgroundColor: active ? 'rgba(230, 213, 184, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+        borderColor: active ? 'rgba(230, 213, 184, 0.55)' : 'rgba(255, 255, 255, 0.08)',
+      }}
+    >
+      {active && (
+        <motion.span
+          layoutId="identity-selection"
+          className="absolute inset-0 rounded-[28px] border border-[#E6D5B8]/70 bg-[#E6D5B8]/10"
+          transition={SPRING_SNAPPY}
+        />
+      )}
+      <div className="relative z-10 flex items-center gap-4">
+        <motion.div
+          className="flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold text-white"
+          animate={{ scale: active ? 1.1 : 1, opacity: active ? 1 : 0.78 }}
+          transition={SPRING_SNAPPY}
+          style={{ backgroundColor: avatarTone(index) }}
+        >
+          {profileInitials(profile)}
+        </motion.div>
+        <div className="min-w-0 flex-1">
+          <motion.div
+            className="truncate text-[17px] leading-none"
+            animate={{ opacity: active ? 1 : 0.82 }}
+            transition={SPRING_SOFT}
+          >
+            {profileLabel(profile)}
+          </motion.div>
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
+            <span>{profile.user_id}</span>
+            {live && <span className="text-white/70">Live</span>}
+            {googleConnected && <span className="text-[#E6D5B8]">Google</span>}
+          </div>
+        </div>
+      </div>
+    </motion.button>
+  );
+}
+
+function IdentityEmptyTile({
+  active,
+  onClick,
+}: {
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      layout
+      transition={SPRING_SNAPPY}
+      onClick={onClick}
+      className="relative w-full overflow-hidden rounded-[28px] border border-white/8 bg-white/[0.02] px-4 py-5 text-left"
+      animate={{
+        y: active ? -2 : 0,
+        backgroundColor: active ? 'rgba(230, 213, 184, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+        borderColor: active ? 'rgba(230, 213, 184, 0.55)' : 'rgba(255, 255, 255, 0.08)',
+      }}
+    >
+      {active && (
+        <motion.span
+          layoutId="identity-selection"
+          className="absolute inset-0 rounded-[28px] border border-[#E6D5B8]/70 bg-[#E6D5B8]/10"
+          transition={SPRING_SNAPPY}
+        />
+      )}
+      <div className="relative z-10 flex items-center gap-4">
+        <motion.div
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-[#6B5E52] text-white"
+          animate={{ scale: active ? 1.1 : 1, opacity: active ? 1 : 0.78 }}
+          transition={SPRING_SNAPPY}
+        >
+          <UserPlus size={24} />
+        </motion.div>
+        <div className="min-w-0 flex-1">
+          <motion.div className="text-[17px] leading-none" animate={{ opacity: active ? 1 : 0.82 }} transition={SPRING_SOFT}>
+            Create Guest Profile
+          </motion.div>
+          <div className="mt-2 text-[11px] uppercase tracking-[0.18em] text-white/45">Auto-activate tactile guest access</div>
+        </div>
+      </div>
+    </motion.button>
+  );
 }
 
 type DashboardProps = {
@@ -231,9 +433,9 @@ function MirrorDashboard({
   });
 
   const toggleWidget = (id: string) => {
-    setWidgets((previous) => previous.map((widget) => (
-      widget.id === id ? { ...widget, enabled: !widget.enabled } : widget
-    )));
+    setWidgets((previous) =>
+      previous.map((widget) => (widget.id === id ? { ...widget, enabled: !widget.enabled } : widget)),
+    );
   };
 
   const visibleWidgets = useMemo(() => widgets.filter((widget) => widget.enabled), [widgets]);
@@ -338,23 +540,33 @@ function MirrorDashboard({
 }
 
 export default function MirrorApp() {
-  const [isPending, startTransition] = useTransition();
   const { hardwareId, mirror, profiles, activeProfile, loading, error, refresh, activateUser, createProfile } =
     useMirrorSession();
   const [menuOpen, setMenuOpen] = useState(true);
-  const [menuMode, setMenuMode] = useState<MenuMode>('sections');
-  const [sectionIndex, setSectionIndex] = useState(0);
-  const [profileIndex, setProfileIndex] = useState(0);
-  const [animationIndex, setAnimationIndex] = useState(0);
-  const [draftProfileName, setDraftProfileName] = useState('');
+  const [viewStack, setViewStack] = useState<OverlayView[]>(['identity']);
+  const [identityIntent, setIdentityIntent] = useState<IdentityIntent>('activate');
+  const [identitySubstate, setIdentitySubstate] = useState<IdentitySubstate>('list');
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectionMemory, setSelectionMemory] = useState<Record<OverlayView, number>>({
+    identity: 0,
+    system: 0,
+  });
   const [menuError, setMenuError] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState<string | null>(null);
   const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
   const [fullScreenTryOnUrl, setFullScreenTryOnUrl] = useState<string | null>(null);
   const [animationMode, setAnimationMode] = useState<AnimationMode>(readAnimationInitial);
+  const previousPendingAuthRef = useRef<ReturnType<typeof useAuthState>['pendingAuth']>(null);
   const { sleepMode, sleepModeRef, toggleDim, toggleSleep } = useMirrorDisplayMode();
 
-  const selectedSection = MENU_SECTIONS[sectionIndex] ?? MENU_SECTIONS[0];
-  const selectedProfile = profiles[profileIndex] ?? activeProfile ?? null;
+  const currentView = viewStack[viewStack.length - 1] ?? 'identity';
+  const activeProfileIndex = profiles.findIndex((profile) => profile.user_id === activeProfile?.user_id);
+  const identityEntryCount = profiles.length > 0 ? profiles.length : 1;
+  const currentIdentityIndex = currentView === 'identity' ? selectedIndex : selectionMemory.identity;
+  const clampedIdentityIndex = Math.max(0, Math.min(currentIdentityIndex, identityEntryCount - 1));
+  const animationIndex = Math.max(0, ANIMATION_PRESETS.findIndex((preset) => preset.id === animationMode));
+  const selectedProfile = profiles[clampedIdentityIndex] ?? activeProfile ?? null;
+
   const {
     providers: authProviders,
     pendingAuth,
@@ -368,29 +580,83 @@ export default function MirrorApp() {
     enabled: Boolean(selectedProfile ?? activeProfile),
   });
   const { authError, signInGoogle, disconnectGoogle } = useAuthActions(initiateLogin, disconnectProvider);
+  const googleConnected = authProviders.some((provider) => provider.provider === 'google' && provider.connected);
+
+  const systemMenuItems = useMemo<SystemMenuItem[]>(
+    () => [
+      {
+        id: 'profiles',
+        label: 'Switch Profile',
+        helper: 'Jump into identity selection and swap the live mirror profile.',
+        status: activeProfile ? profileLabel(activeProfile) : 'Choose',
+        icon: UserCircle2,
+      },
+      {
+        id: 'google',
+        label: googleConnected ? 'Google Linked' : 'Google Pairing',
+        helper: googleConnected
+          ? 'Disconnect the current profile or reopen pairing when needed.'
+          : 'Pick a profile, scan a QR code, and finish pairing on your phone.',
+        status: pendingAuth ? 'Pairing' : googleConnected ? 'Linked' : 'Ready',
+        icon: Link2,
+      },
+      {
+        id: 'guest',
+        label: 'New Guest',
+        helper: 'Auto-create a tactile-friendly guest profile and activate it immediately.',
+        status: 'Auto',
+        icon: UserPlus,
+      },
+      {
+        id: 'animation',
+        label: 'Visual Mode',
+        helper: 'Cycle the ambient glass shell between the available motion moods.',
+        status: ANIMATION_PRESETS[animationIndex]?.title ?? 'Aurora Flow',
+        icon: Sparkles,
+      },
+      {
+        id: 'refresh',
+        label: 'Refresh Sync',
+        helper: 'Reload mirror registration, profile state, and pairing status from the backend.',
+        status: loading ? 'Syncing' : 'Ready',
+        icon: RefreshCw,
+      },
+      {
+        id: 'resume',
+        label: 'Resume Mirror',
+        helper: 'Dismiss the HUD and return to the live dashboard.',
+        status: activeProfile ? 'Live' : 'Waiting',
+        icon: CheckCircle2,
+      },
+    ],
+    [activeProfile, animationIndex, googleConnected, loading, pendingAuth],
+  );
+
+  const currentSystemIndex = Math.max(0, Math.min(currentView === 'system' ? selectedIndex : selectionMemory.system, systemMenuItems.length - 1));
+  const selectedSystemItem = systemMenuItems[currentSystemIndex] ?? systemMenuItems[0];
+  const statusMessage = error || menuError || authError || (actionPending ? 'Updating mirror state...' : loading ? 'Preparing mirror registration and profile sync...' : null);
 
   useTimeOfDay();
 
   useEffect(() => {
-    const nextIndexValue = ANIMATION_PRESETS.findIndex((preset) => preset.id === animationMode);
-    if (nextIndexValue >= 0) setAnimationIndex(nextIndexValue);
-  }, [animationMode]);
-
-  useEffect(() => {
-    if (!activeProfile) return;
-    const nextIndexValue = profiles.findIndex((profile) => profile.user_id === activeProfile.user_id);
-    if (nextIndexValue >= 0) setProfileIndex(nextIndexValue);
-  }, [activeProfile, profiles]);
-
-  useEffect(() => {
-    if (!menuOpen && activeProfile) {
-      setMenuMode('sections');
-      setMenuError(null);
-      setDraftProfileName('');
-      const nextIndexValue = profiles.findIndex((profile) => profile.user_id === activeProfile.user_id);
-      if (nextIndexValue >= 0) setProfileIndex(nextIndexValue);
+    if (activeProfileIndex < 0) return;
+    setSelectionMemory((previous) => (
+      previous.identity === activeProfileIndex ? previous : { ...previous, identity: activeProfileIndex }
+    ));
+    if (currentView === 'identity' && identityIntent === 'activate' && identitySubstate === 'list') {
+      setSelectedIndex(activeProfileIndex);
     }
-  }, [activeProfile, menuOpen, profiles]);
+  }, [activeProfileIndex, currentView, identityIntent, identitySubstate]);
+
+  useEffect(() => {
+    const clamped = Math.max(0, Math.min(selectionMemory.identity, identityEntryCount - 1));
+    if (clamped !== selectionMemory.identity) {
+      setSelectionMemory((previous) => ({ ...previous, identity: clamped }));
+    }
+    if (currentView === 'identity' && clamped !== selectedIndex) {
+      setSelectedIndex(clamped);
+    }
+  }, [currentView, identityEntryCount, selectedIndex, selectionMemory.identity]);
 
   useEffect(() => {
     try {
@@ -408,83 +674,236 @@ export default function MirrorApp() {
     }
   }, [showDevPanel]);
 
-  const selectAnimation = (index: number) => {
-    const preset = ANIMATION_PRESETS[index];
-    if (!preset) return;
-    setAnimationIndex(index);
-    setAnimationMode(preset.id);
+  useEffect(() => {
+    const hadPending = previousPendingAuthRef.current;
+
+    if (pendingAuth) {
+      const nextIdentityIndex = profiles.length > 0
+        ? Math.max(0, Math.min(selectionMemory.identity, profiles.length - 1))
+        : 0;
+      setMenuOpen(true);
+      setIdentityIntent('pair');
+      setIdentitySubstate('pairing');
+      setSelectionMemory((previous) => ({ ...previous, identity: nextIdentityIndex }));
+      setSelectedIndex(nextIdentityIndex);
+      setViewStack((previous) => (
+        previous[previous.length - 1] === 'identity' ? previous : [...previous, 'identity']
+      ));
+    } else if (hadPending) {
+      setIdentitySubstate('list');
+      if (googleConnected) {
+        const nextSystemIndex = Math.max(0, Math.min(selectionMemory.system, systemMenuItems.length - 1));
+        setViewStack(['system']);
+        setSelectedIndex(nextSystemIndex);
+      }
+    }
+
+    previousPendingAuthRef.current = pendingAuth;
+  }, [googleConnected, pendingAuth, profiles.length, selectionMemory.identity, selectionMemory.system, systemMenuItems.length]);
+
+  useEffect(() => {
+    if (authError && identityIntent === 'pair' && identitySubstate === 'pairing' && !pendingAuth) {
+      setIdentitySubstate('list');
+    }
+  }, [authError, identityIntent, identitySubstate, pendingAuth]);
+
+  const showSystemMenu = (replace = false) => {
+    const nextSystemIndex = Math.max(0, Math.min(selectionMemory.system, systemMenuItems.length - 1));
+    setSelectionMemory((previous) => ({ ...previous, system: nextSystemIndex }));
+    setSelectedIndex(nextSystemIndex);
+    setIdentitySubstate('list');
+    setMenuError(null);
+    setViewStack((previous) => {
+      if (replace) return ['system'];
+      return previous[previous.length - 1] === 'system' ? previous : [...previous, 'system'];
+    });
+  };
+
+  const showIdentityMenu = (intent: IdentityIntent) => {
+    const nextIdentityIndex = profiles.length > 0
+      ? (activeProfileIndex >= 0 ? activeProfileIndex : Math.max(0, Math.min(selectionMemory.identity, profiles.length - 1)))
+      : 0;
+    setIdentityIntent(intent);
+    setIdentitySubstate('list');
+    setSelectionMemory((previous) => ({ ...previous, identity: nextIdentityIndex }));
+    setSelectedIndex(nextIdentityIndex);
+    setMenuError(null);
+    setViewStack((previous) => (
+      previous[previous.length - 1] === 'identity' ? previous : [...previous, 'identity']
+    ));
+  };
+
+  const openMenuOverlay = () => {
+    setMenuOpen(true);
+    if (activeProfile) {
+      showSystemMenu(true);
+      return;
+    }
+    showIdentityMenu('activate');
+  };
+
+  const closeMenuOverlay = () => {
+    setMenuError(null);
+    setIdentitySubstate('list');
+    setMenuOpen(false);
+  };
+
+  const moveSelection = (delta: number) => {
+    if (currentView === 'identity' && identitySubstate === 'pairing') return;
+    const length = currentView === 'identity' ? identityEntryCount : systemMenuItems.length;
+    if (length <= 0) return;
+    const next = nextIndex(selectedIndex, delta, length);
+    setSelectedIndex(next);
+    setSelectionMemory((previous) => ({ ...previous, [currentView]: next }));
     setMenuError(null);
   };
 
-  const handleCreateProfile = async (name: string) => {
+  const handleCreateGuestProfile = async () => {
     try {
+      setActionPending('guest');
       setMenuError(null);
-      const fallbackName = `Guest ${profiles.length + 1}`;
-      await createProfile(name.trim() || fallbackName);
-      setDraftProfileName('');
-      setMenuOpen(false);
+      await createProfile(`Guest ${profiles.length + 1}`);
+      showSystemMenu(true);
     } catch (err) {
-      setMenuError(err instanceof Error ? err.message : 'Failed to create a profile.');
+      setMenuError(err instanceof Error ? err.message : 'Failed to create a guest profile.');
+    } finally {
+      setActionPending(null);
     }
   };
 
   const handleActivateProfile = async (profile: MirrorProfile) => {
     try {
+      setActionPending('profile');
       setMenuError(null);
       await activateUser(profile.user_id);
-      setMenuOpen(false);
+      showSystemMenu(true);
     } catch (err) {
       setMenuError(err instanceof Error ? err.message : 'Failed to activate that profile.');
+    } finally {
+      setActionPending(null);
     }
+  };
+
+  const handleRefreshSession = async () => {
+    try {
+      setActionPending('refresh');
+      setMenuError(null);
+      await refresh();
+    } catch (err) {
+      setMenuError(err instanceof Error ? err.message : 'Failed to refresh the mirror session.');
+    } finally {
+      setActionPending(null);
+    }
+  };
+
+  const handlePairSelectedProfile = async () => {
+    if (!selectedProfile) {
+      setMenuError('Select a profile before pairing Google.');
+      return;
+    }
+    setActionPending('pair');
+    setMenuError(null);
+    setIdentitySubstate('pairing');
+    await signInGoogle();
+    setActionPending(null);
+  };
+
+  const cycleAnimation = () => {
+    const nextAnimationIndex = nextIndex(animationIndex, 1, ANIMATION_PRESETS.length);
+    const nextAnimation = ANIMATION_PRESETS[nextAnimationIndex];
+    if (!nextAnimation) return;
+    setAnimationMode(nextAnimation.id);
+    setMenuError(null);
+  };
+
+  const handleSystemSelect = async (item: SystemMenuItem) => {
+    switch (item.id) {
+      case 'profiles':
+        showIdentityMenu('activate');
+        return;
+      case 'google':
+        if (googleConnected) {
+          try {
+            setActionPending('google');
+            setMenuError(null);
+            await disconnectGoogle();
+          } catch (err) {
+            setMenuError(err instanceof Error ? err.message : 'Failed to update Google pairing.');
+          } finally {
+            setActionPending(null);
+          }
+          return;
+        }
+        showIdentityMenu('pair');
+        return;
+      case 'guest':
+        await handleCreateGuestProfile();
+        return;
+      case 'animation':
+        cycleAnimation();
+        return;
+      case 'refresh':
+        await handleRefreshSession();
+        return;
+      case 'resume':
+        closeMenuOverlay();
+        return;
+      default:
+        return;
+    }
+  };
+
+  const handleIdentitySelect = async () => {
+    if (profiles.length === 0) {
+      if (identityIntent === 'pair') {
+        setMenuError('Create a profile before pairing Google.');
+        return;
+      }
+      await handleCreateGuestProfile();
+      return;
+    }
+    if (!selectedProfile) {
+      setMenuError('Select a profile to continue.');
+      return;
+    }
+    if (identityIntent === 'pair') {
+      await handlePairSelectedProfile();
+      return;
+    }
+    await handleActivateProfile(selectedProfile);
   };
 
   const handleMenuSelect = async () => {
-    if (menuMode === 'sections') {
-      if (selectedSection.id === 'users') {
-        setMenuMode('profiles');
-        return;
-      }
-      if (selectedSection.id === 'create') {
-        setMenuMode('create');
-        return;
-      }
-      if (selectedSection.id === 'animations') {
-        setMenuMode('animations');
-        return;
-      }
-      if (activeProfile) {
-        setMenuOpen(false);
-      }
+    if (loading || actionPending) return;
+    if (currentView === 'identity') {
+      if (identitySubstate === 'pairing') return;
+      await handleIdentitySelect();
       return;
     }
-
-    if (menuMode === 'profiles') {
-      if (selectedProfile) {
-        await handleActivateProfile(selectedProfile);
-      }
-      return;
-    }
-
-    if (menuMode === 'animations') {
-      selectAnimation(animationIndex);
-      setMenuMode('sections');
-      return;
-    }
-
-    if (menuMode === 'create') {
-      await handleCreateProfile(draftProfileName);
-    }
+    const item = selectedSystemItem;
+    if (!item) return;
+    await handleSystemSelect(item);
   };
 
   const handleMenuBack = () => {
-    if (menuMode !== 'sections') {
-      setMenuMode('sections');
+    if (identitySubstate === 'pairing') {
+      setMenuError(null);
+      setIdentitySubstate('list');
+      void cancelPendingAuth();
+      return;
+    }
+
+    if (viewStack.length > 1) {
+      const nextView = viewStack[viewStack.length - 2] ?? 'system';
+      const nextLength = nextView === 'identity' ? identityEntryCount : systemMenuItems.length;
+      const nextSelection = Math.max(0, Math.min(selectionMemory[nextView], nextLength - 1));
+      setViewStack((previous) => previous.slice(0, -1));
+      setSelectedIndex(nextSelection);
       setMenuError(null);
       return;
     }
-    if (activeProfile) {
-      setMenuOpen(false);
-    }
+
+    closeMenuOverlay();
   };
 
   const handleButtonInput = (input: MirrorButtonInput) => {
@@ -497,53 +916,50 @@ export default function MirrorApp() {
     const pick = (choices: string[]) => choices.find((choice) => candidates.includes(choice));
 
     if (sleepModeRef.current) {
-      const wakeAction = pick(['display_toggle_sleep', 'toggle_sleep', 'profile_menu_open', 'menu_open']);
-      if (wakeAction) {
-        toggleSleep();
-      }
+      const wakeAction = pick([
+        'open',
+        'select',
+        'back',
+        'profile_menu_open',
+        'menu_open',
+        'display_toggle_sleep',
+        'toggle_sleep',
+      ]);
+      if (wakeAction) toggleSleep();
       return;
     }
 
     if (menuOpen) {
       const action = pick([
-        'profile_menu_open',
-        'menu_open',
+        'back',
         'menu_back',
         'menu_close',
+        'up',
         'menu_up',
+        'down',
         'menu_down',
+        'select',
         'menu_select',
         'toggle_dev_panel',
         'display_toggle_sleep',
         'toggle_sleep',
       ]);
+
       switch (action) {
+        case 'back':
         case 'menu_back':
         case 'menu_close':
           handleMenuBack();
           return;
+        case 'up':
         case 'menu_up':
-          startTransition(() => {
-            if (menuMode === 'sections') {
-              setSectionIndex((value) => nextIndex(value, -1, MENU_SECTIONS.length));
-            } else if (menuMode === 'profiles') {
-              setProfileIndex((value) => nextIndex(value, -1, profiles.length));
-            } else if (menuMode === 'animations') {
-              setAnimationIndex((value) => nextIndex(value, -1, ANIMATION_PRESETS.length));
-            }
-          });
+          moveSelection(-1);
           return;
+        case 'down':
         case 'menu_down':
-          startTransition(() => {
-            if (menuMode === 'sections') {
-              setSectionIndex((value) => nextIndex(value, 1, MENU_SECTIONS.length));
-            } else if (menuMode === 'profiles') {
-              setProfileIndex((value) => nextIndex(value, 1, profiles.length));
-            } else if (menuMode === 'animations') {
-              setAnimationIndex((value) => nextIndex(value, 1, ANIMATION_PRESETS.length));
-            }
-          });
+          moveSelection(1);
           return;
+        case 'select':
         case 'menu_select':
           void handleMenuSelect();
           return;
@@ -560,6 +976,7 @@ export default function MirrorApp() {
     }
 
     const action = pick([
+      'open',
       'profile_menu_open',
       'menu_open',
       'display_toggle_dim',
@@ -571,10 +988,10 @@ export default function MirrorApp() {
     ]);
 
     switch (action) {
+      case 'open':
       case 'profile_menu_open':
       case 'menu_open':
-        setMenuOpen(true);
-        setMenuMode('sections');
+        openMenuOverlay();
         return;
       case 'display_toggle_dim':
       case 'toggle_dim':
@@ -629,303 +1046,207 @@ export default function MirrorApp() {
           <div className="mirror-empty-state">
             <Waves size={32} />
             <h2>No active profile yet</h2>
-            <p>Create or activate a household profile from the mirror menu to start the dashboard.</p>
+            <p>Create or activate a household profile from the mirror HUD to start the dashboard.</p>
           </div>
         )}
 
         <AnimatePresence>
           {menuOpen && (
             <motion.div
-              className="mirror-menu-overlay"
+              className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/35 px-4 py-6 backdrop-blur-[8px]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.25 }}
+              transition={{ duration: 0.22 }}
             >
               <motion.div
-                className="mirror-menu-shell"
-                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                className="relative flex w-full max-w-[420px] flex-col overflow-hidden rounded-[40px] border border-white/10 bg-[rgba(255,255,255,0.03)] text-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-[24px]"
+                initial={{ opacity: 0, y: 20, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 14, scale: 0.98 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                transition={SPRING_SOFT}
               >
-                <div className="mirror-menu-hero">
-                  <div className="mirror-brand-mark" aria-hidden="true">
-                    <Waves size={28} />
-                  </div>
-                  <div className="mirror-brand-copy">
-                    <p className="mirror-brand-kicker">Shared Gateway</p>
-                    <h1>Smart Mirror</h1>
-                    <p>
-                      Boot menu active. Use the Pi buttons or keyboard:
-                      <span> `M` opens menu, arrows move, Enter selects, Esc goes back.</span>
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(230,213,184,0.12),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.01))]" />
+                <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/30" />
+
+                <div className="relative flex items-start justify-between gap-4 px-6 pt-6">
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-[0.4em] text-white/55">
+                      {currentView === 'identity' ? 'Identity Select' : 'System Menu'}
+                    </p>
+                    <h1
+                      className="mt-3 text-[clamp(1.7rem,2.8vw,2.15rem)] leading-none"
+                      style={{ fontFamily: 'var(--font-display)' }}
+                    >
+                      {currentView === 'identity'
+                        ? identityIntent === 'pair'
+                          ? 'Choose a profile to pair'
+                          : 'Choose who is here'
+                        : 'Mirror controls'}
+                    </h1>
+                    <p className="mt-3 max-w-[18rem] text-sm leading-5 text-white/60">
+                      {currentView === 'identity'
+                        ? identitySubstate === 'pairing'
+                          ? 'Keep your phone ready while the selected profile waits for pairing.'
+                          : activeProfile
+                            ? `Current profile: ${profileLabel(activeProfile)}`
+                            : 'Use the tactile controls or keyboard to enter the mirror.'
+                        : selectedSystemItem?.helper ?? 'Navigate with tactile controls or the keyboard.'}
                     </p>
                   </div>
-                  <div className="mirror-status-card">
-                    <span className="mirror-status-card__label">Mirror</span>
-                    <strong>{mirror?.friendly_name || 'Shared Smart Mirror'}</strong>
-                    <span>{hardwareId}</span>
-                    <span>{activeProfile ? `Current: ${profileLabel(activeProfile)}` : 'Waiting for profile'}</span>
+                  <div className="rounded-[20px] border border-white/10 bg-black/15 px-3 py-2 text-right text-[11px] leading-4 text-white/55">
+                    <div className="font-medium text-white/80">{mirror?.friendly_name || 'Shared Smart Mirror'}</div>
+                    <div>{hardwareId}</div>
                   </div>
                 </div>
 
-                <div className="mirror-menu-grid">
-                  <div className="mirror-menu-sections">
-                    {MENU_SECTIONS.map((section, index) => {
-                      const Icon = section.icon;
-                      const active = index === sectionIndex;
-                      return (
-                        <button
-                          key={section.id}
-                          type="button"
-                          className={`mirror-menu-section ${active ? 'is-active' : ''}`}
-                          onClick={() => {
-                            setSectionIndex(index);
-                            setMenuMode('sections');
-                          }}
-                        >
-                          <div className="mirror-menu-section__icon">
-                            <Icon size={18} />
-                          </div>
-                          <div className="mirror-menu-section__copy">
-                            <strong>{section.title}</strong>
-                            <span>{section.description}</span>
-                          </div>
-                          <ChevronRight size={16} />
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mirror-menu-panel">
-                    {selectedSection.id === 'users' && (
-                      <div className="mirror-menu-panel__content">
-                        <div className="mirror-menu-panel__header">
-                          <div>
-                            <span className="mirror-menu-panel__eyebrow">Profiles</span>
-                            <h2>Choose who is using the mirror</h2>
-                          </div>
-                          <button
-                            type="button"
-                            className="mirror-menu-chip"
-                            onClick={() => setMenuMode(menuMode === 'profiles' ? 'sections' : 'profiles')}
-                          >
-                            {menuMode === 'profiles' ? 'Section Focus' : 'User Focus'}
-                          </button>
-                        </div>
-
-                        <div className="mirror-profile-list">
-                          {profiles.length === 0 && (
-                            <div className="mirror-profile-card mirror-profile-card--empty">
-                              <strong>No profiles enrolled</strong>
-                              <span>Create a profile to claim the mirror.</span>
-                            </div>
-                          )}
-                          {profiles.map((profile, index) => {
-                            const googleConnected = authProviders.some(
-                              (provider) => provider.provider === 'google' && provider.connected,
-                            ) && selectedProfile?.user_id === profile.user_id;
-                            const active = index === profileIndex;
-                            return (
-                              <button
-                                key={profile.user_id}
-                                type="button"
-                                className={`mirror-profile-card ${active ? 'is-active' : ''}`}
-                                onClick={() => {
-                                  setProfileIndex(index);
-                                  setMenuMode('profiles');
-                                }}
-                              >
-                                <div className="mirror-profile-card__avatar">
-                                  {profileLabel(profile).slice(0, 2).toUpperCase()}
-                                </div>
-                                <div className="mirror-profile-card__copy">
-                                  <strong>{profileLabel(profile)}</strong>
-                                  <span>{profile.user_id}</span>
-                                </div>
-                                <div className="mirror-profile-card__status">
-                                  {profile.is_active && <span className="mirror-pill">Active</span>}
-                                  {googleConnected && <span className="mirror-pill mirror-pill--good">Google</span>}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        <div className="mirror-menu-actions">
-                          <button
-                            type="button"
-                            className="mirror-action-button"
-                            disabled={!selectedProfile || isPending}
-                            onClick={() => selectedProfile && void handleActivateProfile(selectedProfile)}
-                          >
-                            Use Selected Profile
-                          </button>
-                          <button
-                            type="button"
-                            className="mirror-action-button mirror-action-button--secondary"
-                            disabled={!selectedProfile || Boolean(pendingAuth)}
-                            onClick={() => void signInGoogle()}
-                          >
-                            <Link2 size={16} /> Link Google
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedSection.id === 'create' && (
-                      <div className="mirror-menu-panel__content">
-                        <div className="mirror-menu-panel__header">
-                          <div>
-                            <span className="mirror-menu-panel__eyebrow">Enrollment</span>
-                            <h2>Create a household profile</h2>
-                          </div>
-                        </div>
-                        <p className="mirror-menu-copy">
-                          Profile creation enrolls a user into this mirror registry. Google linking happens after the
-                          profile exists, so the mirror never stores raw third-party credentials in the browser.
-                        </p>
-                        <label className="mirror-field">
-                          <span>Display Name</span>
-                          <input
-                            value={draftProfileName}
-                            onChange={(event) => setDraftProfileName(event.target.value)}
-                            placeholder="Avery, Mom, Guest Room..."
-                          />
-                        </label>
-                        <div className="mirror-menu-actions">
-                          <button
-                            type="button"
-                            className="mirror-action-button"
-                            onClick={() => void handleCreateProfile(draftProfileName)}
-                          >
-                            Create And Activate
-                          </button>
-                          <button
-                            type="button"
-                            className="mirror-action-button mirror-action-button--secondary"
-                            onClick={() => {
-                              setDraftProfileName('');
-                              setMenuMode('sections');
-                            }}
-                          >
-                            Back To Menu
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedSection.id === 'animations' && (
-                      <div className="mirror-menu-panel__content">
-                        <div className="mirror-menu-panel__header">
-                          <div>
-                            <span className="mirror-menu-panel__eyebrow">Visual Mode</span>
-                            <h2>Pick the mirror atmosphere</h2>
-                          </div>
-                          <button
-                            type="button"
-                            className="mirror-menu-chip"
-                            onClick={() => setMenuMode(menuMode === 'animations' ? 'sections' : 'animations')}
-                          >
-                            {menuMode === 'animations' ? 'Section Focus' : 'Animation Focus'}
-                          </button>
-                        </div>
-                        <div className="mirror-animation-list">
-                          {ANIMATION_PRESETS.map((preset, index) => (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              className={`mirror-animation-card ${animationIndex === index ? 'is-active' : ''}`}
-                              onClick={() => {
-                                setAnimationIndex(index);
-                                selectAnimation(index);
-                              }}
-                            >
-                              <div>
-                                <strong>{preset.title}</strong>
-                                <span>{preset.description}</span>
+                <div className="relative flex-1 overflow-hidden px-4 pb-4 pt-5">
+                  <AnimatePresence mode="wait">
+                    {currentView === 'identity' ? (
+                      <motion.div
+                        key={`identity-${identityIntent}-${identitySubstate}`}
+                        className="flex max-h-[68vh] flex-col gap-4"
+                        initial={{ opacity: 0, x: -14 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 14 }}
+                        transition={SPRING_SOFT}
+                      >
+                        {identitySubstate === 'pairing' ? (
+                          <div className="space-y-4">
+                            <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/65">
+                              <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Pairing Target</div>
+                              <div className="mt-2 text-base text-white">
+                                {selectedProfile ? profileLabel(selectedProfile) : 'Selected profile'}
                               </div>
-                              {animationMode === preset.id && <CheckCircle2 size={18} />}
-                            </button>
+                            </div>
+                            <div className="rounded-[28px] border border-white/10 bg-white/[0.04] px-5 py-5">
+                              <div className="mx-auto flex w-full max-w-[252px] items-center justify-center rounded-[24px] bg-white p-5">
+                                {pendingAuth ? (
+                                  <QRCodeSVG
+                                    value={pendingAuth.deviceCode.verification_uri}
+                                    size={188}
+                                    bgColor="#FFFFFF"
+                                    fgColor="#111111"
+                                    level="M"
+                                  />
+                                ) : (
+                                  <motion.div
+                                    className="flex h-[188px] w-[188px] items-center justify-center rounded-[18px] bg-[#F5F1EA] text-[#2A2017]"
+                                    animate={{ opacity: [0.55, 1, 0.55] }}
+                                    transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                                  >
+                                    Requesting QR
+                                  </motion.div>
+                                )}
+                              </div>
+                              <motion.p
+                                className="mt-5 text-center text-sm uppercase tracking-[0.3em] text-[#E6D5B8]"
+                                animate={{ opacity: [0.45, 0.92, 0.45] }}
+                                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+                              >
+                                Waiting for pairing
+                              </motion.p>
+                              {pendingAuth?.deviceCode.user_code && (
+                                <div className="mt-4 text-center text-lg font-semibold tracking-[0.28em] text-white">
+                                  {pendingAuth.deviceCode.user_code}
+                                </div>
+                              )}
+                              {pendingAuth?.deviceCode.verification_uri && (
+                                <p className="mt-4 text-center text-xs leading-5 text-white/45">
+                                  {pendingAuth.deviceCode.verification_uri}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-3 overflow-y-auto pr-1">
+                            {profiles.length === 0 ? (
+                              <IdentityEmptyTile active={clampedIdentityIndex === 0} onClick={() => void handleIdentitySelect()} />
+                            ) : (
+                              profiles.map((profile, index) => (
+                                <IdentityTile
+                                  key={profile.user_id}
+                                  profile={profile}
+                                  index={index}
+                                  active={index === clampedIdentityIndex}
+                                  live={profile.user_id === activeProfile?.user_id}
+                                  googleConnected={index === clampedIdentityIndex && googleConnected}
+                                  onClick={() => {
+                                    setSelectedIndex(index);
+                                    setSelectionMemory((previous) => ({ ...previous, identity: index }));
+                                  }}
+                                />
+                              ))
+                            )}
+                          </div>
+                        )}
+
+                        <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/60">
+                          <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">
+                            {identityIntent === 'pair' ? 'Pairing Mode' : 'Selection Mode'}
+                          </div>
+                          <p className="mt-2 leading-5">
+                            {identityIntent === 'pair'
+                              ? 'Select a profile, then scan the QR code on your phone. Escape or Backspace cancels pairing.'
+                              : 'Use Up and Down to wrap through profiles. Enter confirms the highlighted identity.'}
+                          </p>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="system"
+                        className="flex max-h-[68vh] flex-col gap-4"
+                        initial={{ opacity: 0, x: 14 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -14 }}
+                        transition={SPRING_SOFT}
+                      >
+                        <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/60">
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Active Identity</div>
+                              <div className="mt-2 text-base text-white">
+                                {activeProfile ? profileLabel(activeProfile) : 'No active profile'}
+                              </div>
+                            </div>
+                            <div className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-white/55">
+                              {googleConnected ? 'Google Linked' : 'Google Ready'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 overflow-y-auto pr-1">
+                          {systemMenuItems.map((item, index) => (
+                            <SystemMenuRow
+                              key={item.id}
+                              item={item}
+                              active={index === currentSystemIndex}
+                              onClick={() => {
+                                setSelectedIndex(index);
+                                setSelectionMemory((previous) => ({ ...previous, system: index }));
+                                void handleSystemSelect(item);
+                              }}
+                            />
                           ))}
                         </div>
-                      </div>
+                      </motion.div>
                     )}
+                  </AnimatePresence>
+                </div>
 
-                    {selectedSection.id === 'about' && (
-                      <div className="mirror-menu-panel__content">
-                        <div className="mirror-menu-panel__header">
-                          <div>
-                            <span className="mirror-menu-panel__eyebrow">Identity</span>
-                            <h2>Mirror logo and session overview</h2>
-                          </div>
-                        </div>
-                        <div className="mirror-logo-card">
-                          <div className="mirror-logo-card__mark">
-                            <Waves size={32} />
-                          </div>
-                          <div>
-                            <strong>{mirror?.friendly_name || 'Shared Smart Mirror'}</strong>
-                            <span>Multi-user household mirror with cloud-scoped sessions.</span>
-                          </div>
-                        </div>
-                        <div className="mirror-summary-list">
-                          <div className="mirror-summary-row">
-                            <span>Hardware ID</span>
-                            <strong>{hardwareId}</strong>
-                          </div>
-                          <div className="mirror-summary-row">
-                            <span>Profiles Enrolled</span>
-                            <strong>{profiles.length}</strong>
-                          </div>
-                          <div className="mirror-summary-row">
-                            <span>Animation</span>
-                            <strong>{ANIMATION_PRESETS[animationIndex]?.title || 'Aurora Flow'}</strong>
-                          </div>
-                          <div className="mirror-summary-row">
-                            <span>Session</span>
-                            <strong>{activeProfile ? profileLabel(activeProfile) : 'No active user'}</strong>
-                          </div>
-                        </div>
-                        <div className="mirror-menu-actions">
-                          <button
-                            type="button"
-                            className="mirror-action-button"
-                            disabled={!activeProfile}
-                            onClick={() => setMenuOpen(false)}
-                          >
-                            Resume Mirror
-                          </button>
-                          <button
-                            type="button"
-                            className="mirror-action-button mirror-action-button--secondary"
-                            onClick={() => void refresh()}
-                          >
-                            Refresh Session
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {(error || menuError || authError) && (
-                      <p className="mirror-menu-error">{error || menuError || authError}</p>
-                    )}
-
-                    {loading && <p className="mirror-menu-copy">Preparing mirror registration and profile sync...</p>}
-                    {isPending && <p className="mirror-menu-copy">Updating menu selection...</p>}
+                {statusMessage && (
+                  <div className={`relative px-6 pb-4 text-sm ${error || menuError || authError ? 'text-rose-300' : 'text-white/55'}`}>
+                    {statusMessage}
                   </div>
+                )}
+
+                <div className="relative border-t border-white/8 bg-black/15 px-6 py-4">
+                  <FooterLegend />
                 </div>
               </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
-
-        <AuthQROverlay
-          pendingAuth={pendingAuth}
-          onCancel={() => {
-            void cancelPendingAuth();
-          }}
-        />
 
         <AnimatePresence>
           {sleepMode && (
