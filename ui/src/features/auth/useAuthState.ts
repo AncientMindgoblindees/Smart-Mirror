@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  cancelLogin,
   getAuthProviders,
   getLoginStatus,
-  startLogin,
   logoutProvider,
-  cancelLogin,
+  startLogin,
 } from '@/api/mirrorApi';
 import { useIntervalWhen } from '@/hooks/infra/useIntervalWhen';
 import { useWindowEvent } from '@/hooks/infra/useWindowEvent';
@@ -38,7 +38,13 @@ function clearIntervalRef(pollRef: { current: ReturnType<typeof setInterval> | n
   }
 }
 
-export function useAuthState() {
+type AuthContext = {
+  hardwareId: string | null;
+  userId: string | null;
+  enabled?: boolean;
+};
+
+export function useAuthState({ hardwareId, userId, enabled = true }: AuthContext) {
   const [providers, setProviders] = useState<ProviderStatus[]>([]);
   const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -48,35 +54,46 @@ export function useAuthState() {
     pendingProviderRef.current = pendingAuth?.provider ?? null;
   }, [pendingAuth]);
 
+  const ready = enabled && Boolean(hardwareId) && Boolean(userId);
+
   const refresh = useCallback(async () => {
+    if (!ready || !hardwareId || !userId) {
+      setProviders([]);
+      return;
+    }
     try {
-      const list = await getAuthProviders();
+      const list = await getAuthProviders(hardwareId, userId);
       setProviders(list);
     } catch {
       // backend unavailable — keep stale state
     }
-  }, []);
+  }, [hardwareId, ready, userId]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (!ready) {
+      clearIntervalRef(pollRef);
+      setPendingAuth(null);
+      setProviders([]);
+      return;
+    }
+    void refresh();
+  }, [ready, refresh]);
 
-  useIntervalWhen(() => void refresh(), 10_000, true);
+  useIntervalWhen(() => void refresh(), 10_000, ready);
 
   const startPollForProvider = useCallback(
     (provider: string, intervalSec: number) => {
+      if (!hardwareId || !userId) return;
       clearIntervalRef(pollRef);
       const ms = Math.max(3000, (intervalSec || 5) * 1000);
       pollRef.current = setInterval(async () => {
         try {
-          const status = await getLoginStatus(provider);
-          if (status.status === 'complete') {
+          const status = await getLoginStatus(provider, hardwareId, userId);
+          if (status.status === 'active' || status.status === 'complete') {
             clearIntervalRef(pollRef);
             setPendingAuth(null);
             await refresh();
-          } else if (status.status === 'pending') {
-            // still waiting
-          } else {
+          } else if (status.status !== 'pending') {
             clearIntervalRef(pollRef);
             setPendingAuth(null);
             await refresh();
@@ -86,20 +103,20 @@ export function useAuthState() {
         }
       }, ms);
     },
-    [refresh],
+    [hardwareId, refresh, userId],
   );
 
   const applyDeviceCodePayload = useCallback(
-    (d: Record<string, unknown>) => {
-      const provider = String(d.provider ?? '');
+    (detail: Record<string, unknown>) => {
+      const provider = String(detail.provider ?? '');
       if (!provider) return;
       const deviceCode: DeviceCodeInfo = {
         provider,
-        verification_uri: String(d.verification_uri ?? ''),
-        user_code: String(d.user_code ?? ''),
-        expires_in: Number(d.expires_in) || 300,
-        interval: Number(d.interval) || 5,
-        message: d.message == null ? null : String(d.message),
+        verification_uri: String(detail.verification_uri ?? ''),
+        user_code: String(detail.user_code ?? ''),
+        expires_in: Number(detail.expires_in) || 300,
+        interval: Number(detail.interval) || 5,
+        message: detail.message == null ? null : String(detail.message),
       };
       setPendingAuth({ provider, deviceCode });
       startPollForProvider(provider, deviceCode.interval);
@@ -108,47 +125,51 @@ export function useAuthState() {
   );
 
   useWindowEvent<Record<string, unknown>>('mirror:oauth_device_code', (detail) => {
+    if (!ready) return;
     applyDeviceCodePayload(detail ?? {});
   });
 
   const initiateLogin = useCallback(
     async (provider: string) => {
-      const dc = await startLogin(provider);
+      if (!hardwareId || !userId) {
+        throw new Error('Select a mirror profile before linking Google.');
+      }
+      const deviceCode = await startLogin(provider, hardwareId, userId);
       setPendingAuth({
         provider,
         deviceCode: {
           provider,
-          verification_uri: dc.verification_uri,
-          user_code: dc.user_code,
-          expires_in: dc.expires_in,
-          interval: dc.interval,
-          message: dc.message ?? null,
+          verification_uri: deviceCode.verification_uri,
+          user_code: deviceCode.user_code,
+          expires_in: deviceCode.expires_in,
+          interval: deviceCode.interval,
+          message: deviceCode.message ?? null,
         },
       });
-      startPollForProvider(provider, dc.interval || 5);
+      startPollForProvider(provider, deviceCode.interval || 5);
     },
-    [startPollForProvider],
+    [hardwareId, startPollForProvider, userId],
   );
 
   const cancelPendingAuth = useCallback(async () => {
-    const p = pendingProviderRef.current;
+    const provider = pendingProviderRef.current;
     clearIntervalRef(pollRef);
     setPendingAuth(null);
-    if (p) {
-      try {
-        await cancelLogin(p);
-      } catch {
-        // ignore
-      }
+    if (!provider || !hardwareId || !userId) return;
+    try {
+      await cancelLogin(provider, hardwareId, userId);
+    } catch {
+      // ignore cancellation failures
     }
-  }, []);
+  }, [hardwareId, userId]);
 
   const disconnectProvider = useCallback(
     async (provider: string) => {
-      await logoutProvider(provider);
+      if (!hardwareId || !userId) return;
+      await logoutProvider(provider, hardwareId, userId);
       await refresh();
     },
-    [refresh],
+    [hardwareId, refresh, userId],
   );
 
   useEffect(() => {

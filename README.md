@@ -15,7 +15,11 @@ This README.md contains information about the SmartMirror project process, workf
 - TV/Monitor
 - Wood frame
 ### Software Stack
-- Coming soon
+- FastAPI backend
+- React/Vite mirror UI
+- SQLite mirror cache with D1-oriented multi-profile data model
+- Google OAuth proxy services for Gmail + Calendar widgets
+- GPIO + keyboard control layer for on-device navigation
 
 ## Run the Application
 
@@ -198,6 +202,48 @@ Notes:
 - Layout is freeform and persisted through `/api/widgets/` (`config_json.freeform`), so companion apps can reposition widgets at runtime.
 - Keyboard/GPIO mapping: `d` toggle tools panel, `1` cycle layout preset, `2` dim, `3` sleep.
 - `news` and `virtual_try_on` are scaffolded with integration entry points in `ui/src/features/ai/entrypoints.ts` (mock data/stub responses only for now).
+
+## Shared mirror profiles
+
+The mirror now boots into an on-device launcher menu instead of assuming a single owner. Each physical mirror registers with a unique `hardware_id`, receives a `hardware_token`, and then resolves one active profile at a time through the backend.
+
+- `POST /api/mirror/register` creates or refreshes the mirror registry entry.
+- `GET /api/mirror/sync` returns the active enrolled profile plus that user's widgets/settings.
+- `GET /api/profile/`, `POST /api/profile/enroll`, `POST /api/profile/activate`, and `DELETE /api/profile/{user_id}` manage household users on the same mirror.
+- Gmail and Calendar widgets are now backend-proxied through the active profile's stored Google refresh token; the UI never stores raw OAuth credentials.
+
+This keeps the device "dumb" and lets the backend enforce that a mirror session can only read data for the currently active profile.
+
+## Boot menu and input mapping
+
+At startup the mirror opens a launcher menu with four sections:
+
+- `Users`
+- `Create Profile`
+- `Animations`
+- `Logo`
+
+When a profile is activated, the mirror dashboard loads with that user's saved widget state and credentials. Holding the menu button later re-opens the launcher without rebooting the device.
+
+Keyboard simulation is built in for local development:
+
+- `M`: open the profile/menu launcher
+- `ArrowUp` / `ArrowDown`: move through menu items
+- `Enter`: select
+- `Escape` or `Backspace`: back / close
+- `D`: toggle the dev tools panel
+- `2`: toggle dim mode
+- `3`: toggle sleep mode
+- `X`: dismiss the try-on fullscreen overlay
+
+GPIO button behavior uses the four-button layout in `hardware/gpio/config.py`:
+
+- `LAYOUT` click: menu back, with `cycle_layout` retained as a compatibility effect
+- `LAYOUT` hold: open the profile/menu launcher
+- `UP` click: menu up
+- `DOWN` click: menu down
+- `DISPLAY` click: menu select, with dim toggle retained as a compatibility effect
+- `DISPLAY` hold: sleep toggle
 
 ## How to: Version Control with Git
 ### Cloning the repo in VSCode:

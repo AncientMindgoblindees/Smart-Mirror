@@ -52,6 +52,8 @@ def create_app() -> FastAPI:
     app.include_router(widgets.router, prefix="/api")
     app.include_router(weather.router, prefix="/api")
     app.include_router(user.router, prefix="/api")
+    app.include_router(user.mirror_router, prefix="/api")
+    app.include_router(user.profile_router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(camera.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")

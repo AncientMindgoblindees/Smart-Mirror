@@ -25,6 +25,7 @@ from backend.services.providers.base import (
 
 GOOGLE_DEVICE_CODE_URL = "https://oauth2.googleapis.com/device/code"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 GOOGLE_CALENDAR_EVENTS_URL = (
     "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 )
@@ -164,6 +165,14 @@ class GoogleProvider(CalendarProvider):
             expires_in=int(body.get("expires_in", 3600)),
             scope=body.get("scope"),
         )
+
+    async def revoke_refresh_token(self, refresh_token: str) -> None:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            await client.post(
+                GOOGLE_REVOKE_URL,
+                data={"token": refresh_token},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
 
     # ── Data Fetching ───────────────────────────────────────────────────
 

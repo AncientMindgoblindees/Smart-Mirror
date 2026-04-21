@@ -19,6 +19,9 @@ from backend.database.models import (
     ClothingImage,
     ClothingItem,
     D1SyncCheckpoint,
+    Mirror,
+    OAuthCredential,
+    UserProfile,
     UserSettings,
     WidgetConfig,
 )
@@ -42,12 +45,23 @@ class MergeOutcome:
 
 class D1SyncService:
     TABLE_MODELS: Dict[str, Type[Any]] = {
+        "mirrors": Mirror,
+        "user_profiles": UserProfile,
         "widget_config": WidgetConfig,
         "user_settings": UserSettings,
+        "oauth_credentials": OAuthCredential,
         "clothing_item": ClothingItem,
         "clothing_image": ClothingImage,
     }
-    TABLE_ORDER = ["widget_config", "user_settings", "clothing_item", "clothing_image"]
+    TABLE_ORDER = [
+        "mirrors",
+        "user_profiles",
+        "widget_config",
+        "user_settings",
+        "oauth_credentials",
+        "clothing_item",
+        "clothing_image",
+    ]
 
     def __init__(self) -> None:
         self.worker_url = config.D1_WORKER_URL.rstrip("/")
@@ -539,6 +553,8 @@ class D1SyncService:
         if table_name == "widget_config":
             return {
                 "id": row.id,
+                "mirror_id": row.mirror_id,
+                "user_id": row.user_id,
                 "widget_id": row.widget_id,
                 "enabled": row.enabled,
                 "position_row": row.position_row,
@@ -553,6 +569,8 @@ class D1SyncService:
         if table_name == "user_settings":
             return {
                 "id": row.id,
+                "mirror_id": row.mirror_id,
+                "user_id": row.user_id,
                 "theme": row.theme,
                 "primary_font_size": row.primary_font_size,
                 "accent_color": row.accent_color,
@@ -560,9 +578,47 @@ class D1SyncService:
                 "updated_at": self._to_iso(row.updated_at),
                 "synced_at": self._to_iso(row.synced_at),
             }
+        if table_name == "mirrors":
+            return {
+                "id": row.id,
+                "hardware_id": row.hardware_id,
+                "hardware_token_hash": row.hardware_token_hash,
+                "friendly_name": row.friendly_name,
+                "created_at": self._to_iso(row.created_at),
+                "updated_at": self._to_iso(row.updated_at),
+                "synced_at": self._to_iso(row.synced_at),
+            }
+        if table_name == "user_profiles":
+            return {
+                "id": row.id,
+                "mirror_id": row.mirror_id,
+                "user_id": row.user_id,
+                "display_name": row.display_name,
+                "widget_config": row.widget_config or {},
+                "is_active": row.is_active,
+                "created_at": self._to_iso(row.created_at),
+                "updated_at": self._to_iso(row.updated_at),
+                "synced_at": self._to_iso(row.synced_at),
+            }
+        if table_name == "oauth_credentials":
+            return {
+                "id": row.id,
+                "mirror_id": row.mirror_id,
+                "user_id": row.user_id,
+                "provider": row.provider,
+                "access_token_enc": row.access_token_enc,
+                "refresh_token_enc": row.refresh_token_enc,
+                "token_expiry": self._to_iso(row.token_expiry),
+                "scopes": row.scopes,
+                "status": row.status,
+                "created_at": self._to_iso(row.created_at),
+                "updated_at": self._to_iso(row.updated_at),
+                "synced_at": self._to_iso(row.synced_at),
+            }
         if table_name == "clothing_item":
             return {
                 "id": row.id,
+                "user_id": row.user_id,
                 "name": row.name,
                 "category": row.category,
                 "color": row.color,
@@ -624,6 +680,8 @@ class D1SyncService:
 
     def _apply_incoming_row(self, table_name: str, entity: Any, incoming: Dict[str, Any], synced_at: datetime) -> None:
         if table_name == "widget_config":
+            entity.mirror_id = incoming.get("mirror_id")
+            entity.user_id = incoming.get("user_id")
             entity.widget_id = incoming.get("widget_id")
             entity.enabled = bool(incoming.get("enabled", True))
             entity.position_row = incoming.get("position_row", 1)
@@ -634,12 +692,40 @@ class D1SyncService:
             entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
             entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
         elif table_name == "user_settings":
+            entity.mirror_id = incoming.get("mirror_id")
+            entity.user_id = incoming.get("user_id")
             entity.theme = incoming.get("theme", "dark")
             entity.primary_font_size = incoming.get("primary_font_size", 72)
             entity.accent_color = incoming.get("accent_color", "#4a9eff")
             entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
             entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
+        elif table_name == "mirrors":
+            entity.hardware_id = incoming.get("hardware_id")
+            entity.hardware_token_hash = incoming.get("hardware_token_hash")
+            entity.friendly_name = incoming.get("friendly_name")
+            entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
+            entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
+        elif table_name == "user_profiles":
+            entity.mirror_id = incoming.get("mirror_id")
+            entity.user_id = incoming.get("user_id")
+            entity.display_name = incoming.get("display_name")
+            entity.widget_config = self._json_value(incoming.get("widget_config"))
+            entity.is_active = bool(incoming.get("is_active", False))
+            entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
+            entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
+        elif table_name == "oauth_credentials":
+            entity.mirror_id = incoming.get("mirror_id")
+            entity.user_id = incoming.get("user_id")
+            entity.provider = incoming.get("provider", "google")
+            entity.access_token_enc = incoming.get("access_token_enc")
+            entity.refresh_token_enc = incoming.get("refresh_token_enc")
+            entity.token_expiry = self._parse_datetime(incoming.get("token_expiry"))
+            entity.scopes = incoming.get("scopes")
+            entity.status = incoming.get("status", "active")
+            entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
+            entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
         elif table_name == "clothing_item":
+            entity.user_id = incoming.get("user_id")
             entity.name = incoming.get("name")
             entity.category = incoming.get("category")
             entity.color = incoming.get("color")

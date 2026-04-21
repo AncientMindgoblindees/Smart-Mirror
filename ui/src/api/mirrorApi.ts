@@ -2,11 +2,17 @@ import type {
   AuthLoginStatus,
   AuthProviderStatus,
   CalendarEventsResponse,
-  EmailMessagesResponse,
   CalendarTasksResponse,
   CameraCaptureRequest,
   CameraStatusOut,
   DeviceCodeResponse,
+  EmailMessagesResponse,
+  MirrorProfile,
+  MirrorRegistrationRequest,
+  MirrorRegistrationResponse,
+  MirrorSyncResponse,
+  ProfileActivateRequest,
+  ProfileEnrollRequest,
   UserSettingsOut,
   UserSettingsUpdate,
   WeatherSnapshotOut,
@@ -56,29 +62,73 @@ export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ statu
   });
 }
 
-// ── Auth ────────────────────────────────────────────────────────────
-
-export function getAuthProviders(): Promise<AuthProviderStatus[]> {
-  return jsonRequest<AuthProviderStatus[]>('/auth/providers');
+export function registerMirror(payload: MirrorRegistrationRequest): Promise<MirrorRegistrationResponse> {
+  return jsonRequest<MirrorRegistrationResponse>('/mirror/register', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
-export function startLogin(provider: string): Promise<DeviceCodeResponse> {
-  return jsonRequest<DeviceCodeResponse>(`/auth/login/${provider}`, { method: 'POST' });
+export function getMirrorSync(): Promise<MirrorSyncResponse> {
+  return jsonRequest<MirrorSyncResponse>('/mirror/sync');
 }
 
-export function getLoginStatus(provider: string): Promise<AuthLoginStatus> {
-  return jsonRequest<AuthLoginStatus>(`/auth/login/${provider}/status`);
+export function listProfiles(): Promise<MirrorProfile[]> {
+  return jsonRequest<MirrorProfile[]>('/profile/');
 }
 
-export function logoutProvider(provider: string): Promise<{ status: string }> {
-  return jsonRequest<{ status: string }>(`/auth/logout/${provider}`, { method: 'DELETE' });
+export function enrollProfile(payload: ProfileEnrollRequest): Promise<MirrorProfile> {
+  return jsonRequest<MirrorProfile>('/profile/enroll', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
-export function cancelLogin(provider: string): Promise<{ status: string }> {
-  return jsonRequest<{ status: string }>(`/auth/login/${provider}/cancel`, { method: 'POST' });
+export function activateProfile(payload: ProfileActivateRequest): Promise<MirrorProfile> {
+  return jsonRequest<MirrorProfile>('/profile/activate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
-// ── Calendar ────────────────────────────────────────────────────────
+export function deleteProfile(userId: string): Promise<{ status: string }> {
+  return jsonRequest<{ status: string }>(`/profile/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function getAuthProviders(hardwareId: string, userId: string): Promise<AuthProviderStatus[]> {
+  return jsonRequest<AuthProviderStatus[]>(
+    withQuery('/auth/providers', { hardware_id: hardwareId, user_id: userId }),
+  );
+}
+
+export function startLogin(provider: string, hardwareId: string, userId: string): Promise<DeviceCodeResponse> {
+  return jsonRequest<DeviceCodeResponse>(
+    withQuery(`/auth/login/${provider}`, { hardware_id: hardwareId, user_id: userId }),
+    { method: 'POST' },
+  );
+}
+
+export function getLoginStatus(provider: string, hardwareId: string, userId: string): Promise<AuthLoginStatus> {
+  return jsonRequest<AuthLoginStatus>(
+    withQuery(`/auth/login/${provider}/status`, { hardware_id: hardwareId, user_id: userId }),
+  );
+}
+
+export function logoutProvider(provider: string, hardwareId: string, userId: string): Promise<{ status: string }> {
+  return jsonRequest<{ status: string }>(
+    withQuery(`/auth/logout/${provider}`, { hardware_id: hardwareId, user_id: userId }),
+    { method: 'DELETE' },
+  );
+}
+
+export function cancelLogin(provider: string, hardwareId: string, userId: string): Promise<{ status: string }> {
+  return jsonRequest<{ status: string }>(
+    withQuery(`/auth/login/${provider}/cancel`, { hardware_id: hardwareId, user_id: userId }),
+    { method: 'POST' },
+  );
+}
 
 export function getCalendarEvents(opts?: {
   days?: number;

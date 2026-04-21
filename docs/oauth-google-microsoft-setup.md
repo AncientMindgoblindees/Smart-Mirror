@@ -1,101 +1,31 @@
-# Google and Microsoft OAuth setup (mirror)
+# Google OAuth setup
 
-Register apps in **your** Google Cloud and Microsoft Entra (Azure AD) accounts. The mirror reads OAuth credentials from `.env`:
+Microsoft OAuth has been removed from the backend. The mirror now supports Google-only browser OAuth and Google refresh-token ingestion for enrolled mirror profiles.
 
-- Google web flow: `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_WEB_CLIENT_SECRET`
-- Google device/TV flow: `GOOGLE_TV_CLIENT_ID`, `GOOGLE_TV_CLIENT_SECRET`
-- Legacy Google fallback: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- Microsoft: `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`
+## Google Cloud setup
 
-## Callback URLs the mirror uses
+1. Enable the Google Calendar API and Gmail API in your Google Cloud project.
+2. Configure the OAuth consent screen with:
+   - `https://www.googleapis.com/auth/calendar.readonly`
+   - `https://www.googleapis.com/auth/gmail.readonly`
+3. Create a web OAuth client and register:
+   - `http://<PI_IP>:8002/api/oauth/google/callback`
+   - `https://<your-public-host>/api/oauth/google/callback`
+4. Fill in `.env` with `GOOGLE_WEB_CLIENT_ID` and `GOOGLE_WEB_CLIENT_SECRET`.
+5. Optionally set `GOOGLE_TV_CLIENT_ID` and `GOOGLE_TV_CLIENT_SECRET` if you use a separate limited-input client.
 
-Replace placeholders with values **you** use:
+## Mirror profile flow
 
-| Flow | Google | Microsoft |
-|------|--------|-------------|
-| Browser sign-in (“Sign in on this device”) | `{BASE}/api/oauth/google/callback` | `{BASE}/api/oauth/microsoft/callback` |
+1. Register the mirror with `POST /api/mirror/register`.
+2. Enroll a user with `POST /api/profile/enroll`.
+3. Start Google linking with `POST /api/auth/login/google?hardware_id=...&user_id=...`.
+4. Complete the phone/browser flow at `/api/oauth/google/start`.
+5. The backend stores encrypted Google tokens in `oauth_credentials` and the UI only consumes filtered Gmail/Calendar payloads.
 
-`{BASE}` must match how the **browser** reaches the FastAPI server (scheme + host + port, no trailing slash):
+## Direct companion token ingestion
 
-- **LAN:** `http://192.168.1.50:8002` (example — use your Pi’s IP and `MIRROR_PORT` if not 8002)
-- **Cloudflare Tunnel / HTTPS:** `https://mirror.example.com` (no port if 443)
+If the companion app already holds a Google refresh token, it can send it to:
 
-Register **every** URL you will use (e.g. both `http://pi-ip:8002/...` and `https://your-tunnel-host/...`) so OAuth redirects are not rejected.
+- `POST /api/oauth/providers/token`
 
----
-
-## Google Cloud Console
-
-1. Open [Google Cloud Console](https://console.cloud.google.com/) → select or create a project.
-2. **APIs & Services** → **Library** → enable **Google Calendar API** and **Gmail API**.
-3. **APIs & Services** → **OAuth consent screen**  
-   - User type: **External** (or Internal if Workspace only).  
-   - Add scopes used by the app:
-     - `https://www.googleapis.com/auth/calendar.readonly`
-     - `https://www.googleapis.com/auth/gmail.readonly`
-   - Add test users while in “Testing” if you are not publishing the app.
-4. **APIs & Services** → **Credentials** → **Create credentials**.
-
-### A) Web application (required for “Sign in on this device” / browser redirect)
-
-- Application type: **Web application**.
-- **Authorized redirect URIs** — add one or more (exact match, including `http` vs `https`):
-  - `http://<PI_LAN_IP>:8002/api/oauth/google/callback`
-  - `https://<your-tunnel-host>/api/oauth/google/callback` (if you use a tunnel)
-- Save. Copy **Client ID** and **Client secret** into `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-
-### B) Device / QR flow (“TVs and Limited Input device”)
-
-The device-code flow (QR on mirror) often uses a **separate** OAuth client:
-
-- **Create credentials** → **TVs and Limited Input device** (or **Desktop** if that is what your console offers for device flow).
-- Copy that client’s ID and secret.
-
-The backend now supports separate Google credentials by flow:
-
-- Browser sign-in path (`/api/oauth/google/start`) uses `GOOGLE_WEB_CLIENT_ID` / `GOOGLE_WEB_CLIENT_SECRET`.
-- QR/device flow uses `GOOGLE_TV_CLIENT_ID` / `GOOGLE_TV_CLIENT_SECRET`.
-- If split vars are not set, each flow falls back to `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
-- Current behavior requires **both** `calendar.readonly` and `gmail.readonly` scopes for both browser and QR/device Google sign-in.
-- Google QR flow now opens browser OAuth via a QR link to `/api/oauth/google/start`.  
-  If mirror runs on localhost, set `OAUTH_PUBLIC_BASE_URL=https://<your-public-host>` so phone QR opens a reachable URL.
-
----
-
-## Microsoft Entra ID (Azure)
-
-1. Open [Azure Portal](https://portal.azure.com/) → **Microsoft Entra ID** → **App registrations** → **New registration**.
-2. **Name:** e.g. `Smart Mirror`.  
-   **Supported account types:** e.g. **Accounts in any organizational directory and personal Microsoft accounts** (or as you prefer).
-3. **Register**. Open the app → note **Application (client) ID** → put in `.env` as `MICROSOFT_CLIENT_ID`.
-4. **Certificates & secrets** → **New client secret** → copy value into `.env` as `MICROSOFT_CLIENT_SECRET` (secret **Value**, not Secret ID).
-5. **Authentication** → **Platform configurations** → **Add a platform** → **Web**.
-6. **Redirect URIs** — add (exact match):
-   - `http://<PI_LAN_IP>:8002/api/oauth/microsoft/callback`
-   - `https://<your-tunnel-host>/api/oauth/microsoft/callback` (if applicable)
-7. **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated**: add at least **Calendars.Read**, **Tasks.Read**, **Mail.Read**, **offline_access** (and **User.Read** if the portal suggests it). **Grant admin consent** if your tenant requires it.
-
-Device-code and authorization-code flows use the same app registration; one client ID/secret is enough for both paths implemented on the mirror.
-
----
-
-## After configuration
-
-1. Copy `.env.example` to `.env` and fill in the OAuth variables you need (and `MIRROR_TOKEN_SECRET` if needed).
-2. Restart the mirror backend so `load_dotenv` picks up changes.
-3. Test **Accounts** in the companion app: QR on mirror, then browser sign-in, as needed.
-
----
-
-## Checklist
-
-- [ ] Google Calendar API + Gmail API enabled  
-- [ ] Google OAuth consent screen configured with calendar + gmail scopes  
-- [ ] `GOOGLE_WEB_CLIENT_ID`/`GOOGLE_WEB_CLIENT_SECRET` set for browser sign-in  
-- [ ] `GOOGLE_TV_CLIENT_ID`/`GOOGLE_TV_CLIENT_SECRET` set for QR/device flow  
-- [ ] (Optional fallback) `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` set only if not using split vars  
-- [ ] Microsoft app registration: Web redirect URI(s) exactly as `{BASE}/api/oauth/microsoft/callback`  
-- [ ] Microsoft Graph delegated permissions (`Calendars.Read`, `Tasks.Read`, `Mail.Read`, `offline_access`) + consent  
-- [ ] Secrets in `.env`, backend restarted  
-
-If redirect fails with `redirect_uri_mismatch`, the URI in the console does not match the URL the browser used (including port and `http` vs `https`).
+The payload must include `hardware_id`, `user_id`, `provider=google`, and `refresh_token`.

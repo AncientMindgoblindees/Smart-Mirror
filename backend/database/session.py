@@ -23,6 +23,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_sync_columns()
     _ensure_d1_checkpoint_columns()
+    _ensure_multitenant_columns()
 
 
 def _ensure_d1_checkpoint_columns() -> None:
@@ -45,14 +46,59 @@ def _ensure_sync_columns() -> None:
     if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         return
 
-    targets = ("widget_config", "user_settings", "clothing_item", "clothing_image")
+    targets = (
+        "mirrors",
+        "user_profiles",
+        "widget_config",
+        "user_settings",
+        "oauth_credentials",
+        "clothing_item",
+        "clothing_image",
+    )
     with engine.begin() as conn:
         for table in targets:
             rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
             columns = {str(row[1]) for row in rows}
+            if not columns:
+                continue
             if "synced_at" in columns:
                 continue
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN synced_at DATETIME"))
+
+
+def _ensure_multitenant_columns() -> None:
+    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+        return
+
+    alter_map = {
+        "widget_config": (
+            ("mirror_id", "VARCHAR(36)"),
+            ("user_id", "VARCHAR(128)"),
+        ),
+        "user_settings": (
+            ("mirror_id", "VARCHAR(36)"),
+            ("user_id", "VARCHAR(128)"),
+        ),
+        "clothing_item": (("user_id", "VARCHAR(128)"),),
+        "calendar_event": (
+            ("mirror_id", "VARCHAR(36)"),
+            ("user_id", "VARCHAR(128)"),
+        ),
+    }
+    with engine.begin() as conn:
+        for table, additions in alter_map.items():
+            rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+            columns = {str(row[1]) for row in rows}
+            if not columns:
+                continue
+            for column_name, column_type in additions:
+                if column_name in columns:
+                    continue
+                conn.execute(
+                    text(
+                        f"ALTER TABLE {table} ADD COLUMN {column_name} {column_type}"
+                    )
+                )
 
 
 def get_db():

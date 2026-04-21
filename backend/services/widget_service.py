@@ -6,15 +6,14 @@ from sqlalchemy.orm import Session
 from backend.database.models import WidgetConfig
 from backend.schemas.mirror_sync_state import SyncStateInbound
 from backend.schemas.widget import WidgetConfigUpdate
+from backend.services import user_service
 
 
-def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
-    """
-    Insert a mirror-first peripheral default layout if no widgets exist yet.
-    This keeps center reflection clear and edge information visible on first run.
-    """
+def _seed_default_widgets(db: Session, mirror_id: str, user_id: str) -> List[WidgetConfig]:
     defaults = [
         WidgetConfig(
+            mirror_id=mirror_id,
+            user_id=user_id,
             widget_id="clock",
             enabled=True,
             position_row=1,
@@ -24,6 +23,8 @@ def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
             config_json={"freeform": {"x": 3, "y": 4, "width": 32, "height": 18}},
         ),
         WidgetConfig(
+            mirror_id=mirror_id,
+            user_id=user_id,
             widget_id="weather",
             enabled=True,
             position_row=1,
@@ -33,6 +34,8 @@ def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
             config_json={"freeform": {"x": 67, "y": 4, "width": 30, "height": 18}},
         ),
         WidgetConfig(
+            mirror_id=mirror_id,
+            user_id=user_id,
             widget_id="news",
             enabled=True,
             position_row=3,
@@ -50,6 +53,8 @@ def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
             },
         ),
         WidgetConfig(
+            mirror_id=mirror_id,
+            user_id=user_id,
             widget_id="calendar",
             enabled=True,
             position_row=3,
@@ -59,6 +64,8 @@ def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
             config_json={"freeform": {"x": 56, "y": 68, "width": 41, "height": 26}},
         ),
         WidgetConfig(
+            mirror_id=mirror_id,
+            user_id=user_id,
             widget_id="email",
             enabled=True,
             position_row=2,
@@ -68,6 +75,8 @@ def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
             config_json={"freeform": {"x": 56, "y": 42, "width": 30, "height": 18}},
         ),
         WidgetConfig(
+            mirror_id=mirror_id,
+            user_id=user_id,
             widget_id="virtual_try_on",
             enabled=True,
             position_row=2,
@@ -85,79 +94,62 @@ def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
     ]
     db.add_all(defaults)
     db.commit()
+    return _list_widgets_query(db, mirror_id, user_id).all()
+
+
+def _list_widgets_query(db: Session, mirror_id: str, user_id: str):
     return (
         db.query(WidgetConfig)
+        .filter(WidgetConfig.mirror_id == mirror_id, WidgetConfig.user_id == user_id)
         .order_by(WidgetConfig.position_row, WidgetConfig.position_col, WidgetConfig.id)
-        .all()
     )
 
 
-def get_all_widgets(db: Session) -> List[WidgetConfig]:
-    """
-    Return all widget configurations ordered for deterministic layout.
-    Seed with a default layout if DB is empty.
-    """
-    widgets = (
-        db.query(WidgetConfig)
-        .order_by(WidgetConfig.position_row, WidgetConfig.position_col, WidgetConfig.id)
-        .all()
-    )
+def _widget_snapshot(widgets: List[WidgetConfig]) -> dict:
+    return {
+        "widgets": [
+            {
+                "id": row.id,
+                "widget_id": row.widget_id,
+                "enabled": row.enabled,
+                "position_row": row.position_row,
+                "position_col": row.position_col,
+                "size_rows": row.size_rows,
+                "size_cols": row.size_cols,
+                "config_json": row.config_json or {},
+            }
+            for row in widgets
+        ]
+    }
+
+
+def get_all_widgets(db: Session, mirror_id: str, user_id: str) -> List[WidgetConfig]:
+    widgets = _list_widgets_query(db, mirror_id, user_id).all()
     if not widgets:
-        widgets = _seed_default_widgets(db)
-    elif not any(w.widget_id == "email" for w in widgets):
-        db.add(
-            WidgetConfig(
-                widget_id="email",
-                enabled=True,
-                position_row=2,
-                position_col=3,
-                size_rows=1,
-                size_cols=1,
-                config_json={"freeform": {"x": 56, "y": 42, "width": 30, "height": 18}},
-            )
-        )
-        db.commit()
-        widgets = (
-            db.query(WidgetConfig)
-            .order_by(WidgetConfig.position_row, WidgetConfig.position_col, WidgetConfig.id)
-            .all()
-        )
+        widgets = _seed_default_widgets(db, mirror_id, user_id)
     return widgets
 
 
-def replace_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[WidgetConfig]:
-    """
-    Replace widget configurations from client payload.
-    Upserts incoming configs and deletes any rows not present in the list.
-
-    Clients sometimes omit database ``id`` (companion before GET /widgets returns,
-    cache-only bootstrap, or WebSocket-only flows). In that case we match by
-    ``widget_id`` using the lowest existing row id as canonical so we update in
-    place instead of inserting duplicate placements.
-    """
-    initial_rows = list(db.query(WidgetConfig).all())
+def replace_widgets(db: Session, mirror_id: str, user_id: str, configs: List[WidgetConfigUpdate]) -> List[WidgetConfig]:
+    initial_rows = list(_list_widgets_query(db, mirror_id, user_id).all())
     existing_by_id = {w.id: w for w in initial_rows}
     existing_by_widget_id: dict[str, WidgetConfig] = {}
-    for w in sorted(initial_rows, key=lambda r: r.id):
-        if w.widget_id not in existing_by_widget_id:
-            existing_by_widget_id[w.widget_id] = w
+    for row in sorted(initial_rows, key=lambda item: item.id):
+        existing_by_widget_id.setdefault(row.widget_id, row)
 
     seen_ids: set[int] = set()
-
     for cfg in configs:
         data = cfg.model_dump(exclude_unset=True)
         row_id = data.pop("id", None)
-
         obj: Optional[WidgetConfig] = None
         if row_id is not None and row_id in existing_by_id:
             obj = existing_by_id[row_id]
         if obj is None:
-            wgid = data.get("widget_id")
-            if isinstance(wgid, str) and wgid in existing_by_widget_id:
-                obj = existing_by_widget_id[wgid]
-
+            widget_id = data.get("widget_id")
+            if isinstance(widget_id, str):
+                obj = existing_by_widget_id.get(widget_id)
         if obj is None:
-            obj = WidgetConfig(**data)
+            obj = WidgetConfig(mirror_id=mirror_id, user_id=user_id, **data)
             db.add(obj)
             db.flush()
             existing_by_id[obj.id] = obj
@@ -165,23 +157,25 @@ def replace_widgets(db: Session, configs: List[WidgetConfigUpdate]) -> List[Widg
         else:
             for field, value in data.items():
                 setattr(obj, field, value)
-
         seen_ids.add(obj.id)
 
     for row in initial_rows:
         if row.id not in seen_ids:
             db.delete(row)
-
     db.commit()
-    return get_all_widgets(db)
+
+    widgets = get_all_widgets(db, mirror_id, user_id)
+    user_service.update_profile_widget_snapshot(db, mirror_id, user_id, _widget_snapshot(widgets))
+    return widgets
 
 
-def updates_from_sync_state(db: Session, sync: SyncStateInbound) -> List[WidgetConfigUpdate]:
-    """
-    Map config-app SYNC_STATE (percent layout) to WidgetConfigUpdate rows for replace_widgets.
-    Preserves grid + enabled from existing rows when matched by widget_id.
-    """
-    existing_list = db.query(WidgetConfig).all()
+def updates_from_sync_state(
+    db: Session,
+    mirror_id: str,
+    user_id: str,
+    sync: SyncStateInbound,
+) -> List[WidgetConfigUpdate]:
+    existing_list = _list_widgets_query(db, mirror_id, user_id).all()
     existing_by_wid = {w.widget_id: w for w in existing_list}
     out: List[WidgetConfigUpdate] = []
 
@@ -193,12 +187,12 @@ def updates_from_sync_state(db: Session, sync: SyncStateInbound) -> List[WidgetC
         cfg_payload: dict = {}
         if isinstance(item.config, dict):
             cfg_payload.update(item.config)
-        fx = float(item.x) if item.x is not None else 10.0
-        fy = float(item.y) if item.y is not None else 10.0
-        fw = float(item.width) if item.width is not None else 30.0
-        fh = float(item.height) if item.height is not None else 20.0
-        cfg_payload["freeform"] = {"x": fx, "y": fy, "width": fw, "height": fh}
-
+        cfg_payload["freeform"] = {
+            "x": float(item.x) if item.x is not None else 10.0,
+            "y": float(item.y) if item.y is not None else 10.0,
+            "width": float(item.width) if item.width is not None else 30.0,
+            "height": float(item.height) if item.height is not None else 20.0,
+        }
         out.append(
             WidgetConfigUpdate(
                 id=ex.id if ex else None,
@@ -211,18 +205,13 @@ def updates_from_sync_state(db: Session, sync: SyncStateInbound) -> List[WidgetC
                 config_json=cfg_payload,
             )
         )
-
     return out
 
 
-def get_layout_revision(db: Session) -> str:
-    """
-    Lightweight revision token for optimistic UI merges.
-    Uses max(updated_at) timestamp + row count.
-    """
-    rows = db.query(WidgetConfig.updated_at).all()
+def get_layout_revision(db: Session, mirror_id: str, user_id: str) -> str:
+    rows = _list_widgets_query(db, mirror_id, user_id).with_entities(WidgetConfig.updated_at).all()
     count = len(rows)
     if not rows:
         return "0-0"
-    latest: datetime = max(r[0] for r in rows if r[0] is not None)  # type: ignore[assignment]
+    latest: datetime = max(row[0] for row in rows if row[0] is not None)  # type: ignore[assignment]
     return f"{int(latest.timestamp())}-{count}"

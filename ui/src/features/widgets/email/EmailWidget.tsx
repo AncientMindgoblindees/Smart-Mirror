@@ -1,8 +1,8 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 
-import type { WidgetConfig } from '../types';
 import { estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
+import type { WidgetConfig } from '../types';
 import { useEmailMessages } from './useEmailMessages';
 import type { EmailDisplay } from './useEmailMessages';
 import './email-widget.css';
@@ -23,7 +23,11 @@ function resolveEmailPageSize(config: WidgetConfig): number {
 export const EmailWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
   const { messages, hasProviders, loading } = useEmailMessages();
   const pageSize = resolveEmailPageSize(config);
-  const { pageItems, pageIndex, pageCount } = useDisplayPagination<EmailDisplay>(messages, pageSize, 7000);
+  const { pageItems, pageIndex, pageCount } = useDisplayPagination<EmailDisplay>(
+    messages,
+    pageSize,
+    7000,
+  );
 
   if (!loading && messages.length === 0 && hasProviders) {
     return (
@@ -36,7 +40,7 @@ export const EmailWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ con
   if (!loading && !hasProviders) {
     return (
       <div className="widget-content email-widget">
-        <div className="email-empty">Connect Google or Microsoft email</div>
+        <div className="email-empty">Connect Google email</div>
       </div>
     );
   }

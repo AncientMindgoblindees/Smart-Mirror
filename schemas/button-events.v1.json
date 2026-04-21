@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smart-mirror.local/schemas/button-events.v1.json",
+  "title": "Mirror Button Events v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "button"
+    },
+    "button_id": {
+      "type": "string",
+      "enum": ["LAYOUT", "UP", "DOWN", "DISPLAY"]
+    },
+    "action": {
+      "type": "string",
+      "enum": ["PRESS", "RELEASE", "CLICK", "LONG_PRESS"]
+    },
+    "effect": {
+      "type": "string",
+      "description": "Backward-compatible effect name for current UI consumers.",
+      "enum": [
+        "none",
+        "cycle_layout",
+        "capture_photo",
+        "dismiss_tryon",
+        "toggle_dim",
+        "toggle_sleep",
+        "open_profile_menu"
+      ]
+    },
+    "semantic_action": {
+      "type": "string",
+      "description": "Preferred canonical action for the boot menu and keyboard simulation.",
+      "enum": [
+        "none",
+        "menu_open",
+        "menu_close",
+        "menu_back",
+        "menu_up",
+        "menu_down",
+        "menu_select",
+        "profile_menu_open",
+        "display_toggle_dim",
+        "display_toggle_sleep",
+        "capture_photo",
+        "dismiss_tryon",
+        "cycle_layout"
+      ]
+    },
+    "semantic_group": {
+      "type": "string",
+      "enum": ["none", "menu", "profile", "display", "camera", "overlay"]
+    },
+    "semantic_actions": {
+      "type": "array",
+      "description": "Ordered semantic candidates. The UI can resolve the first supported action for its current state.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "menu_open",
+          "menu_close",
+          "menu_back",
+          "menu_up",
+          "menu_down",
+          "menu_select",
+          "profile_menu_open",
+          "display_toggle_dim",
+          "display_toggle_sleep",
+          "capture_photo",
+          "dismiss_tryon",
+          "cycle_layout"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "ts": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "type",
+    "button_id",
+    "action",
+    "effect",
+    "semantic_action",
+    "semantic_group",
+    "semantic_actions",
+    "ts"
+  ]
+}

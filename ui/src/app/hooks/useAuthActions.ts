@@ -6,33 +6,24 @@ export function useAuthActions(
 ) {
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const signIn = useCallback(
-    async (provider: 'google' | 'microsoft') => {
-      setAuthError(null);
-      try {
-        await initiateLogin(provider);
-      } catch (e) {
-        const label = provider === 'google' ? 'Google' : 'Microsoft';
-        setAuthError(e instanceof Error ? e.message : `${label} sign-in failed`);
-      }
-    },
-    [initiateLogin],
-  );
+  const signInGoogle = useCallback(async () => {
+    setAuthError(null);
+    try {
+      await initiateLogin('google');
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : 'Google sign-in failed');
+    }
+  }, [initiateLogin]);
 
-  const disconnect = useCallback(
-    async (provider: 'google' | 'microsoft') => {
-      setAuthError(null);
-      await disconnectProvider(provider);
-    },
-    [disconnectProvider],
-  );
+  const disconnectGoogle = useCallback(async () => {
+    setAuthError(null);
+    await disconnectProvider('google');
+  }, [disconnectProvider]);
 
   return {
     authError,
     setAuthError,
-    signInGoogle: () => signIn('google'),
-    signInMicrosoft: () => signIn('microsoft'),
-    disconnectGoogle: () => disconnect('google'),
-    disconnectMicrosoft: () => disconnect('microsoft'),
+    signInGoogle,
+    disconnectGoogle,
   };
 }

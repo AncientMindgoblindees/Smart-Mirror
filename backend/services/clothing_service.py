@@ -14,15 +14,16 @@ from backend.services import cloud_storage_service
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
-def list_clothing_items(db: Session, include_images: bool = False) -> List[ClothingItem]:
-    q = db.query(ClothingItem)
+def list_clothing_items(db: Session, user_id: str, include_images: bool = False) -> List[ClothingItem]:
+    q = db.query(ClothingItem).filter(ClothingItem.user_id == user_id)
     if include_images:
         q = q.options(joinedload(ClothingItem.images))
     return q.order_by(ClothingItem.updated_at.desc()).all()
 
 
-def create_clothing_item(db: Session, payload: ClothingItemCreate) -> ClothingItem:
+def create_clothing_item(db: Session, user_id: str, payload: ClothingItemCreate) -> ClothingItem:
     item = ClothingItem(
+        user_id=user_id,
         name=payload.name,
         category=payload.category,
         color=payload.color,
@@ -36,22 +37,20 @@ def create_clothing_item(db: Session, payload: ClothingItemCreate) -> ClothingIt
 
 
 def get_clothing_item_by_id(
-    db: Session, item_id: int, include_images: bool = False
+    db: Session,
+    user_id: str,
+    item_id: int,
+    include_images: bool = False,
 ) -> Optional[ClothingItem]:
-    q = db.query(ClothingItem).filter(ClothingItem.id == item_id)
+    q = db.query(ClothingItem).filter(ClothingItem.id == item_id, ClothingItem.user_id == user_id)
     if include_images:
         q = q.options(joinedload(ClothingItem.images))
     return q.first()
 
 
-def update_clothing_item(
-    db: Session,
-    item: ClothingItem,
-    payload: ClothingItemUpdate,
-) -> ClothingItem:
+def update_clothing_item(db: Session, item: ClothingItem, payload: ClothingItemUpdate) -> ClothingItem:
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
-
     db.commit()
     db.refresh(item)
     return item
@@ -62,22 +61,21 @@ def delete_clothing_item(db: Session, item: ClothingItem) -> None:
     db.commit()
 
 
-def list_clothing_images(db: Session, item_id: int) -> List[ClothingImage]:
+def list_clothing_images(db: Session, user_id: str, item_id: int) -> List[ClothingImage]:
     return (
         db.query(ClothingImage)
-        .filter(ClothingImage.clothing_item_id == item_id)
+        .join(ClothingItem, ClothingItem.id == ClothingImage.clothing_item_id)
+        .filter(ClothingItem.user_id == user_id, ClothingImage.clothing_item_id == item_id)
         .all()
     )
 
 
-def get_clothing_image_by_id(
-    db: Session,
-    item_id: int,
-    image_id: int,
-) -> Optional[ClothingImage]:
+def get_clothing_image_by_id(db: Session, user_id: str, item_id: int, image_id: int) -> Optional[ClothingImage]:
     return (
         db.query(ClothingImage)
+        .join(ClothingItem, ClothingItem.id == ClothingImage.clothing_item_id)
         .filter(
+            ClothingItem.user_id == user_id,
             ClothingImage.id == image_id,
             ClothingImage.clothing_item_id == item_id,
         )
@@ -90,15 +88,7 @@ def delete_clothing_image(db: Session, image: ClothingImage) -> None:
     db.commit()
 
 
-async def upload_clothing_image_file(
-    db: Session,
-    item: ClothingItem,
-    file: UploadFile,
-) -> ClothingImage:
-    """
-    Accept an uploaded image file, send it to Cloudinary, then store the
-    returned metadata in the local SQLite database.
-    """
+async def upload_clothing_image_file(db: Session, item: ClothingItem, file: UploadFile) -> ClothingImage:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
 
@@ -121,7 +111,7 @@ async def upload_clothing_image_file(
 
         upload_result = cloud_storage_service.upload_clothing_image(
             temp_path,
-            public_id=f"{item.id}-{uuid.uuid4()}",
+            public_id=f"{item.user_id}-{item.id}-{uuid.uuid4()}",
         )
 
         image = ClothingImage(
@@ -130,12 +120,19 @@ async def upload_clothing_image_file(
             storage_key=upload_result["storage_key"],
             image_url=upload_result["image_url"],
         )
-
         db.add(image)
         db.commit()
         db.refresh(image)
         return image
-
     finally:
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+def delete_user_clothing_cache(db: Session, user_id: str) -> int:
+    rows = db.query(ClothingItem).filter(ClothingItem.user_id == user_id).all()
+    count = len(rows)
+    for row in rows:
+        db.delete(row)
+    db.commit()
+    return count

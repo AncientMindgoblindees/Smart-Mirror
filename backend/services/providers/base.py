@@ -1,4 +1,4 @@
-"""Abstract base for calendar/task providers (Google, Microsoft, future)."""
+"""Abstract base for calendar/task providers."""
 
 from __future__ import annotations
 
@@ -73,3 +73,7 @@ class CalendarProvider(ABC):
         self, access_token: str
     ) -> List[NormalizedEvent]:
         """Return tasks/reminders normalized to NormalizedEvent."""
+
+    async def revoke_refresh_token(self, refresh_token: str) -> None:
+        """Best-effort token revocation hook for provider cleanup."""
+        return None

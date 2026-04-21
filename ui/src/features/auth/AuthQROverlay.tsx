@@ -2,6 +2,7 @@ import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { X } from 'lucide-react';
+
 import type { PendingAuth } from './useAuthState';
 import './auth-overlay.css';
 
@@ -12,6 +13,9 @@ type Props = {
 
 export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel }) => {
   const hasUserCode = Boolean(pendingAuth?.deviceCode.user_code?.trim());
+  const title =
+    pendingAuth?.provider === 'google' ? 'Connect Google account' : 'Continue sign-in';
+
   return (
     <AnimatePresence>
       {pendingAuth && (
@@ -33,9 +37,7 @@ export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel }) => {
               <X size={24} />
             </button>
 
-            <h2 className="auth-qr-title">
-              Sign in with {pendingAuth.provider === 'google' ? 'Google' : 'Microsoft'}
-            </h2>
+            <h2 className="auth-qr-title">{title}</h2>
 
             <p className="auth-qr-instructions">
               {hasUserCode
@@ -53,11 +55,7 @@ export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel }) => {
               />
             </div>
 
-            {hasUserCode && (
-              <div className="auth-qr-user-code">
-                {pendingAuth.deviceCode.user_code}
-              </div>
-            )}
+            {hasUserCode && <div className="auth-qr-user-code">{pendingAuth.deviceCode.user_code}</div>}
 
             <p className="auth-qr-url">
               Or visit: <span>{pendingAuth.deviceCode.verification_uri}</span>

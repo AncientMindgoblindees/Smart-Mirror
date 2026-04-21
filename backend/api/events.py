@@ -10,15 +10,58 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+from backend.database.models import Mirror, UserProfile
 from backend.database.session import SessionLocal, get_db
 from backend.schemas.mirror_sync_state import SyncStateInbound
-from backend.services import button_service, widget_service
+from backend.services import button_service, user_service, widget_service
 from backend.services.device_connection import device_connection
 from backend.services.realtime import buttons_registry, control_registry
 from hardware.gpio.config import ButtonId
 from hardware.gpio.events import ButtonAction
 
 router = APIRouter(tags=["events"])
+
+
+def _resolve_mirror_context_from_websocket(db: Session, websocket: WebSocket) -> tuple[str, str]:
+    def header_value(*names: str) -> str | None:
+        for name in names:
+            value = websocket.headers.get(name)
+            if value:
+                return value
+        return None
+
+    hardware_id = (
+        header_value("x-mirror-hardware-id", "x-hardware-id")
+        or websocket.query_params.get("hardware_id")
+    )
+    mirror = None
+    if hardware_id:
+        mirror = user_service.get_mirror_by_hardware_id(db, hardware_id)
+    if mirror is None:
+        mirrors = db.query(Mirror).order_by(Mirror.created_at.asc()).all()
+        if len(mirrors) == 1:
+            mirror = mirrors[0]
+    if mirror is None:
+        raise ValueError("Mirror is not registered")
+
+    user_id = header_value("x-mirror-user-id", "x-user-id") or websocket.query_params.get("user_id")
+    if user_id:
+        profile = (
+            db.query(UserProfile)
+            .filter(
+                UserProfile.mirror_id == mirror.id,
+                UserProfile.user_id == user_id,
+            )
+            .first()
+        )
+        if profile is None:
+            raise ValueError("Requested profile is not enrolled on this mirror")
+    else:
+        profile = user_service.get_active_profile(db, mirror.id)
+    if profile is None:
+        raise ValueError("No active profile for mirror")
+
+    return mirror.id, profile.user_id
 
 
 @router.websocket("/ws/buttons")
@@ -28,14 +71,7 @@ async def ws_buttons(websocket: WebSocket, db: Session = Depends(get_db)) -> Non
     try:
         async for evt in button_service.iter_button_events():
             payload = button_service.handle_button_event(evt, db)
-            await buttons_registry.broadcast(
-                {
-                    "type": "button",
-                    "button_id": payload["button_id"],
-                    "action": payload["action"],
-                    "effect": payload["effect"],
-                }
-            )
+            await buttons_registry.broadcast({"type": "button", **payload})
             if websocket not in buttons_registry.active:
                 # Broadcast removed this connection due to a send failure; stop.
                 break
@@ -50,6 +86,9 @@ async def dev_button_event(button_id: str, action: str) -> Any:
     """
     Development-only endpoint to simulate button events without GPIO.
     Only available when ENABLE_DEV_ENDPOINTS=true.
+    UI consumers should prefer the semantic fields broadcast on `/ws/buttons`
+    (`semantic_action`, `semantic_actions`, `semantic_group`) over the legacy
+    compatibility `effect` field.
     """
     if os.getenv("ENABLE_DEV_ENDPOINTS", "false").lower() != "true":
         return JSONResponse(status_code=404, content={"detail": "Not Found"})
@@ -127,8 +166,9 @@ async def ws_control(websocket: WebSocket) -> None:
                 continue
             db = SessionLocal()
             try:
-                updates = widget_service.updates_from_sync_state(db, sync)
-                widget_service.replace_widgets(db, updates)
+                mirror_id, user_id = _resolve_mirror_context_from_websocket(db, websocket)
+                updates = widget_service.updates_from_sync_state(db, mirror_id, user_id, sync)
+                widget_service.replace_widgets(db, mirror_id, user_id, updates)
                 applied = {
                     "type": "WIDGETS_SYNC_APPLIED",
                     "version": 2,

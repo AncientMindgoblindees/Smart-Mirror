@@ -2,58 +2,85 @@ import { useEffect, useRef } from 'react';
 
 import { getWebSocketUrl } from '@/config/backendOrigin';
 
-/**
- * Keyboard (dev / kiosk testing) + WebSocket `/ws/buttons` (physical GPIO buttons).
- *
- * Keys (when focus is not in an input):
- * - d: toggle tools / dev panel
- * - 2: toggle dim (matches GPIO DISPLAY click → toggle_dim)
- * - 3: toggle screen off / sleep (matches GPIO DISPLAY long-press → toggle_sleep)
- *
- * When sleep is on, the next key press wakes the mirror (no other action).
- */
+export type MirrorButtonInput = {
+  source: 'keyboard' | 'gpio';
+  semanticAction?: string;
+  semanticActions?: string[];
+  effect?: string;
+};
+
 export type MirrorInputActions = {
-  toggleDim: () => void;
-  toggleSleep: () => void;
-  toggleDevPanel: () => void;
-  dismissTryOnOverlay: () => void;
+  onButtonInput: (input: MirrorButtonInput) => void;
   getSleepMode: () => boolean;
 };
+
+function emitKeyboardAction(ref: { current: MirrorInputActions }, action: string): void {
+  ref.current.onButtonInput({
+    source: 'keyboard',
+    semanticAction: action,
+    semanticActions: [action],
+  });
+}
 
 export function useMirrorInput(actions: MirrorInputActions) {
   const ref = useRef(actions);
   ref.current = actions;
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const onKey = (event: KeyboardEvent) => {
+      const element = event.target as HTMLElement | null;
+      if (element?.closest('input, textarea, select, [contenteditable="true"]')) return;
 
       if (ref.current.getSleepMode()) {
-        e.preventDefault();
-        ref.current.toggleSleep();
+        event.preventDefault();
+        emitKeyboardAction(ref, 'display_toggle_sleep');
         return;
       }
 
-      const k = e.key;
-      if (k === 'd' || k === 'D') {
-        e.preventDefault();
-        ref.current.toggleDevPanel();
+      const key = event.key;
+      if (key === 'ArrowUp') {
+        event.preventDefault();
+        emitKeyboardAction(ref, 'menu_up');
         return;
       }
-      if (k === '2') {
-        e.preventDefault();
-        ref.current.toggleDim();
+      if (key === 'ArrowDown') {
+        event.preventDefault();
+        emitKeyboardAction(ref, 'menu_down');
         return;
       }
-      if (k === '3') {
-        e.preventDefault();
-        ref.current.toggleSleep();
+      if (key === 'Enter') {
+        event.preventDefault();
+        emitKeyboardAction(ref, 'menu_select');
         return;
       }
-      if (k === 'x' || k === 'X') {
-        e.preventDefault();
-        ref.current.dismissTryOnOverlay();
+      if (key === 'Escape' || key === 'Backspace') {
+        event.preventDefault();
+        emitKeyboardAction(ref, 'menu_back');
+        return;
+      }
+      if (key === 'm' || key === 'M') {
+        event.preventDefault();
+        emitKeyboardAction(ref, 'profile_menu_open');
+        return;
+      }
+      if (key === 'd' || key === 'D') {
+        event.preventDefault();
+        emitKeyboardAction(ref, 'toggle_dev_panel');
+        return;
+      }
+      if (key === '2') {
+        event.preventDefault();
+        emitKeyboardAction(ref, 'display_toggle_dim');
+        return;
+      }
+      if (key === '3') {
+        event.preventDefault();
+        emitKeyboardAction(ref, 'display_toggle_sleep');
+        return;
+      }
+      if (key === 'x' || key === 'X') {
+        event.preventDefault();
+        emitKeyboardAction(ref, 'dismiss_tryon');
       }
     };
 
@@ -84,24 +111,21 @@ export function useMirrorInput(actions: MirrorInputActions) {
         backoff = BACKOFF_INITIAL;
       };
 
-      ws.onmessage = (ev) => {
+      ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(ev.data as string) as { effect?: string };
-          switch (data.effect) {
-            case 'toggle_dim':
-              ref.current.toggleDim();
-              break;
-            case 'toggle_sleep':
-              ref.current.toggleSleep();
-              break;
-            case 'dismiss_tryon':
-              ref.current.dismissTryOnOverlay();
-              break;
-            default:
-              break;
-          }
+          const data = JSON.parse(event.data as string) as {
+            effect?: string;
+            semantic_action?: string;
+            semantic_actions?: string[];
+          };
+          ref.current.onButtonInput({
+            source: 'gpio',
+            semanticAction: data.semantic_action,
+            semanticActions: Array.isArray(data.semantic_actions) ? data.semantic_actions : [],
+            effect: data.effect,
+          });
         } catch {
-          /* ignore */
+          /* ignore invalid button frames */
         }
       };
 

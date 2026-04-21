@@ -1,5 +1,3 @@
-/** Mirrors FastAPI `WidgetConfigOut` / `WidgetConfigUpdate` JSON shape. */
-
 export interface WidgetConfigOut {
   id: number;
   widget_id: string;
@@ -53,7 +51,6 @@ export interface CameraCaptureRequest {
   session_id?: string;
 }
 
-/** GET /api/weather/ — WeatherAPI.com snapshot (proxied by backend). */
 export interface WeatherForecastDayOut {
   weekday: string;
   high: number;
@@ -77,7 +74,6 @@ export interface WeatherSnapshotOut {
   error?: string | null;
 }
 
-/** GET/POST /api/clothing/ — matches `ClothingItemRead`. */
 export interface ClothingItemRead {
   id: number;
   name: string;
@@ -90,7 +86,6 @@ export interface ClothingItemRead {
   images?: ClothingImageRead[] | null;
 }
 
-/** GET /api/clothing/{id}/images — matches `ClothingImageRead`. */
 export interface ClothingImageRead {
   id: number;
   clothing_item_id: number;
@@ -100,7 +95,57 @@ export interface ClothingImageRead {
   created_at: string;
 }
 
-// ── Auth types ──────────────────────────────────────────────────────
+export interface MirrorRegistrationRequest {
+  hardware_id: string;
+  friendly_name?: string | null;
+  hardware_token?: string | null;
+}
+
+export interface MirrorRegistrationResponse {
+  id: string;
+  hardware_id: string;
+  friendly_name?: string | null;
+  created_at: string;
+  updated_at: string;
+  hardware_token: string;
+}
+
+export interface MirrorProfile {
+  id: number;
+  mirror_id: string;
+  user_id: string;
+  display_name?: string | null;
+  widget_config?: Record<string, unknown> | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MirrorSyncResponse {
+  mirror: {
+    id: string;
+    hardware_id: string;
+    friendly_name?: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  active_profile?: MirrorProfile | null;
+  widget_config: WidgetConfigOut[];
+  user_settings?: UserSettingsOut | null;
+}
+
+export interface ProfileEnrollRequest {
+  hardware_id: string;
+  user_id: string;
+  display_name?: string | null;
+  widget_config?: Record<string, unknown> | null;
+  activate?: boolean;
+}
+
+export interface ProfileActivateRequest {
+  hardware_id: string;
+  target_user_id: string;
+}
 
 export interface AuthProviderStatus {
   provider: string;
@@ -124,8 +169,6 @@ export interface AuthLoginStatus {
   status: string;
   message?: string | null;
 }
-
-// ── Calendar types ──────────────────────────────────────────────────
 
 export interface CalendarEventItem {
   id: number;

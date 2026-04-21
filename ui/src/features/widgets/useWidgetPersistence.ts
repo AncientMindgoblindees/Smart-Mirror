@@ -1,23 +1,30 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react';
-import { getUserSettings, getWidgets, putWidgets } from '@/api/mirrorApi';
+
 import type { WidgetConfigOut } from '@/api/backendTypes';
+import { getUserSettings, getWidgets, putWidgets } from '@/api/mirrorApi';
 import { widgetToBackend } from '@/api/transforms';
-import { applyUserSettings } from '@/userSettings';
-import type { WidgetConfig } from './types';
-import { INITIAL_WIDGETS } from './constants';
-import { loadWidgetCache, saveWidgetCache, signatureFromWidgets } from './widgetStorage';
-import { mergeRowsToWidgets, serverLayoutFingerprint, widgetsSignature } from './widgetSyncEngine';
 import { useIntervalWhen } from '@/hooks/infra/useIntervalWhen';
 import { useWindowEvent } from '@/hooks/infra/useWindowEvent';
+import { applyUserSettings } from '@/userSettings';
+import { INITIAL_WIDGETS } from './constants';
+import { mergeRowsToWidgets, serverLayoutFingerprint, widgetsSignature } from './widgetSyncEngine';
+import { loadWidgetCache, saveWidgetCache, signatureFromWidgets } from './widgetStorage';
+import type { WidgetConfig } from './types';
 
 const POLL_MS = 1200;
 
-export function useWidgetPersistence(): {
+type UseWidgetPersistenceOptions = {
+  enabled?: boolean;
+  refreshKey?: string;
+};
+
+export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}): {
   widgets: WidgetConfig[];
   setWidgets: Dispatch<SetStateAction<WidgetConfig[]>>;
   ready: boolean;
   serverConnected: boolean;
 } {
+  const { enabled = true, refreshKey = 'default' } = options;
   const [widgets, setWidgets] = useState<WidgetConfig[]>(INITIAL_WIDGETS);
   const [ready, setReady] = useState(false);
   const [serverConnected, setServerConnected] = useState(false);
@@ -27,21 +34,23 @@ export function useWidgetPersistence(): {
   const putInFlightRef = useRef(false);
 
   const mergeServerRows = useCallback((list: WidgetConfigOut[], opts?: { force?: boolean }) => {
-    const fp = serverLayoutFingerprint(list);
-    if (!opts?.force && fp === lastServerFingerprintRef.current) return;
-    // Avoid reverting local edits while a push is queued or in-flight.
+    const fingerprint = serverLayoutFingerprint(list);
+    if (!opts?.force && fingerprint === lastServerFingerprintRef.current) return;
     if (!opts?.force && (putInFlightRef.current || pendingPushTimerRef.current !== undefined)) return;
-    lastServerFingerprintRef.current = fp;
+
+    lastServerFingerprintRef.current = fingerprint;
     if (pendingPushTimerRef.current !== undefined) {
       clearTimeout(pendingPushTimerRef.current);
       pendingPushTimerRef.current = undefined;
     }
+
     const mapped = mergeRowsToWidgets(list);
     lastPutSig.current = widgetsSignature(mapped);
     setWidgets(mapped);
   }, []);
 
   const pullWidgetsFromServer = useCallback(async () => {
+    if (!enabled) return;
     try {
       const list = await getWidgets();
       mergeServerRows(list);
@@ -49,10 +58,29 @@ export function useWidgetPersistence(): {
     } catch {
       setServerConnected(false);
     }
-  }, [mergeServerRows]);
+  }, [enabled, mergeServerRows]);
 
   useEffect(() => {
     let cancelled = false;
+
+    if (!enabled) {
+      setReady(true);
+      setServerConnected(false);
+      setWidgets(INITIAL_WIDGETS);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setReady(false);
+    setWidgets(INITIAL_WIDGETS);
+    lastPutSig.current = '';
+    lastServerFingerprintRef.current = '';
+    if (pendingPushTimerRef.current !== undefined) {
+      clearTimeout(pendingPushTimerRef.current);
+      pendingPushTimerRef.current = undefined;
+    }
+
     (async () => {
       try {
         const [settings, list] = await Promise.all([getUserSettings(), getWidgets()]);
@@ -72,22 +100,24 @@ export function useWidgetPersistence(): {
         if (!cancelled) setReady(true);
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [mergeServerRows]);
+  }, [enabled, mergeServerRows, refreshKey]);
 
-  useIntervalWhen(() => void pullWidgetsFromServer(), 3000, ready && !serverConnected);
+  useIntervalWhen(() => void pullWidgetsFromServer(), 3000, enabled && ready && !serverConnected);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!enabled || !ready) return;
     saveWidgetCache(widgets);
-  }, [widgets, ready]);
+  }, [enabled, ready, widgets]);
 
   useEffect(() => {
-    if (!ready || !serverConnected) return;
-    const sig = widgetsSignature(widgets);
-    if (sig === lastPutSig.current) return;
+    if (!enabled || !ready || !serverConnected) return;
+    const signature = widgetsSignature(widgets);
+    if (signature === lastPutSig.current) return;
+
     if (pendingPushTimerRef.current !== undefined) clearTimeout(pendingPushTimerRef.current);
     pendingPushTimerRef.current = window.setTimeout(async () => {
       pendingPushTimerRef.current = undefined;
@@ -96,20 +126,21 @@ export function useWidgetPersistence(): {
         const out = await putWidgets(widgets.map(widgetToBackend));
         mergeServerRows(out, { force: true });
         setServerConnected(true);
-      } catch (e) {
-        console.warn('Failed to sync widgets to server', e);
+      } catch (error) {
+        console.warn('Failed to sync widgets to server', error);
         setServerConnected(false);
       } finally {
         putInFlightRef.current = false;
       }
     }, 250);
+
     return () => {
       if (pendingPushTimerRef.current !== undefined) {
         clearTimeout(pendingPushTimerRef.current);
         pendingPushTimerRef.current = undefined;
       }
     };
-  }, [widgets, ready, serverConnected, mergeServerRows]);
+  }, [enabled, widgets, ready, serverConnected, mergeServerRows]);
 
   useIntervalWhen(
     () => {
@@ -117,21 +148,24 @@ export function useWidgetPersistence(): {
       void pullWidgetsFromServer();
     },
     POLL_MS,
-    ready && serverConnected,
+    enabled && ready && serverConnected,
   );
 
   useWindowEvent('focus', () => {
-    if (!ready || !serverConnected) return;
+    if (!enabled || !ready || !serverConnected) return;
     void pullWidgetsFromServer();
   });
+
   useEffect(() => {
-    if (!ready || !serverConnected) return;
+    if (!enabled || !ready || !serverConnected) return;
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void pullWidgetsFromServer();
+      if (document.visibilityState === 'visible') {
+        void pullWidgetsFromServer();
+      }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [ready, serverConnected, pullWidgetsFromServer]);
+  }, [enabled, ready, serverConnected, pullWidgetsFromServer]);
 
   return { widgets, setWidgets, ready, serverConnected };
 }

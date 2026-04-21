@@ -1,8 +1,3 @@
-"""
-Central AuthManager — coordinates OAuth login flows, token storage,
-auto-refresh, and provider registration.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -13,33 +8,23 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from backend.database.models import CalendarEvent, OAuthProvider
+from backend.database.models import CalendarEvent, OAuthCredential
 from backend.database.session import SessionLocal
 from backend.services.crypto import decrypt_token, encrypt_token
-from backend.services.providers.base import (
-    CalendarProvider,
-    DeviceCodeResponse,
-    TokenResponse,
-)
+from backend.services.providers.base import CalendarProvider, TokenResponse
 from backend.services.providers.google_provider import GoogleProvider
-from backend.services.providers.microsoft_provider import MicrosoftProvider
-from backend.services.realtime import control_registry
 
 logger = logging.getLogger(__name__)
 
 
+def _credential_key(provider_name: str, mirror_id: str, user_id: str) -> str:
+    return f"{provider_name}:{mirror_id}:{user_id}"
+
+
 class AuthManager:
     def __init__(self) -> None:
-        self._providers: Dict[str, CalendarProvider] = {}
-        self._pending_polls: Dict[str, asyncio.Task[Any]] = {}
-        self._pending_device_codes: Dict[str, DeviceCodeResponse] = {}
+        self._providers: Dict[str, CalendarProvider] = {"google": GoogleProvider()}
         self._pending_web_logins: Dict[str, float] = {}
-
-        self.register_provider(GoogleProvider())
-        self.register_provider(MicrosoftProvider())
-
-    def register_provider(self, provider: CalendarProvider) -> None:
-        self._providers[provider.provider_name] = provider
 
     def get_provider(self, name: str) -> Optional[CalendarProvider]:
         return self._providers.get(name)
@@ -48,118 +33,118 @@ class AuthManager:
     def supported_providers(self) -> List[str]:
         return list(self._providers.keys())
 
-    # ── Login Flow ──────────────────────────────────────────────────────
-
-    async def start_login(self, provider_name: str) -> DeviceCodeResponse:
-        provider = self._providers.get(provider_name)
-        if provider is None:
-            raise ValueError(f"Unknown provider: {provider_name}")
-
-        if provider_name in self._pending_polls:
-            self._pending_polls[provider_name].cancel()
-
-        device_code_resp = await provider.request_device_code()
-        self._pending_device_codes[provider_name] = device_code_resp
-
-        await control_registry.broadcast({
-            "type": "OAUTH_DEVICE_CODE",
-            "payload": {
-                "provider": provider_name,
-                "verification_uri": device_code_resp.verification_uri,
-                "user_code": device_code_resp.user_code,
-                "expires_in": device_code_resp.expires_in,
-                "interval": device_code_resp.interval,
-                "message": device_code_resp.message,
-            },
-        })
-
-        task = asyncio.create_task(
-            self._poll_and_store(provider_name, device_code_resp)
-        )
-        self._pending_polls[provider_name] = task
-        return device_code_resp
-
     async def start_web_redirect_login(
-        self, provider_name: str, verification_uri: str, ttl_sec: int = 600
-    ) -> DeviceCodeResponse:
+        self,
+        provider_name: str,
+        verification_uri: str,
+        mirror_id: str,
+        user_id: str,
+        ttl_sec: int = 600,
+    ) -> Dict[str, Any]:
         if provider_name not in self._providers:
             raise ValueError(f"Unknown provider: {provider_name}")
-        # Keep pending status alive while user completes browser OAuth flow.
-        self.cancel_login(provider_name)
-        self._pending_web_logins[provider_name] = time.monotonic() + ttl_sec
-        dc = DeviceCodeResponse(
-            verification_uri=verification_uri,
-            user_code="",
-            device_code=f"web-{provider_name}",
-            expires_in=ttl_sec,
-            interval=5,
-            message="Scan QR to open sign-in page",
-        )
-        self._pending_device_codes[provider_name] = dc
-        await control_registry.broadcast({
-            "type": "OAUTH_DEVICE_CODE",
-            "payload": {
-                "provider": provider_name,
-                "verification_uri": dc.verification_uri,
-                "user_code": dc.user_code,
-                "expires_in": dc.expires_in,
-                "interval": dc.interval,
-                "message": dc.message,
-            },
-        })
-        return dc
+        key = _credential_key(provider_name, mirror_id, user_id)
+        self._pending_web_logins[key] = time.monotonic() + ttl_sec
+        return {
+            "provider": provider_name,
+            "verification_uri": verification_uri,
+            "user_code": "",
+            "device_code": f"web-{provider_name}",
+            "expires_in": ttl_sec,
+            "interval": 5,
+            "message": "Open the link to sign in with Google",
+        }
 
-    async def _poll_and_store(
-        self, provider_name: str, dc: DeviceCodeResponse
-    ) -> None:
-        """Background task: poll for token, store encrypted, broadcast."""
-        provider = self._providers[provider_name]
-        try:
-            token_resp = await provider.poll_for_token(dc.device_code, dc.interval)
-            self._store_tokens(provider_name, token_resp)
-            self._pending_device_codes.pop(provider_name, None)
+    def cancel_login(self, provider_name: str, mirror_id: str, user_id: str) -> None:
+        self._pending_web_logins.pop(_credential_key(provider_name, mirror_id, user_id), None)
 
-            await control_registry.broadcast({
-                "type": "AUTH_STATE_CHANGED",
-                "payload": {
-                    "provider": provider_name,
-                    "status": "connected",
-                },
-            })
-            logger.info("OAuth complete for %s", provider_name)
+    def get_login_status(self, provider_name: str, mirror_id: str, user_id: str) -> Dict[str, Any]:
+        key = _credential_key(provider_name, mirror_id, user_id)
+        expiry = self._pending_web_logins.get(key)
+        if expiry is not None:
+            if time.monotonic() <= expiry:
+                return {"provider": provider_name, "status": "pending", "message": None}
+            self._pending_web_logins.pop(key, None)
 
-            # Import here to avoid circular import at module level
-            from backend.services.sync_service import sync_manager
-            # Run one sync right away so widgets populate immediately after linking.
-            await sync_manager.force_sync(provider_name)
-            # Then keep background periodic sync running on the normal interval.
-            await sync_manager.start_provider_sync(provider_name, run_immediately=False)
-
-        except (TimeoutError, RuntimeError) as exc:
-            logger.warning("OAuth flow failed for %s: %s", provider_name, exc)
-            self._pending_device_codes.pop(provider_name, None)
-            await control_registry.broadcast({
-                "type": "AUTH_STATE_CHANGED",
-                "payload": {
-                    "provider": provider_name,
-                    "status": "error",
-                    "message": str(exc),
-                },
-            })
-        except asyncio.CancelledError:
-            self._pending_device_codes.pop(provider_name, None)
-        finally:
-            self._pending_polls.pop(provider_name, None)
-
-    def _store_tokens(self, provider_name: str, token: TokenResponse) -> None:
         db: Session = SessionLocal()
         try:
-            row = db.query(OAuthProvider).filter_by(provider=provider_name).first()
+            row = self._credential_row(db, provider_name, mirror_id, user_id)
+            if row:
+                return {"provider": provider_name, "status": row.status}
+            return {"provider": provider_name, "status": "disconnected"}
+        finally:
+            db.close()
+
+    def get_connected_providers(
+        self,
+        mirror_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        db: Session = SessionLocal()
+        try:
+            result: List[Dict[str, Any]] = []
+            for provider_name in self._providers:
+                row: Optional[OAuthCredential] = None
+                if mirror_id and user_id:
+                    row = self._credential_row(db, provider_name, mirror_id, user_id)
+                if row:
+                    result.append(
+                        {
+                            "provider": provider_name,
+                            "connected": row.status == "active",
+                            "status": row.status,
+                            "scopes": row.scopes,
+                            "connected_at": row.created_at.isoformat() if row.created_at else None,
+                        }
+                    )
+                else:
+                    result.append(
+                        {
+                            "provider": provider_name,
+                            "connected": False,
+                            "status": "disconnected",
+                        }
+                    )
+            return result
+        finally:
+            db.close()
+
+    async def store_tokens_from_web(
+        self,
+        provider_name: str,
+        mirror_id: str,
+        user_id: str,
+        token: TokenResponse,
+    ) -> None:
+        self.cancel_login(provider_name, mirror_id, user_id)
+        self._store_tokens(provider_name, mirror_id, user_id, token)
+
+    def store_tokens(
+        self,
+        provider_name: str,
+        mirror_id: str,
+        user_id: str,
+        token: TokenResponse,
+    ) -> OAuthCredential:
+        return self._store_tokens(provider_name, mirror_id, user_id, token)
+
+    def _store_tokens(
+        self,
+        provider_name: str,
+        mirror_id: str,
+        user_id: str,
+        token: TokenResponse,
+    ) -> OAuthCredential:
+        db: Session = SessionLocal()
+        try:
+            row = self._credential_row(db, provider_name, mirror_id, user_id)
             expiry = datetime.now(timezone.utc) + timedelta(seconds=token.expires_in)
             if row is None:
-                row = OAuthProvider(
+                row = OAuthCredential(
+                    mirror_id=mirror_id,
+                    user_id=user_id,
                     provider=provider_name,
-                    access_token_enc=encrypt_token(token.access_token),
+                    access_token_enc=encrypt_token(token.access_token) if token.access_token else None,
                     refresh_token_enc=encrypt_token(token.refresh_token),
                     token_expiry=expiry,
                     scopes=token.scope,
@@ -167,171 +152,127 @@ class AuthManager:
                 )
                 db.add(row)
             else:
-                row.access_token_enc = encrypt_token(token.access_token)
-                if token.refresh_token:
-                    row.refresh_token_enc = encrypt_token(token.refresh_token)
+                row.access_token_enc = (
+                    encrypt_token(token.access_token) if token.access_token else row.access_token_enc
+                )
+                row.refresh_token_enc = encrypt_token(token.refresh_token)
                 row.token_expiry = expiry
                 row.scopes = token.scope or row.scopes
                 row.status = "active"
             db.commit()
+            db.refresh(row)
+            return row
         finally:
             db.close()
 
-    async def store_tokens_from_web(self, provider_name: str, token: TokenResponse) -> None:
-        """Persist tokens from authorization-code (browser) flow and start sync."""
-        self.cancel_login(provider_name)
-        self._store_tokens(provider_name, token)
-        await control_registry.broadcast({
-            "type": "AUTH_STATE_CHANGED",
-            "payload": {"provider": provider_name, "status": "connected"},
-        })
-        from backend.services.sync_service import sync_manager
-
-        # Run one sync right away so widgets populate immediately after linking.
-        await sync_manager.force_sync(provider_name)
-        # Then keep background periodic sync running on the normal interval.
-        await sync_manager.start_provider_sync(provider_name, run_immediately=False)
-
-    # ── Cancel / Logout ─────────────────────────────────────────────────
-
-    def cancel_login(self, provider_name: str) -> None:
-        task = self._pending_polls.pop(provider_name, None)
-        if task:
-            task.cancel()
-        self._pending_device_codes.pop(provider_name, None)
-        self._pending_web_logins.pop(provider_name, None)
-
-    async def logout(self, provider_name: str) -> None:
-        self.cancel_login(provider_name)
-
-        from backend.services.sync_service import sync_manager
-        sync_manager.stop_provider_sync(provider_name)
-
+    async def get_valid_token(self, provider_name: str, mirror_id: str, user_id: str) -> Optional[str]:
         db: Session = SessionLocal()
         try:
-            row = db.query(OAuthProvider).filter_by(provider=provider_name).first()
-            if row:
-                db.delete(row)
-            # Remove provider-synced calendar/task rows so widgets clear immediately on disconnect.
-            db.query(CalendarEvent).filter_by(provider=provider_name).delete(
-                synchronize_session=False
-            )
-            db.commit()
-        finally:
-            db.close()
-
-        await control_registry.broadcast({
-            "type": "AUTH_STATE_CHANGED",
-            "payload": {"provider": provider_name, "status": "disconnected"},
-        })
-        await control_registry.broadcast({
-            "type": "CALENDAR_UPDATED",
-            "payload": {
-                "provider": provider_name,
-                "events_count": 0,
-                "tasks_count": 0,
-                "synced_at": datetime.now(timezone.utc).isoformat(),
-            },
-        })
-
-    # ── Token Access ────────────────────────────────────────────────────
-
-    async def get_valid_token(self, provider_name: str) -> Optional[str]:
-        """Return a valid access token, refreshing if expired."""
-        db: Session = SessionLocal()
-        try:
-            row = db.query(OAuthProvider).filter_by(provider=provider_name).first()
+            row = self._credential_row(db, provider_name, mirror_id, user_id)
             if row is None:
                 return None
 
             now = datetime.now(timezone.utc)
             expiry = row.token_expiry.replace(tzinfo=timezone.utc) if row.token_expiry else now
-
-            if now < expiry - timedelta(minutes=2):
+            if row.access_token_enc and now < expiry - timedelta(minutes=2):
                 return decrypt_token(row.access_token_enc)
 
             provider = self._providers.get(provider_name)
-            if not provider:
+            if provider is None:
                 return None
 
             try:
-                refresh_tok = decrypt_token(row.refresh_token_enc)
-                new_token = await provider.refresh_access_token(refresh_tok)
-                row.access_token_enc = encrypt_token(new_token.access_token)
-                if new_token.refresh_token:
-                    row.refresh_token_enc = encrypt_token(new_token.refresh_token)
-                row.token_expiry = now + timedelta(seconds=new_token.expires_in)
+                refresh_token = decrypt_token(row.refresh_token_enc)
+                refreshed = await provider.refresh_access_token(refresh_token)
+                row.access_token_enc = encrypt_token(refreshed.access_token)
+                if refreshed.refresh_token:
+                    row.refresh_token_enc = encrypt_token(refreshed.refresh_token)
+                row.token_expiry = now + timedelta(seconds=refreshed.expires_in)
                 row.status = "active"
+                if refreshed.scope:
+                    row.scopes = refreshed.scope
                 db.commit()
-                return new_token.access_token
+                return refreshed.access_token
             except Exception:
-                logger.exception("Token refresh failed for %s", provider_name)
+                logger.exception(
+                    "Token refresh failed for provider=%s mirror=%s user=%s",
+                    provider_name,
+                    mirror_id,
+                    user_id,
+                )
                 row.status = "needs_reauth"
                 db.commit()
-                await control_registry.broadcast({
-                    "type": "AUTH_STATE_CHANGED",
-                    "payload": {
-                        "provider": provider_name,
-                        "status": "needs_reauth",
-                    },
-                })
                 return None
         finally:
             db.close()
 
-    # ── Status Queries ──────────────────────────────────────────────────
-
-    def get_login_status(self, provider_name: str) -> Dict[str, Any]:
-        web_exp = self._pending_web_logins.get(provider_name)
-        if web_exp is not None:
-            if time.monotonic() <= web_exp:
-                dc = self._pending_device_codes.get(provider_name)
-                return {
-                    "provider": provider_name,
-                    "status": "pending",
-                    "message": dc.message if dc else None,
-                }
-            self._pending_web_logins.pop(provider_name, None)
-            self._pending_device_codes.pop(provider_name, None)
-        if provider_name in self._pending_polls and not self._pending_polls[provider_name].done():
-            dc = self._pending_device_codes.get(provider_name)
-            return {
-                "provider": provider_name,
-                "status": "pending",
-                "message": dc.message if dc else None,
-            }
+    async def logout(
+        self,
+        provider_name: str,
+        mirror_id: str,
+        user_id: str,
+        *,
+        revoke: bool = False,
+    ) -> None:
+        self.cancel_login(provider_name, mirror_id, user_id)
         db: Session = SessionLocal()
         try:
-            row = db.query(OAuthProvider).filter_by(provider=provider_name).first()
-            if row:
-                return {"provider": provider_name, "status": "complete"}
-            return {"provider": provider_name, "status": "disconnected"}
+            row = self._credential_row(db, provider_name, mirror_id, user_id)
+            refresh_token: Optional[str] = None
+            if row is not None:
+                try:
+                    refresh_token = decrypt_token(row.refresh_token_enc)
+                except Exception:
+                    logger.warning("Failed to decrypt refresh token during logout cleanup")
+                db.delete(row)
+
+            db.query(CalendarEvent).filter(
+                CalendarEvent.mirror_id == mirror_id,
+                CalendarEvent.user_id == user_id,
+                CalendarEvent.provider == provider_name,
+            ).delete(synchronize_session=False)
+            db.commit()
         finally:
             db.close()
 
-    def get_connected_providers(self) -> List[Dict[str, Any]]:
+        if revoke and refresh_token:
+            provider = self._providers.get(provider_name)
+            if provider is not None:
+                try:
+                    await provider.revoke_refresh_token(refresh_token)
+                except Exception:
+                    logger.exception("Failed to revoke refresh token for %s", provider_name)
+
+    async def cleanup_unenrolled_user(self, mirror_id: str, user_id: str) -> None:
         db: Session = SessionLocal()
         try:
-            rows = db.query(OAuthProvider).all()
-            result = []
-            for row in rows:
-                result.append({
-                    "provider": row.provider,
-                    "connected": True,
-                    "status": row.status,
-                    "scopes": row.scopes,
-                    "connected_at": row.created_at.isoformat() if row.created_at else None,
-                })
-            for name in self._providers:
-                if not any(r["provider"] == name for r in result):
-                    result.append({
-                        "provider": name,
-                        "connected": False,
-                        "status": "disconnected",
-                    })
-            return result
+            rows = (
+                db.query(OAuthCredential)
+                .filter(OAuthCredential.mirror_id == mirror_id, OAuthCredential.user_id == user_id)
+                .all()
+            )
         finally:
             db.close()
+
+        for row in rows:
+            await self.logout(row.provider, mirror_id, user_id, revoke=True)
+
+    @staticmethod
+    def _credential_row(
+        db: Session,
+        provider_name: str,
+        mirror_id: str,
+        user_id: str,
+    ) -> Optional[OAuthCredential]:
+        return (
+            db.query(OAuthCredential)
+            .filter(
+                OAuthCredential.provider == provider_name,
+                OAuthCredential.mirror_id == mirror_id,
+                OAuthCredential.user_id == user_id,
+            )
+            .first()
+        )
 
 
 auth_manager = AuthManager()

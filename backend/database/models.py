@@ -1,16 +1,73 @@
 from datetime import datetime
+from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, ForeignKey, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import declarative_base, relationship
 
 
 Base = declarative_base()
 
 
+def _uuid_str() -> str:
+    return str(uuid4())
+
+
+class Mirror(Base):
+    __tablename__ = "mirrors"
+
+    id = Column(String(36), primary_key=True, default=_uuid_str)
+    hardware_id = Column(String(128), unique=True, nullable=False, index=True)
+    hardware_token_hash = Column(String(128), nullable=False)
+    friendly_name = Column(String(128), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    synced_at = Column(DateTime, nullable=True, default=None)
+
+    profiles = relationship(
+        "UserProfile",
+        back_populates="mirror",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+    __table_args__ = (
+        UniqueConstraint("mirror_id", "user_id", name="uq_user_profiles_mirror_user"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(128), nullable=False, index=True)
+    mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=False, index=True)
+    display_name = Column(String(128), nullable=True)
+    widget_config = Column(JSON, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    synced_at = Column(DateTime, nullable=True, default=None)
+
+    mirror = relationship("Mirror", back_populates="profiles")
+
+
 class WidgetConfig(Base):
     __tablename__ = "widget_config"
 
     id = Column(Integer, primary_key=True, index=True)
+    mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
     widget_id = Column(String(50), nullable=False, index=True)
     enabled = Column(Boolean, nullable=False, default=True)
 
@@ -30,8 +87,13 @@ class WidgetConfig(Base):
 
 class UserSettings(Base):
     __tablename__ = "user_settings"
+    __table_args__ = (
+        UniqueConstraint("mirror_id", "user_id", name="uq_user_settings_mirror_user"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
+    mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
 
     theme = Column(String(20), nullable=False, default="dark")
     primary_font_size = Column(Integer, nullable=False, default=72)
@@ -44,12 +106,22 @@ class UserSettings(Base):
     synced_at = Column(DateTime, nullable=True, default=None)
 
 
-class OAuthProvider(Base):
-    __tablename__ = "oauth_provider"
+class OAuthCredential(Base):
+    __tablename__ = "oauth_credentials"
+    __table_args__ = (
+        UniqueConstraint(
+            "mirror_id",
+            "user_id",
+            "provider",
+            name="uq_oauth_credentials_mirror_user_provider",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    provider = Column(String(32), unique=True, nullable=False)
-    access_token_enc = Column(String(512), nullable=False)
+    mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=False, index=True)
+    user_id = Column(String(128), nullable=False, index=True)
+    provider = Column(String(32), nullable=False, default="google")
+    access_token_enc = Column(String(512), nullable=True)
     refresh_token_enc = Column(String(512), nullable=False)
     token_expiry = Column(DateTime, nullable=True)
     scopes = Column(String(256), nullable=True)
@@ -58,12 +130,14 @@ class OAuthProvider(Base):
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    synced_at = Column(DateTime, nullable=True, default=None)
 
 
 class ClothingItem(Base):
     __tablename__ = "clothing_item"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
     name = Column(String(100), nullable=False)
     category = Column(String(50), nullable=False)
     color = Column(String(50), nullable=True)
@@ -86,10 +160,18 @@ class ClothingItem(Base):
 class CalendarEvent(Base):
     __tablename__ = "calendar_event"
     __table_args__ = (
-        UniqueConstraint("provider", "external_id", name="uq_provider_external_id"),
+        UniqueConstraint(
+            "mirror_id",
+            "user_id",
+            "provider",
+            "external_id",
+            name="uq_calendar_event_profile_external",
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=True, index=True)
+    user_id = Column(String(128), nullable=True, index=True)
     provider = Column(String(32), nullable=False, index=True)
     external_id = Column(String(256), nullable=False)
     event_type = Column(String(16), nullable=False)
@@ -108,7 +190,7 @@ class ClothingImage(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     clothing_item_id = Column(Integer, ForeignKey("clothing_item.id"), nullable=False)
-    
+
     storage_provider = Column(String(50), nullable=False, default="cloud")
     storage_key = Column(String(255), nullable=False)
     image_url = Column(String(500), nullable=False)
@@ -117,6 +199,7 @@ class ClothingImage(Base):
     synced_at = Column(DateTime, nullable=True, default=None)
 
     clothing_item = relationship("ClothingItem", back_populates="images")
+
 
 class PersonImage(Base):
     __tablename__ = "person_image"
@@ -133,9 +216,7 @@ class D1SyncCheckpoint(Base):
 
     table_name = Column(String(64), primary_key=True)
     last_pull_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    # Max remote order column (updated_at or created_at) merged from D1; used as incremental pull cursor.
     last_remote_cursor = Column(String(128), nullable=True, default=None)
-    # Tie-breaker row id when multiple rows share the same order timestamp.
     last_remote_cursor_id = Column(Integer, nullable=True, default=None)
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow

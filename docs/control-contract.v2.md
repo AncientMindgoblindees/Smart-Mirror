@@ -8,7 +8,7 @@ This document defines the unified REST + WebSocket contracts used by:
 
 ## WebSocket Envelope
 
-All v2 messages use a shared envelope:
+All v2 control messages use a shared envelope:
 
 ```json
 {
@@ -20,17 +20,20 @@ All v2 messages use a shared envelope:
 }
 ```
 
+The button channel is a lighter event stream and emits plain button payload objects instead of the v2 control envelope.
+
 ### Supported event types
 
 - `WIDGETS_SYNC`
 - `WIDGETS_SYNC_APPLIED`
 - `WIDGETS_SYNC_ERROR`
+- `button`
 - `CAMERA_COUNTDOWN_STARTED`
 - `CAMERA_COUNTDOWN_TICK`
 - `CAMERA_CAPTURED`
 - `CAMERA_ERROR`
 - `WARDROBE_UPDATED`
-- `TRYON_RESULT` — payload: `{ "generation_id": string, "image_url": string }` (mirror + companion)
+- `TRYON_RESULT` with payload `{ "generation_id": string, "image_url": string }`
 
 Legacy `SYNC_STATE` remains supported for backward compatibility.
 
@@ -41,28 +44,84 @@ Legacy `SYNC_STATE` remains supported for backward compatibility.
 - `GET /api/widgets/`
 - `PUT /api/widgets/`
 - `GET /api/widgets/revision`
+- `GET /api/widgets/gmail`
+- `GET /api/widgets/calendar`
+
+### Mirror profile session
+
+- `POST /api/mirror/register`
+- `GET /api/mirror/sync`
+- `GET /api/profile/`
+- `POST /api/profile/enroll`
+- `POST /api/profile/activate`
+- `DELETE /api/profile/{user_id}`
+
+### OAuth provider management
+
+- `GET /api/oauth/providers?hardware_id=...&user_id=...`
+- `POST /api/oauth/providers/token`
+- `DELETE /api/oauth/providers/{provider}?hardware_id=...&user_id=...`
+- `POST /api/auth/login/google?hardware_id=...&user_id=...`
+
+Google is the only supported OAuth provider in the current contract.
 
 ### Camera
 
 - `GET /api/camera/status`
-- `GET /api/camera/live` — MJPEG multipart stream for mirror `<img>` live view (preferred)
-- `GET /api/camera/stream.mjpg` — same MJPEG stream (alternate URL)
-- `POST /api/camera/capture` — starts boot + countdown; final still is written on the Pi after countdown (not from the MJPEG stream)
+- `GET /api/camera/live` for MJPEG live view
+- `GET /api/camera/stream.mjpg` alternate MJPEG path
+- `POST /api/camera/capture`
   - body: `{ "countdown_seconds": number, "source": string, "session_id"?: string }`
 
 ### Clothing (wardrobe + Cloudinary + D1 sync)
 
-- `GET /api/clothing/?include_images=true|false` — list items; when `include_images=true`, each item includes `images[]` (Cloudinary URLs).
-- `POST /api/clothing/` — JSON body: `name`, `category`, optional `color`, `season`, `notes`
-- `POST /api/clothing/{item_id}/images` — multipart file upload (stores Cloudinary metadata in SQLite / D1)
+- `GET /api/clothing/?include_images=true|false`
+- `POST /api/clothing/`
+- `POST /api/clothing/{item_id}/images`
 - `DELETE /api/clothing/{item_id}`
 
-### Try-on (person image + Leonardo)
+### Try-on
 
-- `POST /api/tryon/person-image` — multipart upload; file saved under `data/person_images/` on the mirror host
-- `GET /api/tryon/person-image/latest` — binary file stream of the newest person image
-- `GET /api/tryon/person-image/{id}` — binary file stream by row id
-- `POST /api/tryon/outfit-generate` — JSON `{ "clothing_image_ids": number[], "prompt"?: string }`; calls Leonardo, then broadcasts `TRYON_RESULT`
+- `POST /api/tryon/person-image`
+- `GET /api/tryon/person-image/latest`
+- `GET /api/tryon/person-image/{id}`
+- `POST /api/tryon/outfit-generate`
+
+## Button input channel
+
+`GET /ws/buttons` broadcasts GPIO and simulated button actions using a semantic contract the UI can interpret by current screen and state.
+
+Example frame:
+
+```json
+{
+  "type": "button",
+  "button_id": "LAYOUT",
+  "action": "LONG_PRESS",
+  "effect": "open_profile_menu",
+  "semantic_action": "profile_menu_open",
+  "semantic_group": "profile",
+  "semantic_actions": ["profile_menu_open", "menu_open"],
+  "ts": "2026-04-21T15:00:00.000000"
+}
+```
+
+Semantic actions currently used by the mirror UI:
+
+- `menu_open`
+- `menu_close`
+- `menu_back`
+- `menu_up`
+- `menu_down`
+- `menu_select`
+- `profile_menu_open`
+- `display_toggle_dim`
+- `display_toggle_sleep`
+- `capture_photo`
+- `dismiss_tryon`
+- `cycle_layout`
+
+For development without physical buttons, `POST /api/dev/buttons?button_id=...&action=...` injects the same semantics when `ENABLE_DEV_ENDPOINTS=true`.
 
 ## Camera action flow
 
