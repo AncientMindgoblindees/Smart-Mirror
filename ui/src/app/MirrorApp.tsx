@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
-import type { MirrorProfile } from '@/api/backendTypes';
+import type { MirrorProfile, UserSettingsOut, WidgetConfigOut } from '@/api/backendTypes';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { CameraOverlay } from '@/features/camera';
 import { DeviceConnectionOverlay, useDeviceConnectionState } from '@/features/connection';
@@ -323,6 +323,8 @@ function IdentityEmptyTile({
 type DashboardProps = {
   hardwareId: string;
   activeProfile: MirrorProfile;
+  syncWidgets: WidgetConfigOut[] | null;
+  syncUserSettings: UserSettingsOut | null;
   showDevPanel: boolean;
   toggleDim: () => void;
   toggleSleep: () => void;
@@ -339,6 +341,8 @@ type DashboardProps = {
 function MirrorDashboard({
   hardwareId,
   activeProfile,
+  syncWidgets,
+  syncUserSettings,
   showDevPanel,
   toggleDim,
   toggleSleep,
@@ -351,7 +355,11 @@ function MirrorDashboard({
   disconnectGoogle,
   refreshAuth,
 }: DashboardProps) {
-  const { widgets, setWidgets } = useWidgetPersistence();
+  const { widgets, setWidgets } = useWidgetPersistence({
+    refreshKey: `${hardwareId}:${activeProfile.user_id}`,
+    initialWidgets: syncWidgets,
+    initialUserSettings: syncUserSettings,
+  });
   const { showCamera, setShowCamera, cameraError, setCameraError } = useOverlayState();
   const captureFlowActiveRef = useRef(false);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -540,7 +548,7 @@ function MirrorDashboard({
 }
 
 export default function MirrorApp() {
-  const { hardwareId, mirror, profiles, activeProfile, loading, error, refresh, activateUser, createProfile } =
+  const { hardwareId, mirror, profiles, activeProfile, mirrorSyncSnapshot, loading, error, refresh, activateUser, createProfile } =
     useMirrorSession();
   const [menuOpen, setMenuOpen] = useState(true);
   const [viewStack, setViewStack] = useState<OverlayView[]>(['identity']);
@@ -1028,6 +1036,8 @@ export default function MirrorApp() {
             key={activeProfile.user_id}
             hardwareId={hardwareId}
             activeProfile={activeProfile}
+            syncWidgets={mirrorSyncSnapshot?.widget_config ?? null}
+            syncUserSettings={mirrorSyncSnapshot?.user_settings ?? null}
             showDevPanel={showDevPanel}
             toggleDim={toggleDim}
             toggleSleep={toggleSleep}

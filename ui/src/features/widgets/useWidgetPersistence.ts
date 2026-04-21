@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react';
 
-import type { WidgetConfigOut } from '@/api/backendTypes';
+import type { UserSettingsOut, WidgetConfigOut } from '@/api/backendTypes';
 import { getUserSettings, getWidgets, putWidgets } from '@/api/mirrorApi';
 import { widgetToBackend } from '@/api/transforms';
 import { useIntervalWhen } from '@/hooks/infra/useIntervalWhen';
@@ -16,6 +16,8 @@ const POLL_MS = 1200;
 type UseWidgetPersistenceOptions = {
   enabled?: boolean;
   refreshKey?: string;
+  initialWidgets?: WidgetConfigOut[] | null;
+  initialUserSettings?: UserSettingsOut | null;
 };
 
 export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}): {
@@ -24,7 +26,7 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
   ready: boolean;
   serverConnected: boolean;
 } {
-  const { enabled = true, refreshKey = 'default' } = options;
+  const { enabled = true, refreshKey = 'default', initialWidgets = null, initialUserSettings = null } = options;
   const [widgets, setWidgets] = useState<WidgetConfig[]>(INITIAL_WIDGETS);
   const [ready, setReady] = useState(false);
   const [serverConnected, setServerConnected] = useState(false);
@@ -83,7 +85,9 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
 
     (async () => {
       try {
-        const [settings, list] = await Promise.all([getUserSettings(), getWidgets()]);
+        const [settings, list] = initialWidgets && initialUserSettings
+          ? [initialUserSettings, initialWidgets]
+          : await Promise.all([getUserSettings(), getWidgets()]);
         if (cancelled) return;
         applyUserSettings(settings);
         mergeServerRows(list, { force: true });
@@ -104,7 +108,7 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
     return () => {
       cancelled = true;
     };
-  }, [enabled, mergeServerRows, refreshKey]);
+  }, [enabled, initialUserSettings, initialWidgets, mergeServerRows, refreshKey]);
 
   useIntervalWhen(() => void pullWidgetsFromServer(), 3000, enabled && ready && !serverConnected);
 

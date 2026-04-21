@@ -5,7 +5,9 @@ name = "Smart-Mirror"
 [setup]
 script = '''
 pip install -r backend/requirements.txt
-
+pip install --user graphifyy
+python -m graphify install --platform codex
+python -m graphify codex install 
 cd ui
 npm install
 npm run build

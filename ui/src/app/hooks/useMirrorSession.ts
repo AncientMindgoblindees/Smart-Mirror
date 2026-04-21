@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { MirrorProfile, MirrorRegistrationResponse } from '@/api/backendTypes';
+import type { MirrorProfile, MirrorRegistrationResponse, MirrorSyncResponse } from '@/api/backendTypes';
 import {
   activateProfile,
   deleteProfile,
@@ -41,6 +41,7 @@ export function useMirrorSession() {
   const [mirror, setMirror] = useState<MirrorSummary | null>(null);
   const [profiles, setProfiles] = useState<MirrorProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<MirrorProfile | null>(null);
+  const [mirrorSyncSnapshot, setMirrorSyncSnapshot] = useState<MirrorSyncResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +62,7 @@ export function useMirrorSession() {
 
     try {
       const sync = await getMirrorSync();
+      setMirrorSyncSnapshot(sync);
       setMirror(sync.mirror);
       setActiveProfile(sync.active_profile ?? null);
       saveActiveMirrorUserId(sync.active_profile?.user_id ?? null);
@@ -69,6 +71,7 @@ export function useMirrorSession() {
         return sync.active_profile ? [sync.active_profile] : current;
       });
     } catch {
+      setMirrorSyncSnapshot(null);
       const selected = profileList.find((profile) => profile.is_active) ?? null;
       setActiveProfile(selected);
       saveActiveMirrorUserId(selected?.user_id ?? null);
@@ -141,6 +144,7 @@ export function useMirrorSession() {
     mirror,
     profiles,
     activeProfile,
+    mirrorSyncSnapshot,
     loading,
     error,
     refresh,
