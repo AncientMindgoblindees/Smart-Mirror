@@ -24,6 +24,7 @@ from backend.api import (
     health,
     oauth_provider,
     oauth_web,
+    session,
     tryon,
     user,
     weather,
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api")
     app.include_router(camera.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
+    app.include_router(session.router, prefix="/api")
     app.include_router(oauth_web.router, prefix="/api")
     app.include_router(oauth_provider.router, prefix="/api")
     app.include_router(calendar.router, prefix="/api")

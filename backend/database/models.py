@@ -28,6 +28,8 @@ class Mirror(Base):
     hardware_id = Column(String(128), unique=True, nullable=False, index=True)
     hardware_token_hash = Column(String(128), nullable=False)
     friendly_name = Column(String(128), nullable=True)
+    claimed_by_user_uid = Column(String(128), nullable=True, index=True)
+    claimed_at = Column(DateTime, nullable=True, default=None)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -39,6 +41,72 @@ class Mirror(Base):
         back_populates="mirror",
         cascade="all, delete-orphan",
     )
+    memberships = relationship(
+        "HouseholdMembership",
+        back_populates="mirror",
+        cascade="all, delete-orphan",
+    )
+    pairings = relationship(
+        "AuthPairing",
+        back_populates="mirror",
+        cascade="all, delete-orphan",
+    )
+
+
+class HouseholdMembership(Base):
+    __tablename__ = "household_memberships"
+    __table_args__ = (
+        UniqueConstraint("mirror_id", "user_uid", name="uq_household_memberships_mirror_user"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=False, index=True)
+    user_uid = Column(String(128), nullable=False, index=True)
+    email = Column(String(255), nullable=True)
+    display_name = Column(String(255), nullable=True)
+    photo_url = Column(String(512), nullable=True)
+    role = Column(String(16), nullable=False, default="member")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    synced_at = Column(DateTime, nullable=True, default=None)
+
+    mirror = relationship("Mirror", back_populates="memberships")
+
+
+class AuthPairing(Base):
+    __tablename__ = "auth_pairings"
+
+    pairing_id = Column(String(64), primary_key=True)
+    pairing_code = Column(String(32), unique=True, nullable=False, index=True)
+    mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=False, index=True)
+    provider = Column(String(32), nullable=False, default="google", index=True)
+    intent = Column(String(64), nullable=False, default="link_provider")
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    redirect_to = Column(String(1024), nullable=True)
+    deep_link_url = Column(String(1024), nullable=True)
+    verification_url = Column(String(1024), nullable=True)
+    owner_user_uid = Column(String(128), nullable=True, index=True)
+    owner_email = Column(String(255), nullable=True)
+    paired_user_uid = Column(String(128), nullable=True, index=True)
+    paired_user_email = Column(String(255), nullable=True)
+    requires_session_replacement = Column(Boolean, nullable=False, default=False)
+    custom_token_ready = Column(Boolean, nullable=False, default=False)
+    oauth_access_token_enc = Column(String(512), nullable=True)
+    oauth_refresh_token_enc = Column(String(512), nullable=True)
+    oauth_token_expiry = Column(DateTime, nullable=True)
+    oauth_scopes = Column(String(512), nullable=True)
+    error_code = Column(String(64), nullable=True)
+    error_message = Column(String(1024), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    synced_at = Column(DateTime, nullable=True, default=None)
+
+    mirror = relationship("Mirror", back_populates="pairings")
 
 
 class UserProfile(Base):
