@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import get_oauth_public_base_url
 from backend.database.session import get_db
+from backend.services.auth_context import FirebaseActor
 from backend.services.firebase_auth import (
     FirebaseUserResolutionError,
     get_or_create_firebase_user_from_google,
