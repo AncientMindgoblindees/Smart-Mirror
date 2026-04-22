@@ -12,10 +12,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from backend.database.models import Mirror, UserProfile
+from backend.config import get_oauth_public_base_url
+from backend.database.models import Mirror
 from backend.database.session import get_db
-from backend.services import user_service
-from backend.services.auth_manager import auth_manager
+from backend.services.auth_context import FirebaseActor
+from backend.services.firebase_auth import (
+    FirebaseUserResolutionError,
+    get_or_create_firebase_user_from_google,
+)
+from backend.services.pairing_service import (
+    create_pairing,
+    get_pairing_by_code,
+    get_pairing_by_id,
+    mark_expired_if_needed,
+    store_oauth_callback_result,
+)
 from backend.services.providers.base import TokenResponse
 from backend.services.providers.google_provider import GOOGLE_WEB_SCOPES, get_google_web_oauth_credentials
 
@@ -24,7 +35,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/oauth", tags=["oauth"])
 
 STATE_TTL_SEC = 600.0
-_pending_state: dict[str, tuple[str, float, str, str, str, str]] = {}
+_pending_state: dict[str, tuple[str, float, str]] = {}
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -33,33 +44,42 @@ GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
 def _cleanup_state() -> None:
     now = time.monotonic()
-    dead = [key for key, (_, expiry, _, _, _, _) in _pending_state.items() if expiry < now]
+    dead = [key for key, (_, expiry, _) in _pending_state.items() if expiry < now]
     for key in dead:
         _pending_state.pop(key, None)
 
 
-def _new_state(provider: str, source: str, mirror_id: str, user_id: str, intent: str) -> str:
+def _new_state(provider: str, pairing_id: str) -> str:
     _cleanup_state()
     token = secrets.token_urlsafe(32)
-    _pending_state[token] = (provider, time.monotonic() + STATE_TTL_SEC, source, mirror_id, user_id, intent)
+    _pending_state[token] = (provider, time.monotonic() + STATE_TTL_SEC, pairing_id)
     return token
 
 
-def _pop_state(state: str | None) -> tuple[str, str, str, str, str] | None:
+def _pop_state(state: str | None) -> tuple[str, str] | None:
     if not state:
         return None
     _cleanup_state()
     entry = _pending_state.pop(state, None)
     if entry is None:
         return None
-    provider, expiry, source, mirror_id, user_id, intent = entry
+    provider, expiry, pairing_id = entry
     if time.monotonic() > expiry:
         return None
-    return provider, source, mirror_id, user_id, intent
+    return provider, pairing_id
 
 
 def _public_base(request: Request) -> str:
-    return str(request.base_url).rstrip("/")
+    return get_oauth_public_base_url(str(request.base_url)).rstrip("/")
+
+
+def _append_query(url: str, params: dict[str, str]) -> str:
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query.update(params)
+    return urlunparse(
+        (parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(query), parsed.fragment)
+    )
 
 
 def _success_html(title: str, body: str) -> HTMLResponse:
@@ -74,18 +94,8 @@ def _post_auth_redirect_url() -> str | None:
     return (
         os.getenv("OAUTH_SUCCESS_REDIRECT_URL")
         or os.getenv("SMART_MIRROR_WEB_URL")
-        or "https://smart-mirror.tech"
+        or ""
     ).strip() or None
-
-
-def _build_redirect_with_context(base_url: str, hardware_id: str, user_id: str) -> str:
-    parsed = urlparse(base_url)
-    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-    query["mirror_hardware_id"] = hardware_id
-    query["mirror_user_id"] = user_id
-    query["source"] = "mirror_qr_create"
-    next_query = urlencode(query)
-    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, next_query, parsed.fragment))
 
 
 async def _fetch_google_user_profile(access_token: str) -> dict[str, Any]:
@@ -103,26 +113,86 @@ async def _fetch_google_user_profile(access_token: str) -> dict[str, Any]:
         return {}
 
 
-@router.get("/google/start")
-async def oauth_google_start(
+@router.get("/{provider}/start")
+async def oauth_start(
+    provider: str,
     request: Request,
-    hardware_id: str = Query(...),
-    user_id: str = Query(...),
-    source: str | None = None,
-    intent: str = Query("pair_profile"),
+    pairing_id: str | None = Query(default=None),
+    pairing_id_camel: str | None = Query(default=None, alias="pairingId"),
+    pairing_code: str | None = Query(default=None),
+    hardware_id: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+    intent: str = Query(default="link_provider"),
+    redirect_to: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    if provider != "google":
+        raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
+
     client_id, _ = get_google_web_oauth_credentials()
     if not client_id:
         raise HTTPException(status_code=503, detail="Google web OAuth is not configured")
 
-    mirror = user_service.get_mirror_by_hardware_id(db, hardware_id)
-    if mirror is None:
-        raise HTTPException(status_code=404, detail="Mirror is not registered")
+    resolved_pairing_id = (pairing_id or pairing_id_camel or "").strip() or None
+    resolved_pairing_code = (pairing_code or "").strip().upper() or None
+    if resolved_pairing_id:
+        pairing = get_pairing_by_id(db, resolved_pairing_id)
+    elif resolved_pairing_code:
+        pairing = get_pairing_by_code(db, resolved_pairing_code)
+    else:
+        legacy_hardware_id = (hardware_id or "").strip()
+        legacy_user_id = (user_id or "").strip()
+        if not legacy_hardware_id or not legacy_user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="pairing_id, pairingId, pairing_code, or hardware_id+user_id is required",
+            )
+        mirror = db.query(Mirror).filter(Mirror.hardware_id == legacy_hardware_id).first()
+        if mirror is None:
+            raise HTTPException(status_code=404, detail="Mirror is not registered")
+        legacy_owner = FirebaseActor(
+            uid=legacy_user_id,
+            email=None,
+            display_name=None,
+            photo_url=None,
+        )
+        pairing, _ = create_pairing(
+            db,
+            mirror_id=mirror.id,
+            provider=provider,
+            intent="create_account" if intent == "create_account" else "link_provider",
+            redirect_to=redirect_to,
+            public_base_url=_public_base(request),
+            owner=legacy_owner,
+        )
 
-    redirect_uri = f"{_public_base(request)}/api/oauth/google/callback"
-    flow_source = "qr" if (source or "").strip().lower() == "qr" else "browser"
-    state = _new_state("google", flow_source, mirror.id, user_id, intent)
+    if pairing is None:
+        raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
+    pairing = mark_expired_if_needed(db, pairing)
+    if pairing.status == "expired":
+        raise HTTPException(status_code=409, detail="Pairing has expired")
+    if pairing.provider != provider:
+        raise HTTPException(status_code=400, detail="Pairing/provider mismatch")
+
+    if redirect_to is not None:
+        pairing.redirect_to = redirect_to
+        if redirect_to:
+            deep_link = _append_query(redirect_to, {"pairing_code": pairing.pairing_code})
+            pairing.deep_link_url = deep_link
+            pairing.verification_url = deep_link
+        db.commit()
+        db.refresh(pairing)
+
+    redirect_uri = f"{_public_base(request)}/api/oauth/{provider}/callback"
+    state = _new_state(provider, pairing.pairing_id)
+    logger.info(
+        "pairing_start pairing_id=%s provider=%s intent=%s status=%s mirror_id=%s",
+        pairing.pairing_id,
+        pairing.provider,
+        pairing.intent,
+        pairing.status,
+        pairing.mirror_id,
+    )
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -135,26 +205,44 @@ async def oauth_google_start(
     return RedirectResponse(f"{GOOGLE_AUTH_URL}?{urlencode(params)}", status_code=302)
 
 
-@router.get("/google/callback")
-async def oauth_google_callback(
+@router.get("/{provider}/callback")
+async def oauth_callback(
+    provider: str,
     request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
     db: Session = Depends(get_db),
 ) -> Any:
+    if provider != "google":
+        raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
+
     if error:
         return _success_html("Sign-in cancelled", f"Provider returned: {error}")
 
     state_info = _pop_state(state)
     if not state_info or not code:
         raise HTTPException(status_code=400, detail="Invalid or expired state")
-    provider, flow_source, mirror_id, user_id, intent = state_info
-    if provider != "google":
+    state_provider, pairing_id = state_info
+    if state_provider != provider:
         raise HTTPException(status_code=400, detail="Invalid or expired state")
 
+    pairing = get_pairing_by_id(db, pairing_id)
+    if pairing is None:
+        raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
+    pairing = mark_expired_if_needed(db, pairing)
+    if pairing.status == "expired":
+        return _success_html("Pairing expired", "This pairing is no longer valid. Please start again.")
+    logger.info(
+        "pairing_callback pairing_id=%s provider=%s intent=%s status=%s",
+        pairing.pairing_id,
+        pairing.provider,
+        pairing.intent,
+        pairing.status,
+    )
+
     client_id, client_secret = get_google_web_oauth_credentials()
-    redirect_uri = f"{_public_base(request)}/api/oauth/google/callback"
+    redirect_uri = f"{_public_base(request)}/api/oauth/{provider}/callback"
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.post(
             GOOGLE_TOKEN_URL,
@@ -168,6 +256,11 @@ async def oauth_google_callback(
         )
     if response.status_code != 200:
         logger.warning("Google token exchange failed: %s %s", response.status_code, response.text)
+        pairing.status = "error"
+        pairing.error_code = "TOKEN_EXCHANGE_FAILED"
+        pairing.error_message = "Token exchange failed"
+        db.commit()
+        db.refresh(pairing)
         raise HTTPException(status_code=502, detail="Token exchange failed")
 
     try:
@@ -179,53 +272,78 @@ async def oauth_google_callback(
             scope=payload.get("scope"),
         )
         userinfo = await _fetch_google_user_profile(token.access_token)
-        display_name = str(userinfo.get("name") or "").strip()
-        email_local_part = str(userinfo.get("email") or "").split("@")[0].strip()
-        resolved_display_name = display_name or email_local_part
-        mirror = db.query(Mirror).filter(Mirror.id == mirror_id).first()
-        if mirror is None:
-            raise HTTPException(status_code=404, detail="Mirror is not registered")
-        existing_profile = (
-            db.query(UserProfile)
-            .filter_by(mirror_id=mirror.id, user_id=user_id)
-            .first()
+        oauth_email = str(userinfo.get("email") or "").strip() or None
+        oauth_display_name = str(userinfo.get("name") or "").strip() or None
+        oauth_photo_url = str(userinfo.get("picture") or "").strip() or None
+        firebase_actor = None
+        if pairing.intent == "create_account":
+            try:
+                resolved = get_or_create_firebase_user_from_google(
+                    email=oauth_email,
+                    display_name=oauth_display_name,
+                    photo_url=oauth_photo_url,
+                )
+                firebase_actor = FirebaseActor(
+                    uid=resolved["uid"],
+                    email=resolved.get("email"),
+                    display_name=resolved.get("display_name"),
+                    photo_url=resolved.get("photo_url"),
+                )
+            except FirebaseUserResolutionError as exc:
+                pairing.status = "error"
+                pairing.error_code = "FIREBASE_USER_RESOLUTION_FAILED"
+                pairing.error_message = str(exc)
+                db.commit()
+                db.refresh(pairing)
+                raise HTTPException(status_code=502, detail=pairing.error_message) from exc
+        pairing = store_oauth_callback_result(
+            db,
+            pairing=pairing,
+            token=token,
+            oauth_email=oauth_email,
+            firebase_actor=firebase_actor,
         )
-        if intent == "create_account":
-            user_service.enroll_profile(
-                db,
-                mirror,
-                user_id=user_id,
-                display_name=resolved_display_name or "Google User",
-                activate=True,
-            )
-        elif existing_profile is None:
-            raise HTTPException(status_code=404, detail="Profile is not enrolled on this mirror")
-        elif resolved_display_name:
-            user_service.enroll_profile(
-                db,
-                mirror,
-                user_id=user_id,
-                display_name=resolved_display_name,
-                activate=False,
-            )
-        if intent == "create_account":
-            logger.info("Created mirror profile from Google OAuth for user_id=%s", user_id)
-        await auth_manager.store_tokens_from_web("google", mirror_id, user_id, token)
     except HTTPException:
         raise
     except Exception:
-        logger.exception("Google callback failed while persisting tokens")
-        raise HTTPException(status_code=500, detail="Google login completed, but backend failed while saving tokens.")
+        logger.exception("Google callback failed while persisting pairing tokens")
+        pairing.status = "error"
+        pairing.error_code = "PAIRING_PERSIST_FAILED"
+        pairing.error_message = "OAuth completed but backend failed while saving pairing state."
+        db.commit()
+        db.refresh(pairing)
+        raise HTTPException(status_code=500, detail=pairing.error_message)
 
-    redirect_url = _post_auth_redirect_url()
-    if redirect_url and (flow_source != "qr" or intent == "create_account"):
-        if intent == "create_account":
-            mirror = db.query(Mirror).filter(Mirror.id == mirror_id).first()
-            hardware_id = mirror.hardware_id if mirror is not None else ""
-            if hardware_id:
-                redirect_url = _build_redirect_with_context(redirect_url, hardware_id=hardware_id, user_id=user_id)
+    redirect_url = pairing.redirect_to or _post_auth_redirect_url()
+    if redirect_url:
+        logger.info(
+            "pairing_authorized pairing_id=%s provider=%s intent=%s status=%s paired_uid=%s",
+            pairing.pairing_id,
+            pairing.provider,
+            pairing.intent,
+            pairing.status,
+            pairing.paired_user_uid,
+        )
+        redirect_url = _append_query(
+            redirect_url,
+            {
+                "pairing_id": pairing.pairing_id,
+                "pairing_code": pairing.pairing_code,
+                "mirror_hardware_id": pairing.mirror.hardware_id if pairing.mirror else "",
+                "hardware_id": pairing.mirror.hardware_id if pairing.mirror else "",
+                "mirror_user_id": pairing.paired_user_uid or "",
+            },
+        )
         return RedirectResponse(redirect_url, status_code=302)
+    logger.info(
+        "pairing_authorized pairing_id=%s provider=%s intent=%s status=%s paired_uid=%s",
+        pairing.pairing_id,
+        pairing.provider,
+        pairing.intent,
+        pairing.status,
+        pairing.paired_user_uid,
+    )
     return _success_html(
         "Google connected",
-        "Sign-in complete. You can close this tab and return to the mirror.",
+        "Sign-in complete. You can close this tab and return to the app.",
     )

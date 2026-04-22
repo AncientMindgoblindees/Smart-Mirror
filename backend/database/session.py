@@ -24,6 +24,7 @@ def init_db() -> None:
     _ensure_sync_columns()
     _ensure_d1_checkpoint_columns()
     _ensure_multitenant_columns()
+    _ensure_mirror_claim_columns()
 
 
 def _ensure_d1_checkpoint_columns() -> None:
@@ -54,6 +55,8 @@ def _ensure_sync_columns() -> None:
         "oauth_credentials",
         "clothing_item",
         "clothing_image",
+        "household_memberships",
+        "auth_pairings",
     )
     with engine.begin() as conn:
         for table in targets:
@@ -99,6 +102,20 @@ def _ensure_multitenant_columns() -> None:
                         f"ALTER TABLE {table} ADD COLUMN {column_name} {column_type}"
                     )
                 )
+
+
+def _ensure_mirror_claim_columns() -> None:
+    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(mirrors)")).fetchall()
+        columns = {str(row[1]) for row in rows}
+        if not columns:
+            return
+        if "claimed_by_user_uid" not in columns:
+            conn.execute(text("ALTER TABLE mirrors ADD COLUMN claimed_by_user_uid VARCHAR(128)"))
+        if "claimed_at" not in columns:
+            conn.execute(text("ALTER TABLE mirrors ADD COLUMN claimed_at DATETIME"))
 
 
 def get_db():

@@ -10,6 +10,7 @@ import type {
   MirrorProfile,
   MirrorRegistrationRequest,
   MirrorRegistrationResponse,
+  SessionMeResponse,
   MirrorSyncResponse,
   ProfileActivateRequest,
   ProfileEnrollRequest,
@@ -73,6 +74,10 @@ export function getMirrorSync(): Promise<MirrorSyncResponse> {
   return jsonRequest<MirrorSyncResponse>('/mirror/sync');
 }
 
+export function getSessionMe(): Promise<SessionMeResponse> {
+  return jsonRequest<SessionMeResponse>('/session/me');
+}
+
 export function listProfiles(): Promise<MirrorProfile[]> {
   return jsonRequest<MirrorProfile[]>('/profile/');
 }
@@ -97,45 +102,71 @@ export function deleteProfile(userId: string): Promise<{ status: string }> {
   });
 }
 
-export function getAuthProviders(hardwareId: string, userId: string): Promise<AuthProviderStatus[]> {
+export function getAuthProviders(hardwareId: string, userId?: string | null): Promise<AuthProviderStatus[]> {
   return jsonRequest<AuthProviderStatus[]>(
-    withQuery('/auth/providers', { hardware_id: hardwareId, user_id: userId }),
+    withQuery('/auth/providers', { hardware_id: hardwareId, user_id: userId ?? undefined }),
   );
 }
 
 export function startLogin(
   provider: string,
   hardwareId: string,
-  userId: string,
+  userId?: string | null,
   opts?: { intent?: 'pair_profile' | 'create_account'; targetUserId?: string },
 ): Promise<DeviceCodeResponse> {
-  const effectiveUserId = opts?.targetUserId?.trim() || userId;
+  const effectiveUserId = opts?.targetUserId?.trim() || userId?.trim();
   return jsonRequest<DeviceCodeResponse>(
     withQuery(`/auth/login/${provider}`, {
       hardware_id: hardwareId,
-      user_id: effectiveUserId,
+      user_id: effectiveUserId || undefined,
       intent: opts?.intent,
     }),
     { method: 'POST' },
   );
 }
 
-export function getLoginStatus(provider: string, hardwareId: string, userId: string): Promise<AuthLoginStatus> {
+export function getLoginStatus(provider: string, hardwareId: string, userId?: string | null): Promise<AuthLoginStatus> {
+  return getLoginStatusWithPairing(provider, hardwareId, userId);
+}
+
+export function getLoginStatusWithPairing(
+  provider: string,
+  hardwareId: string,
+  userId?: string | null,
+  pairingId?: string | null,
+): Promise<AuthLoginStatus> {
   return jsonRequest<AuthLoginStatus>(
-    withQuery(`/auth/login/${provider}/status`, { hardware_id: hardwareId, user_id: userId }),
+    withQuery(`/auth/login/${provider}/status`, {
+      hardware_id: hardwareId,
+      user_id: userId ?? undefined,
+      pairing_id: pairingId ?? undefined,
+    }),
   );
 }
 
-export function logoutProvider(provider: string, hardwareId: string, userId: string): Promise<{ status: string }> {
+export function logoutProvider(provider: string, hardwareId: string, userId?: string | null): Promise<{ status: string }> {
   return jsonRequest<{ status: string }>(
-    withQuery(`/auth/logout/${provider}`, { hardware_id: hardwareId, user_id: userId }),
+    withQuery(`/auth/logout/${provider}`, { hardware_id: hardwareId, user_id: userId ?? undefined }),
     { method: 'DELETE' },
   );
 }
 
-export function cancelLogin(provider: string, hardwareId: string, userId: string): Promise<{ status: string }> {
+export function cancelLogin(provider: string, hardwareId: string, userId?: string | null): Promise<{ status: string }> {
+  return cancelLoginWithPairing(provider, hardwareId, userId);
+}
+
+export function cancelLoginWithPairing(
+  provider: string,
+  hardwareId: string,
+  userId?: string | null,
+  pairingId?: string | null,
+): Promise<{ status: string }> {
   return jsonRequest<{ status: string }>(
-    withQuery(`/auth/login/${provider}/cancel`, { hardware_id: hardwareId, user_id: userId }),
+    withQuery(`/auth/login/${provider}/cancel`, {
+      hardware_id: hardwareId,
+      user_id: userId ?? undefined,
+      pairing_id: pairingId ?? undefined,
+    }),
     { method: 'POST' },
   );
 }

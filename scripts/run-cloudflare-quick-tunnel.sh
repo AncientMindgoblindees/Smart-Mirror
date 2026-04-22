@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage:
 #   MIRROR_PORT=8000 bash scripts/run-cloudflare-quick-tunnel.sh
 
-PORT="${MIRROR_PORT:-8000}"
+PORT="${MIRROR_PORT:-8002}"
 URL="http://127.0.0.1:${PORT}"
 
 if ! command -v cloudflared >/dev/null 2>&1; then

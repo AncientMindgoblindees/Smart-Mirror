@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -7,6 +8,71 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Repo .env first (works no matter what cwd is when uvicorn imports this module).
 load_dotenv(BASE_DIR / ".env")
 load_dotenv()  # optional: cwd .env overrides for local dev
+
+
+def _cloudflared_config_path() -> Path:
+    override = os.getenv("CLOUDFLARED_CONFIG", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".cloudflared" / "config.yml"
+
+
+def _cloudflared_hostnames() -> list[str]:
+    config_path = _cloudflared_config_path()
+    if not config_path.exists():
+        return []
+
+    hostnames: list[str] = []
+    try:
+        for raw_line in config_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = raw_line.strip()
+            if not line.startswith("hostname:"):
+                continue
+            hostname = line.split(":", 1)[1].strip().strip("'\"")
+            if hostname:
+                hostnames.append(hostname)
+    except OSError:
+        return []
+
+    return hostnames
+
+
+def _is_local_hostname(hostname: str) -> bool:
+    normalized = hostname.strip().lower()
+    return normalized in {"localhost", "127.0.0.1", "::1"}
+
+
+def get_oauth_public_base_url(request_base_url: str | None = None) -> str:
+    request_base = (request_base_url or "").strip().rstrip("/")
+    configured = os.getenv("OAUTH_PUBLIC_BASE_URL", "").strip().rstrip("/")
+    force_configured = os.getenv("OAUTH_PUBLIC_BASE_URL_FORCE", "").strip().lower() in {"1", "true", "yes", "on"}
+    if configured:
+        if force_configured:
+            return configured
+        if request_base:
+            configured_host = (urlparse(configured).hostname or "").lower()
+            request_host = (urlparse(request_base).hostname or "").lower()
+            if configured_host and configured_host == request_host:
+                return configured
+            if request_host and not _is_local_hostname(request_host):
+                return request_base
+            hostnames = _cloudflared_hostnames()
+            if hostnames:
+                preferred = next((host for host in hostnames if host.startswith("mirror.")), hostnames[0])
+                return f"https://{preferred}"
+            return request_base
+        return configured
+
+    request_host = (urlparse(request_base).hostname or "").lower() if request_base else ""
+    if request_base and request_host and not _is_local_hostname(request_host):
+        return request_base
+
+    hostnames = _cloudflared_hostnames()
+    if hostnames:
+        preferred = next((host for host in hostnames if host.startswith("mirror.")), hostnames[0])
+        return f"https://{preferred}"
+
+    return request_base
 
 
 def get_db_path() -> Path:
@@ -81,4 +147,3 @@ CAMERA_NATIVE_COUNTDOWN_OVERLAY = os.getenv("CAMERA_NATIVE_COUNTDOWN_OVERLAY", "
 )
 
 TRYON_LOCAL_KEEP_LAST = int(os.getenv("TRYON_LOCAL_KEEP_LAST", "10"))
-

@@ -15,6 +15,7 @@ const POLL_MS = 1200;
 
 type UseWidgetPersistenceOptions = {
   enabled?: boolean;
+  syncEnabled?: boolean;
   refreshKey?: string;
   initialWidgets?: WidgetConfigOut[] | null;
   initialUserSettings?: UserSettingsOut | null;
@@ -26,7 +27,13 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
   ready: boolean;
   serverConnected: boolean;
 } {
-  const { enabled = true, refreshKey = 'default', initialWidgets = null, initialUserSettings = null } = options;
+  const {
+    enabled = true,
+    syncEnabled = true,
+    refreshKey = 'default',
+    initialWidgets = null,
+    initialUserSettings = null,
+  } = options;
   const [widgets, setWidgets] = useState<WidgetConfig[]>(INITIAL_WIDGETS);
   const [ready, setReady] = useState(false);
   const [serverConnected, setServerConnected] = useState(false);
@@ -110,7 +117,7 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
     };
   }, [enabled, initialUserSettings, initialWidgets, mergeServerRows, refreshKey]);
 
-  useIntervalWhen(() => void pullWidgetsFromServer(), 3000, enabled && ready && !serverConnected);
+  useIntervalWhen(() => void pullWidgetsFromServer(), 3000, enabled && syncEnabled && ready && !serverConnected);
 
   useEffect(() => {
     if (!enabled || !ready) return;
@@ -118,7 +125,7 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
   }, [enabled, ready, widgets]);
 
   useEffect(() => {
-    if (!enabled || !ready || !serverConnected) return;
+    if (!enabled || !syncEnabled || !ready || !serverConnected) return;
     const signature = widgetsSignature(widgets);
     if (signature === lastPutSig.current) return;
 
@@ -144,7 +151,7 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
         pendingPushTimerRef.current = undefined;
       }
     };
-  }, [enabled, widgets, ready, serverConnected, mergeServerRows]);
+  }, [enabled, syncEnabled, widgets, ready, serverConnected, mergeServerRows]);
 
   useIntervalWhen(
     () => {
@@ -152,16 +159,16 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
       void pullWidgetsFromServer();
     },
     POLL_MS,
-    enabled && ready && serverConnected,
+    enabled && syncEnabled && ready && serverConnected,
   );
 
   useWindowEvent('focus', () => {
-    if (!enabled || !ready || !serverConnected) return;
+    if (!enabled || !syncEnabled || !ready || !serverConnected) return;
     void pullWidgetsFromServer();
   });
 
   useEffect(() => {
-    if (!enabled || !ready || !serverConnected) return;
+    if (!enabled || !syncEnabled || !ready || !serverConnected) return;
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         void pullWidgetsFromServer();
@@ -169,7 +176,12 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [enabled, ready, serverConnected, pullWidgetsFromServer]);
+  }, [enabled, syncEnabled, ready, serverConnected, pullWidgetsFromServer]);
+
+  useEffect(() => {
+    if (!enabled || !syncEnabled || !ready || !serverConnected) return;
+    void pullWidgetsFromServer();
+  }, [enabled, syncEnabled, ready, serverConnected, pullWidgetsFromServer]);
 
   return { widgets, setWidgets, ready, serverConnected };
 }

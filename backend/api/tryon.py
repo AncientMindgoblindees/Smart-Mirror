@@ -16,13 +16,17 @@ from backend.services import (
     tryon_outfit_service,
     tryon_result_service,
 )
+from backend.services.auth_context import UserScopeContext, resolve_user_scope_context
 from backend.services.realtime import control_registry
 
 router = APIRouter(prefix="/tryon", tags=["tryon"])
 
 
 @router.get("/person-image/latest")
-def get_latest_person_image_file(db: Session = Depends(get_db)):
+def get_latest_person_image_file(
+    _: UserScopeContext = Depends(resolve_user_scope_context),
+    db: Session = Depends(get_db),
+):
     record = person_image_service.get_latest_person_image(db)
     if record is None:
         raise HTTPException(status_code=404, detail="No person image available")
@@ -38,7 +42,11 @@ def get_latest_person_image_file(db: Session = Depends(get_db)):
 
 
 @router.get("/person-image/{image_id}")
-def get_person_image_file_by_id(image_id: int, db: Session = Depends(get_db)):
+def get_person_image_file_by_id(
+    image_id: int,
+    _: UserScopeContext = Depends(resolve_user_scope_context),
+    db: Session = Depends(get_db),
+):
     record = person_image_service.get_person_image_by_id(db, image_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Person image not found")
@@ -47,7 +55,10 @@ def get_person_image_file_by_id(image_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/generated/{filename}", name="get_generated_tryon_image")
-def get_generated_tryon_image(filename: str):
+def get_generated_tryon_image(
+    filename: str,
+    _: UserScopeContext = Depends(resolve_user_scope_context),
+):
     path = tryon_result_service.resolve_generated_image_path(filename)
     return FileResponse(path)
 
@@ -55,13 +66,17 @@ def get_generated_tryon_image(filename: str):
 @router.post("/person-image", response_model=PersonImageRead, status_code=201)
 async def upload_person_image(
     file: UploadFile = File(...),
+    _: UserScopeContext = Depends(resolve_user_scope_context),
     db: Session = Depends(get_db),
 ):
     return await person_image_service.save_person_image(db, file)
 
 
 @router.get("/person-image", response_model=list[PersonImageRead])
-def list_person_images(db: Session = Depends(get_db)):
+def list_person_images(
+    _: UserScopeContext = Depends(resolve_user_scope_context),
+    db: Session = Depends(get_db),
+):
     rows = db.query(PersonImage).order_by(PersonImage.created_at.desc(), PersonImage.id.desc()).all()
     return rows
 
@@ -70,6 +85,7 @@ def list_person_images(db: Session = Depends(get_db)):
 def patch_person_image(
     image_id: int,
     payload: PersonImageUpdate,
+    _: UserScopeContext = Depends(resolve_user_scope_context),
     db: Session = Depends(get_db),
 ):
     row = person_image_service.get_person_image_by_id(db, image_id)
@@ -84,7 +100,11 @@ def patch_person_image(
 
 
 @router.delete("/person-image/{image_id}")
-def delete_person_image(image_id: int, db: Session = Depends(get_db)):
+def delete_person_image(
+    image_id: int,
+    _: UserScopeContext = Depends(resolve_user_scope_context),
+    db: Session = Depends(get_db),
+):
     row = person_image_service.get_person_image_by_id(db, image_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Person image not found")
@@ -102,6 +122,7 @@ def delete_person_image(image_id: int, db: Session = Depends(get_db)):
 async def outfit_generate(
     payload: OutfitGenerateRequest,
     request: Request,
+    context: UserScopeContext = Depends(resolve_user_scope_context),
     db: Session = Depends(get_db),
 ):
     if not config.LEONARDO_API_KEY.strip():
@@ -110,6 +131,7 @@ async def outfit_generate(
         gen_id, url = await asyncio.to_thread(
             tryon_outfit_service.run_outfit_generation,
             db,
+            context.user_uid,
             payload.clothing_image_ids,
             payload.prompt,
         )

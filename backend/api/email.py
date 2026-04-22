@@ -6,12 +6,9 @@ from email.utils import parseaddr
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy.orm import Session
-
-from backend.database.session import get_db
+from fastapi import APIRouter, Depends, Query
 from backend.schemas.email import EmailMessageOut, EmailMessagesResponse
-from backend.services import user_service
+from backend.services.auth_context import UserScopeContext, resolve_user_scope_context
 from backend.services.auth_manager import auth_manager
 
 logger = logging.getLogger(__name__)
@@ -88,18 +85,16 @@ async def fetch_google_messages(access_token: str, limit: int) -> List[EmailMess
 
 @router.get("/messages", response_model=EmailMessagesResponse)
 async def get_messages(
-    request: Request,
     limit: int = Query(20, ge=1, le=50),
-    db: Session = Depends(get_db),
+    context: UserScopeContext = Depends(resolve_user_scope_context),
 ) -> Any:
-    mirror, profile = user_service.resolve_active_profile_context(db, request, require_token=False)
-    token = await auth_manager.get_valid_token("google", mirror.id, profile.user_id)
+    token = await auth_manager.get_valid_token("google", context.mirror.id, context.user_uid)
     if not token:
         return EmailMessagesResponse(messages=[], providers=["google"])
     try:
         messages = await fetch_google_messages(token, limit)
     except Exception:
-        logger.exception("Email fetch failed for mirror=%s user=%s", mirror.hardware_id, profile.user_id)
+        logger.exception("Email fetch failed for mirror=%s user=%s", context.mirror.hardware_id, context.user_uid)
         messages = []
     messages.sort(key=lambda item: _parse_iso_sort_value(item.received_at), reverse=True)
     return EmailMessagesResponse(messages=messages[:limit], providers=["google"])

@@ -26,6 +26,10 @@
     linear-gradient(160deg, #030509 0%, #07111b 48%, #020406 100%);
 }
 
+.mirror-shell--performance {
+  background: linear-gradient(160deg, #030509 0%, #09111a 48%, #020406 100%);
+}
+
 @media (orientation: portrait) {
   .mirror-shell {
     padding: 1rem;
@@ -56,6 +60,11 @@
     radial-gradient(circle at 70% 35%, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px);
   background-size: 32rem 32rem, 24rem 24rem;
   animation: orbitDrift 22s linear infinite;
+}
+
+.mirror-shell--performance .mirror-ambient-layer,
+.mirror-shell--performance .mirror-orbit-layer {
+  display: none;
 }
 
 @keyframes breathingGlow {
@@ -120,6 +129,32 @@
   backdrop-filter: blur(18px);
 }
 
+.mirror-shell--performance .mirror-empty-state,
+.mirror-shell--performance .mirror-session-pill,
+.mirror-shell--performance .widget-frame,
+.mirror-shell--performance .connection-focus-inner,
+.mirror-shell--performance .connection-pill,
+.mirror-shell--performance .auth-qr-overlay,
+.mirror-shell--performance .auth-qr-card {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.mirror-shell--performance .widget-frame {
+  animation: none !important;
+  background: rgba(18, 24, 32, 0.92);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.mirror-shell--performance .widget-glass-highlight {
+  opacity: 0.2;
+}
+
+.mirror-shell--performance [class*='backdrop-blur-'] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 .mirror-session-pill__label {
   font-size: 0.7rem;
   letter-spacing: 0.12em;
@@ -129,6 +164,44 @@
 
 .mirror-session-pill strong {
   font-size: 0.95rem;
+}
+
+.mirror-session-pill__identity-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.mirror-session-pill__identity {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.mirror-session-pill__avatar {
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  object-fit: cover;
+}
+
+.mirror-session-pill__avatar--fallback {
+  display: grid;
+  place-items: center;
+  background: rgba(117, 98, 79, 0.8);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.mirror-session-pill__email {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
+.mirror-session-pill__meta {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
 }
 
 .mirror-session-pill span:last-child {

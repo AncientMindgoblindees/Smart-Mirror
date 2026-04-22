@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import type { WidgetConfig } from '../types';
 import './clock-widget.css';
 
@@ -26,6 +27,14 @@ function AnimatedDigit({ value, className }: { value: string; className?: string
   );
 }
 
+function StaticDigit({ value, className }: { value: string; className?: string }) {
+  return (
+    <span className={`digit-slot ${className ?? ''}`}>
+      <span className="digit-value">{value}</span>
+    </span>
+  );
+}
+
 type ClockFormat = '12h' | '24h';
 
 export function getClockDisplayParts(time: Date, format: ClockFormat = '24h') {
@@ -42,24 +51,22 @@ export function getClockDisplayParts(time: Date, format: ClockFormat = '24h') {
 
 export const ClockWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
   const [time, setTime] = useState(new Date());
-  const rafRef = useRef<number>(0);
+  const timeoutRef = useRef<number>(0);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    let lastSec = -1;
     const tick = () => {
       const now = new Date();
-      if (now.getSeconds() !== lastSec) {
-        lastSec = now.getSeconds();
-        setTime(now);
-      }
-      rafRef.current = requestAnimationFrame(tick);
+      setTime(now);
+      timeoutRef.current = window.setTimeout(tick, Math.max(50, 1000 - now.getMilliseconds()));
     };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
+    tick();
+    return () => window.clearTimeout(timeoutRef.current);
   }, []);
 
   const format: ClockFormat = config.format === '12h' ? '12h' : '24h';
   const { hours, minutes, seconds, meridiem, is12Hour } = getClockDisplayParts(time, format);
+  const Digit = reducedMotion ? StaticDigit : AnimatedDigit;
 
   const dateStr = time.toLocaleDateString([], {
     weekday: 'long',
@@ -71,26 +78,30 @@ export const ClockWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ con
     <div className="widget-content clock-widget">
       <div className="clock-time" aria-label={time.toLocaleTimeString([], { hour12: is12Hour })}>
         <div className="clock-hhmm">
-          <AnimatedDigit value={hours[0]} />
-          <AnimatedDigit value={hours[1]} />
+          <Digit value={hours[0]} />
+          <Digit value={hours[1]} />
           <span className="clock-colon">:</span>
-          <AnimatedDigit value={minutes[0]} />
-          <AnimatedDigit value={minutes[1]} />
+          <Digit value={minutes[0]} />
+          <Digit value={minutes[1]} />
           {is12Hour ? <span className="clock-meridiem">{meridiem}</span> : null}
         </div>
         <div className="clock-seconds">
-          <AnimatedDigit value={seconds[0]} className="sec" />
-          <AnimatedDigit value={seconds[1]} className="sec" />
+          <Digit value={seconds[0]} className="sec" />
+          <Digit value={seconds[1]} className="sec" />
         </div>
       </div>
-      <motion.div
-        className="clock-date"
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-      >
-        {dateStr}
-      </motion.div>
+      {reducedMotion ? (
+        <div className="clock-date">{dateStr}</div>
+      ) : (
+        <motion.div
+          className="clock-date"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {dateStr}
+        </motion.div>
+      )}
     </div>
   );
 });

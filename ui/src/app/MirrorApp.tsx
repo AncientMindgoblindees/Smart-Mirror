@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
   CheckCircle2,
   Link2,
@@ -23,6 +23,7 @@ import { DEV_PANEL_STORAGE_KEY, WidgetFrame, useWidgetPersistence } from '@/feat
 import { useControlEvents } from '@/hooks/useControlEvents';
 import { type MirrorButtonInput, useMirrorInput } from '@/hooks/useMirrorInput';
 import { useParallax } from '@/hooks/useParallax';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
 import { getApiBase } from '@/config/backendOrigin';
 import { useAuthState } from '@/features/auth';
@@ -98,13 +99,13 @@ function profileLabel(profile: MirrorProfile): string {
   return profile.display_name?.trim() || profile.user_id;
 }
 
+function profileSubtitle(profile: MirrorProfile): string {
+  return profile.email?.trim() || profile.user_id;
+}
+
 function nextIndex(current: number, delta: number, length: number): number {
   if (length <= 0) return 0;
   return (current + delta + length) % length;
-}
-
-function createPendingAccountUserId(): string {
-  return `google-user-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`;
 }
 
 function profileInitials(profile: MirrorProfile): string {
@@ -116,6 +117,32 @@ function profileInitials(profile: MirrorProfile): string {
 
 function avatarTone(index: number): string {
   return PROFILE_TONES[index % PROFILE_TONES.length] ?? PROFILE_TONES[0];
+}
+
+function ProfileAvatar({ profile, index, active }: { profile: MirrorProfile; index: number; active: boolean }) {
+  if (profile.photo_url?.trim()) {
+    return (
+      <motion.img
+        src={profile.photo_url}
+        alt={`${profileLabel(profile)} avatar`}
+        className="h-12 w-12 rounded-full border border-white/20 object-cover"
+        animate={{ scale: active ? 1.08 : 1, opacity: active ? 1 : 0.86 }}
+        transition={SPRING_SNAPPY}
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+
+  return (
+    <motion.div
+      className="flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold text-white"
+      animate={{ scale: active ? 1.1 : 1, opacity: active ? 1 : 0.78 }}
+      transition={SPRING_SNAPPY}
+      style={{ backgroundColor: avatarTone(index) }}
+    >
+      {profileInitials(profile)}
+    </motion.div>
+  );
 }
 
 function legendDot(active: boolean) {
@@ -251,14 +278,7 @@ function IdentityTile({
         />
       )}
       <div className="relative z-10 flex items-center gap-4">
-        <motion.div
-          className="flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold text-white"
-          animate={{ scale: active ? 1.1 : 1, opacity: active ? 1 : 0.78 }}
-          transition={SPRING_SNAPPY}
-          style={{ backgroundColor: avatarTone(index) }}
-        >
-          {profileInitials(profile)}
-        </motion.div>
+        <ProfileAvatar profile={profile} index={index} active={active} />
         <div className="min-w-0 flex-1">
           <motion.div
             className="truncate text-[17px] leading-none"
@@ -267,8 +287,8 @@ function IdentityTile({
           >
             {profileLabel(profile)}
           </motion.div>
+          <div className="mt-2 truncate text-[12px] text-white/55">{profileSubtitle(profile)}</div>
           <div className="mt-2 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
-            <span>{profile.user_id}</span>
             {live && <span className="text-white/70">Live</span>}
             {googleConnected && <span className="text-[#E6D5B8]">Google</span>}
           </div>
@@ -327,8 +347,11 @@ function CreateAccountTile({
 type DashboardProps = {
   hardwareId: string;
   activeProfile: MirrorProfile;
+  role: string | null;
+  authenticatedEmail: string | null;
   syncWidgets: WidgetConfigOut[] | null;
   syncUserSettings: UserSettingsOut | null;
+  backgroundPaused: boolean;
   showDevPanel: boolean;
   toggleDim: () => void;
   toggleSleep: () => void;
@@ -340,13 +363,17 @@ type DashboardProps = {
   signInGoogle: () => void | Promise<void>;
   disconnectGoogle: () => void | Promise<void>;
   refreshAuth: () => Promise<void>;
+  refreshSession: () => Promise<void>;
 };
 
 function MirrorDashboard({
   hardwareId,
   activeProfile,
+  role,
+  authenticatedEmail,
   syncWidgets,
   syncUserSettings,
+  backgroundPaused,
   showDevPanel,
   toggleDim,
   toggleSleep,
@@ -358,18 +385,21 @@ function MirrorDashboard({
   signInGoogle,
   disconnectGoogle,
   refreshAuth,
+  refreshSession,
 }: DashboardProps) {
+  const reducedMotion = useReducedMotion();
   const { widgets, setWidgets } = useWidgetPersistence({
     refreshKey: `${hardwareId}:${activeProfile.user_id}`,
     initialWidgets: syncWidgets,
     initialUserSettings: syncUserSettings,
+    syncEnabled: !backgroundPaused,
   });
   const { showCamera, setShowCamera, cameraError, setCameraError } = useOverlayState();
   const captureFlowActiveRef = useRef(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
   const { connectionState, handlers: deviceHandlers, retry: retryConnection } = useDeviceConnectionState();
-  const parallax = useParallax();
+  const parallax = useParallax(!reducedMotion && !backgroundPaused);
 
   useEffect(() => {
     const element = canvasRef.current;
@@ -441,6 +471,7 @@ function MirrorDashboard({
     ...deviceHandlers,
     onAuthStateChanged: () => {
       void refreshAuth();
+      void refreshSession();
     },
   });
 
@@ -450,7 +481,10 @@ function MirrorDashboard({
     );
   };
 
-  const visibleWidgets = useMemo(() => widgets.filter((widget) => widget.enabled), [widgets]);
+  const visibleWidgets = useMemo(
+    () => (backgroundPaused ? [] : widgets.filter((widget) => widget.enabled)),
+    [backgroundPaused, widgets],
+  );
 
   return (
     <>
@@ -459,9 +493,12 @@ function MirrorDashboard({
         className="mirror-canvas mirror-canvas-freeform"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+        transition={reducedMotion ? { duration: 0 } : { duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
         style={{
-          transform: `translate3d(${parallax.x * 0.3}px, ${parallax.y * 0.3}px, 0)`,
+          transform:
+            reducedMotion || backgroundPaused
+              ? undefined
+              : `translate3d(${parallax.x * 0.3}px, ${parallax.y * 0.3}px, 0)`,
         }}
       >
         <AnimatePresence mode="popLayout">
@@ -544,7 +581,28 @@ function MirrorDashboard({
 
       <div className="mirror-session-pill">
         <span className="mirror-session-pill__label">Live Session</span>
-        <strong>{profileLabel(activeProfile)}</strong>
+        <div className="mirror-session-pill__identity-row">
+          {activeProfile.photo_url ? (
+            <img
+              src={activeProfile.photo_url}
+              alt={`${profileLabel(activeProfile)} avatar`}
+              className="mirror-session-pill__avatar"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <span className="mirror-session-pill__avatar mirror-session-pill__avatar--fallback">
+              {profileInitials(activeProfile)}
+            </span>
+          )}
+          <div className="mirror-session-pill__identity">
+            <strong>{profileLabel(activeProfile)}</strong>
+            {activeProfile.email && <span className="mirror-session-pill__email">{activeProfile.email}</span>}
+          </div>
+        </div>
+        {authenticatedEmail && authenticatedEmail !== activeProfile.email && (
+          <span className="mirror-session-pill__meta">Auth: {authenticatedEmail}</span>
+        )}
+        {role && <span className="mirror-session-pill__meta">Role: {role}</span>}
         <span>{hardwareId}</span>
       </div>
     </>
@@ -552,10 +610,25 @@ function MirrorDashboard({
 }
 
 export default function MirrorApp() {
-  const { hardwareId, mirror, profiles, activeProfile, mirrorSyncSnapshot, loading, error, refresh, activateUser } =
-    useMirrorSession();
-  const [menuOpen, setMenuOpen] = useState(true);
-  const [viewStack, setViewStack] = useState<OverlayView[]>(['identity']);
+  const reducedMotion = useReducedMotion();
+  const {
+    hardwareId,
+    mirror,
+    profiles,
+    activeProfile,
+    sessionMe,
+    sessionMismatch,
+    sessionMismatchMessage,
+    sessionProfileReady,
+    mirrorSyncSnapshot,
+    loading,
+    error,
+    refresh,
+    waitForActiveProfile,
+    activateUser,
+  } = useMirrorSession();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [viewStack, setViewStack] = useState<OverlayView[]>(['system']);
   const [identityIntent, setIdentityIntent] = useState<IdentityIntent>('activate');
   const [identitySubstate, setIdentitySubstate] = useState<IdentitySubstate>('list');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -570,6 +643,7 @@ export default function MirrorApp() {
   const [animationMode, setAnimationMode] = useState<AnimationMode>(readAnimationInitial);
   const previousPendingAuthRef = useRef<ReturnType<typeof useAuthState>['pendingAuth']>(null);
   const { sleepMode, sleepModeRef, toggleDim, toggleSleep } = useMirrorDisplayMode();
+  const lightweightUiMode = reducedMotion || menuOpen;
 
   const currentView = viewStack[viewStack.length - 1] ?? 'identity';
   const activeProfileIndex = profiles.findIndex((profile) => profile.user_id === activeProfile?.user_id);
@@ -589,8 +663,18 @@ export default function MirrorApp() {
     refresh: refreshAuth,
   } = useAuthState({
     hardwareId,
-    userId: selectedProfile?.user_id ?? activeProfile?.user_id ?? null,
+    userId: activeProfile?.user_id ?? null,
     enabled: Boolean(hardwareId),
+    onAuthCompleted: async ({ intent, pairedUserUid }) => {
+      await refresh();
+      if (intent === 'create_account' || pairedUserUid) {
+        await waitForActiveProfile({
+          expectedUserUid: pairedUserUid,
+          timeoutMs: 25_000,
+          intervalMs: 1_500,
+        });
+      }
+    },
   });
   const { authError, signInGoogle, disconnectGoogle } = useAuthActions(initiateLogin, disconnectProvider);
   const googleConnected = authProviders.some((provider) => provider.provider === 'google' && provider.connected);
@@ -647,7 +731,19 @@ export default function MirrorApp() {
 
   const currentSystemIndex = Math.max(0, Math.min(currentView === 'system' ? selectedIndex : selectionMemory.system, systemMenuItems.length - 1));
   const selectedSystemItem = systemMenuItems[currentSystemIndex] ?? systemMenuItems[0];
-  const statusMessage = error || menuError || authError || (actionPending ? 'Updating mirror state...' : loading ? 'Preparing mirror registration and profile sync...' : null);
+  const pairingPending = Boolean(pendingAuth);
+  const sessionLoadingMessage = loading ? 'Preparing mirror registration and profile sync...' : null;
+  const profilePendingMessage = !loading && sessionMe && !sessionProfileReady
+    ? 'Pairing is complete, but the active profile is still being prepared. The mirror will switch automatically.'
+    : null;
+  const statusMessage =
+    error ||
+    menuError ||
+    authError ||
+    sessionMismatchMessage ||
+    (pairingPending ? 'Pairing in progress. Complete sign-in on your phone to continue.' : null) ||
+    profilePendingMessage ||
+    (actionPending ? 'Updating mirror state...' : sessionLoadingMessage);
 
   useTimeOfDay();
 
@@ -752,7 +848,7 @@ export default function MirrorApp() {
       showSystemMenu(true);
       return;
     }
-    showIdentityMenu('activate');
+    showIdentityMenu('create');
   };
 
   const closeMenuOverlay = () => {
@@ -760,6 +856,22 @@ export default function MirrorApp() {
     setIdentitySubstate('list');
     setMenuOpen(false);
   };
+
+  useEffect(() => {
+    if (loading || pendingAuth) return;
+    if (!activeProfile) {
+      if (!menuOpen) setMenuOpen(true);
+      if (identityIntent !== 'create') setIdentityIntent('create');
+      if (identitySubstate !== 'list') setIdentitySubstate('list');
+      if (currentView !== 'identity' || viewStack.length !== 1) {
+        setViewStack(['identity']);
+      }
+      return;
+    }
+    if (!menuOpen && currentView === 'identity') {
+      setViewStack(['system']);
+    }
+  }, [activeProfile, currentView, identityIntent, identitySubstate, loading, menuOpen, pendingAuth, viewStack.length]);
 
   const moveSelection = (delta: number) => {
     if (currentView === 'identity' && identitySubstate === 'pairing') return;
@@ -777,10 +889,7 @@ export default function MirrorApp() {
       setMenuError(null);
       setIdentityIntent('create');
       setIdentitySubstate('pairing');
-      await signInGoogle({
-        intent: 'create_account',
-        targetUserId: createPendingAccountUserId(),
-      });
+      await signInGoogle({ intent: 'create_account' });
     } finally {
       setActionPending(null);
     }
@@ -813,18 +922,14 @@ export default function MirrorApp() {
 
   const handlePairSelectedProfile = async (opts?: { createAccount?: boolean }) => {
     const createAccount = Boolean(opts?.createAccount);
-    if (!selectedProfile && !createAccount) {
-      setMenuError('Select a profile before pairing Google.');
+    if (!selectedProfile && !createAccount && !activeProfile) {
+      setMenuError('No active backend profile is available for pairing yet.');
       return;
     }
     setActionPending('pair');
     setMenuError(null);
     setIdentitySubstate('pairing');
-    await signInGoogle(
-      createAccount
-        ? { intent: 'create_account', targetUserId: createPendingAccountUserId() }
-        : { intent: 'pair_profile' },
-    );
+    await signInGoogle(createAccount ? { intent: 'create_account' } : { intent: 'pair_profile' });
     setActionPending(null);
   };
 
@@ -880,7 +985,14 @@ export default function MirrorApp() {
     }
     if (profiles.length === 0) {
       if (identityIntent === 'pair') {
-        setMenuError('Create a profile before pairing Google.');
+        if (!activeProfile) {
+          setMenuError('No active backend profile yet. Choose Create Account to finish pairing.');
+          return;
+        }
+        setActionPending('pair');
+        setIdentitySubstate('pairing');
+        await signInGoogle({ intent: 'pair_profile' });
+        setActionPending(null);
         return;
       }
       setMenuError('Select Create Account to continue.');
@@ -1042,58 +1154,69 @@ export default function MirrorApp() {
   });
 
   return (
-    <TooltipProvider delayDuration={400}>
-      <div className={`mirror-shell mirror-shell--${animationMode}`}>
-        <div className="mirror-ambient-layer" aria-hidden="true" />
-        <div className="mirror-orbit-layer" aria-hidden="true" />
+    <MotionConfig reducedMotion={lightweightUiMode ? 'always' : 'never'}>
+      <TooltipProvider delayDuration={400}>
+        <div
+          className={`mirror-shell mirror-shell--${animationMode} ${lightweightUiMode ? 'mirror-shell--performance' : ''}`}
+        >
+          <div className="mirror-ambient-layer" aria-hidden="true" />
+          <div className="mirror-orbit-layer" aria-hidden="true" />
 
-        {activeProfile && (
-          <MirrorDashboard
-            key={activeProfile.user_id}
-            hardwareId={hardwareId}
-            activeProfile={activeProfile}
-            syncWidgets={mirrorSyncSnapshot?.widget_config ?? null}
-            syncUserSettings={mirrorSyncSnapshot?.user_settings ?? null}
-            showDevPanel={showDevPanel}
-            toggleDim={toggleDim}
-            toggleSleep={toggleSleep}
-            fullScreenTryOnUrl={fullScreenTryOnUrl}
-            setFullScreenTryOnUrl={setFullScreenTryOnUrl}
-            authProviders={authProviders}
-            pendingAuth={pendingAuth}
-            authError={authError}
-            signInGoogle={signInGoogle}
-            disconnectGoogle={disconnectGoogle}
-            refreshAuth={refreshAuth}
-          />
-        )}
+          {activeProfile && (
+            <MirrorDashboard
+              key={activeProfile.user_id}
+              hardwareId={hardwareId}
+              activeProfile={activeProfile}
+              role={sessionMe?.role ?? null}
+              authenticatedEmail={sessionMe?.user?.email ?? null}
+              syncWidgets={mirrorSyncSnapshot?.widget_config ?? null}
+              syncUserSettings={mirrorSyncSnapshot?.user_settings ?? null}
+              backgroundPaused={menuOpen}
+              showDevPanel={showDevPanel}
+              toggleDim={toggleDim}
+              toggleSleep={toggleSleep}
+              fullScreenTryOnUrl={fullScreenTryOnUrl}
+              setFullScreenTryOnUrl={setFullScreenTryOnUrl}
+              authProviders={authProviders}
+              pendingAuth={pendingAuth}
+              authError={authError}
+              signInGoogle={signInGoogle}
+              disconnectGoogle={disconnectGoogle}
+              refreshAuth={refreshAuth}
+              refreshSession={refresh}
+            />
+          )}
 
-        {!activeProfile && !loading && (
-          <div className="mirror-empty-state">
-            <Waves size={32} />
-            <h2>No active profile yet</h2>
-            <p>Create or activate a household profile from the mirror HUD to start the dashboard.</p>
-          </div>
-        )}
+          {!activeProfile && !loading && (
+            <div className="mirror-empty-state">
+              <Waves size={32} />
+              <h2>No active profile yet</h2>
+              <p>
+                {sessionMe && !sessionProfileReady
+                  ? 'Pairing is still finishing on the backend. The mirror will switch to your profile automatically.'
+                  : 'Use Create Account from the mirror HUD to finish QR sign-in and load your active profile.'}
+              </p>
+            </div>
+          )}
 
-        <AnimatePresence>
-          {menuOpen && (
-            <motion.div
-              className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/35 px-4 py-6 backdrop-blur-[8px]"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.22 }}
-            >
+          <AnimatePresence>
+            {menuOpen && (
               <motion.div
-                className="relative flex w-full max-w-[420px] flex-col overflow-hidden rounded-[40px] border border-white/10 bg-[rgba(255,255,255,0.03)] text-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-[24px]"
-                initial={{ opacity: 0, y: 20, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 14, scale: 0.98 }}
-                transition={SPRING_SOFT}
+                className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/35 px-4 py-6 backdrop-blur-[8px]"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22 }}
               >
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(230,213,184,0.12),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.01))]" />
-                <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/30" />
+                <motion.div
+                  className="relative flex w-full max-w-[420px] flex-col overflow-hidden rounded-[40px] border border-white/10 bg-[rgba(255,255,255,0.03)] text-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-[24px]"
+                  initial={{ opacity: 0, y: 20, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 14, scale: 0.98 }}
+                  transition={SPRING_SOFT}
+                >
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(230,213,184,0.12),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.01))]" />
+                  <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/30" />
 
                 <div className="relative flex items-start justify-between gap-4 px-6 pt-6">
                   <div className="min-w-0">
@@ -1108,10 +1231,10 @@ export default function MirrorApp() {
                         ? identitySubstate === 'pairing'
                           ? identityIntent === 'create'
                             ? 'Create a Google account'
-                            : 'Choose a profile to pair'
+                            : 'Pair Google to active session'
                           : identityIntent === 'pair'
-                            ? 'Choose a profile to pair'
-                            : 'Choose who is here'
+                            ? 'Pair Google to active session'
+                            : 'Identity & Pairing'
                         : 'Mirror controls'}
                     </h1>
                     <p className="mt-3 max-w-[18rem] text-sm leading-5 text-white/60">
@@ -1119,12 +1242,12 @@ export default function MirrorApp() {
                         ? identitySubstate === 'pairing'
                           ? identityIntent === 'create'
                             ? 'Scan the QR code and sign in with Google to create your mirror account.'
-                            : 'Keep your phone ready while the selected profile waits for pairing.'
+                            : 'Keep your phone ready while the backend links Google to the active profile.'
                           : identityIntent === 'pair'
-                            ? 'Select an existing profile or choose Create Account to start Google pairing.'
+                            ? 'Start pairing for the active backend profile, or choose Create Account for a new user.'
                             : activeProfile
-                              ? `Current profile: ${profileLabel(activeProfile)}`
-                              : 'Select an existing profile or choose Create Account.'
+                              ? `Current backend profile: ${profileLabel(activeProfile)}`
+                              : 'No active backend profile yet. Choose Create Account to continue.'
                         : selectedSystemItem?.helper ?? 'Navigate with tactile controls or the keyboard.'}
                     </p>
                   </div>
@@ -1154,7 +1277,9 @@ export default function MirrorApp() {
                                   ? 'New Google Account'
                                   : selectedProfile
                                     ? profileLabel(selectedProfile)
-                                    : 'Selected profile'}
+                                    : activeProfile
+                                      ? profileLabel(activeProfile)
+                                      : 'Backend active profile'}
                               </div>
                             </div>
                             <div className="rounded-[28px] border border-white/10 bg-white/[0.04] px-5 py-5">
@@ -1170,8 +1295,8 @@ export default function MirrorApp() {
                                 ) : (
                                   <motion.div
                                     className="flex h-[188px] w-[188px] items-center justify-center rounded-[18px] bg-[#F5F1EA] text-[#2A2017]"
-                                    animate={{ opacity: [0.55, 1, 0.55] }}
-                                    transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                                    animate={reducedMotion ? { opacity: 1 } : { opacity: [0.55, 1, 0.55] }}
+                                    transition={reducedMotion ? { duration: 0 } : { duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
                                   >
                                     Requesting QR
                                   </motion.div>
@@ -1179,8 +1304,8 @@ export default function MirrorApp() {
                               </div>
                               <motion.p
                                 className="mt-5 text-center text-sm uppercase tracking-[0.3em] text-[#E6D5B8]"
-                                animate={{ opacity: [0.45, 0.92, 0.45] }}
-                                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+                                animate={reducedMotion ? { opacity: 0.92 } : { opacity: [0.45, 0.92, 0.45] }}
+                                transition={reducedMotion ? { duration: 0 } : { duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
                               >
                                 Waiting for pairing
                               </motion.p>
@@ -1198,122 +1323,124 @@ export default function MirrorApp() {
                           </div>
                         ) : (
                           <div className="space-y-3 overflow-y-auto pr-1">
-                            {profiles.map((profile, index) => (
-                              <IdentityTile
-                                key={profile.user_id}
-                                profile={profile}
-                                index={index}
-                                active={index === clampedIdentityIndex}
-                                live={profile.user_id === activeProfile?.user_id}
-                                googleConnected={index === clampedIdentityIndex && googleConnected}
+                              {profiles.map((profile, index) => (
+                                <IdentityTile
+                                  key={profile.user_id}
+                                  profile={profile}
+                                  index={index}
+                                  active={index === clampedIdentityIndex}
+                                  live={profile.user_id === activeProfile?.user_id}
+                                  googleConnected={index === clampedIdentityIndex && googleConnected}
+                                  onClick={() => {
+                                    setSelectedIndex(index);
+                                    setSelectionMemory((previous) => ({ ...previous, identity: index }));
+                                  }}
+                                />
+                              ))}
+                              <CreateAccountTile
+                                active={clampedIdentityIndex === profiles.length}
                                 onClick={() => {
+                                  const index = profiles.length;
                                   setSelectedIndex(index);
                                   setSelectionMemory((previous) => ({ ...previous, identity: index }));
                                 }}
                               />
-                            ))}
-                            <CreateAccountTile
-                              active={clampedIdentityIndex === profiles.length}
-                              onClick={() => {
-                                const index = profiles.length;
-                                setSelectedIndex(index);
-                                setSelectionMemory((previous) => ({ ...previous, identity: index }));
-                              }}
-                            />
-                          </div>
-                        )}
+                            </div>
+                          )}
 
-                        <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/60">
-                          <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">
-                            {identityIntent === 'pair' ? 'Pairing Mode' : 'Selection Mode'}
+                          <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/60">
+                            <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">
+                              {identityIntent === 'pair' ? 'Pairing Mode' : 'Selection Mode'}
+                            </div>
+                            <p className="mt-2 leading-5">
+                              {identityIntent === 'pair'
+                                ? 'Scan the QR code on your phone. The mirror session will refresh automatically once pairing completes.'
+                                : selectedCreateAccount
+                                  ? 'Create Account opens a Google QR sign-in and will activate the new profile automatically.'
+                                  : 'Use Up and Down to wrap through profiles. Enter confirms the highlighted identity.'}
+                            </p>
                           </div>
-                          <p className="mt-2 leading-5">
-                            {identityIntent === 'pair'
-                              ? 'Select a profile, then scan the QR code on your phone. Escape or Backspace cancels pairing.'
-                              : selectedCreateAccount
-                                ? 'Create Account opens a Google QR sign-in and will activate the new profile automatically.'
-                              : 'Use Up and Down to wrap through profiles. Enter confirms the highlighted identity.'}
-                          </p>
-                        </div>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="system"
-                        className="flex max-h-[68vh] flex-col gap-4"
-                        initial={{ opacity: 0, x: 14 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -14 }}
-                        transition={SPRING_SOFT}
-                      >
-                        <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/60">
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Active Identity</div>
-                              <div className="mt-2 text-base text-white">
-                                {activeProfile ? profileLabel(activeProfile) : 'No active profile'}
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="system"
+                          className="flex max-h-[68vh] flex-col gap-4"
+                          initial={{ opacity: 0, x: 14 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -14 }}
+                          transition={SPRING_SOFT}
+                        >
+                          <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/60">
+                            <div className="flex items-center justify-between gap-4">
+                              <div>
+                                <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Active Identity</div>
+                                <div className="mt-2 text-base text-white">
+                                  {activeProfile ? profileLabel(activeProfile) : 'No active profile'}
+                                </div>
+                                {activeProfile?.email && <div className="mt-1 text-xs text-white/55">{activeProfile.email}</div>}
+                              </div>
+                              <div className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-white/55">
+                                {sessionMismatch ? 'Profile Mismatch' : googleConnected ? 'Google Linked' : 'Google Ready'}
                               </div>
                             </div>
-                            <div className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-white/55">
-                              {googleConnected ? 'Google Linked' : 'Google Ready'}
-                            </div>
                           </div>
-                        </div>
 
-                        <div className="space-y-3 overflow-y-auto pr-1">
-                          {systemMenuItems.map((item, index) => (
-                            <SystemMenuRow
-                              key={item.id}
-                              item={item}
-                              active={index === currentSystemIndex}
-                              onClick={() => {
-                                setSelectedIndex(index);
-                                setSelectionMemory((previous) => ({ ...previous, system: index }));
-                                void handleSystemSelect(item);
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {statusMessage && (
-                  <div className={`relative px-6 pb-4 text-sm ${error || menuError || authError ? 'text-rose-300' : 'text-white/55'}`}>
-                    {statusMessage}
+                          <div className="space-y-3 overflow-y-auto pr-1">
+                            {systemMenuItems.map((item, index) => (
+                              <SystemMenuRow
+                                key={item.id}
+                                item={item}
+                                active={index === currentSystemIndex}
+                                onClick={() => {
+                                  setSelectedIndex(index);
+                                  setSelectionMemory((previous) => ({ ...previous, system: index }));
+                                  void handleSystemSelect(item);
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                )}
 
-                <div className="relative border-t border-white/8 bg-black/15 px-6 py-4">
-                  <FooterLegend />
-                </div>
+                  {statusMessage && (
+                    <div className={`relative px-6 pb-4 text-sm ${error || menuError || authError || sessionMismatchMessage ? 'text-rose-300' : 'text-white/55'}`}>
+                      {statusMessage}
+                    </div>
+                  )}
+
+                  <div className="relative border-t border-white/8 bg-black/15 px-6 py-4">
+                    <FooterLegend />
+                  </div>
+                </motion.div>
               </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+          </AnimatePresence>
 
-        <AnimatePresence>
-          {sleepMode && (
-            <motion.div
-              className="mirror-sleep-overlay"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
-              aria-hidden="true"
-            >
-              <motion.span
-                className="mirror-sleep-hint"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.8, duration: 1, ease: [0.16, 1, 0.3, 1] }}
+          <AnimatePresence>
+            {sleepMode && (
+              <motion.div
+                className="mirror-sleep-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
+                aria-hidden="true"
               >
-                Sleep mode - press any mapped key or hold the display button to wake
-              </motion.span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </TooltipProvider>
+                <motion.span
+                  className="mirror-sleep-hint"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.8, duration: 1, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  Sleep mode - press any mapped key or hold the display button to wake
+                </motion.span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </TooltipProvider>
+    </MotionConfig>
   );
 }

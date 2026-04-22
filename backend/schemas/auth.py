@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class DeviceCodeOut(BaseModel):
     """Returned when a device-code login flow is initiated."""
     provider: str
+    pairing_id: Optional[str] = None
     verification_uri: str
     user_code: str
     expires_in: int
@@ -21,6 +22,9 @@ class AuthStatusOut(BaseModel):
     """Polling response for an in-progress device-code flow."""
     provider: str
     status: str  # "pending" | "complete" | "expired" | "error"
+    pairing_id: Optional[str] = None
+    paired_user_uid: Optional[str] = None
+    custom_token_ready: Optional[bool] = None
     message: Optional[str] = None
     intent: Optional[str] = None
 

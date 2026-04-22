@@ -7,8 +7,8 @@ sqlalchemy
 alembic
 pydantic
 cryptography
+firebase-admin
 
 cloudinary
-python-dotenv
-picamera2
+picamera2; platform_system == "Linux"
 Pillow
