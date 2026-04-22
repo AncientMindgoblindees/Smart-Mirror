@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import string
@@ -17,6 +18,7 @@ from backend.services.providers.base import TokenResponse
 
 PAIRING_TTL_MINUTES = 10
 PAIRING_CODE_ALPHABET = string.ascii_uppercase + string.digits
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -123,6 +125,9 @@ def create_pairing(
         if redirect_target:
             oauth_url = f"{oauth_url}&{urlencode({'redirect_to': redirect_target})}"
 
+        initial_paired_uid = owner.uid if owner and (intent or "link_provider") != "create_account" else None
+        initial_paired_email = owner.email if owner and (intent or "link_provider") != "create_account" else None
+
         row = AuthPairing(
             pairing_id=pairing_id,
             pairing_code=pairing_code,
@@ -136,8 +141,8 @@ def create_pairing(
             verification_url=verification_url,
             owner_user_uid=owner.uid if owner else None,
             owner_email=owner.email if owner else None,
-            paired_user_uid=owner.uid if owner else None,
-            paired_user_email=owner.email if owner else None,
+            paired_user_uid=initial_paired_uid,
+            paired_user_email=initial_paired_email,
             custom_token_ready=False,
             requires_session_replacement=False,
         )
@@ -175,9 +180,40 @@ def store_oauth_callback_result(
     pairing: AuthPairing,
     token: TokenResponse,
     oauth_email: str | None,
+    firebase_actor: FirebaseActor | None = None,
 ) -> AuthPairing:
     pairing = mark_expired_if_needed(db, pairing)
     if pairing.status == "expired":
+        return pairing
+
+    if pairing.intent == "create_account":
+        if firebase_actor is not None:
+            pairing.paired_user_uid = firebase_actor.uid
+            pairing.paired_user_email = firebase_actor.email or oauth_email or pairing.paired_user_email
+            if pairing.owner_user_uid is None:
+                pairing.owner_user_uid = firebase_actor.uid
+            if not pairing.owner_email:
+                pairing.owner_email = firebase_actor.email or oauth_email
+        elif oauth_email:
+            pairing.paired_user_email = oauth_email
+
+        pairing.oauth_access_token_enc = encrypt_token(token.access_token) if token.access_token else None
+        pairing.oauth_refresh_token_enc = encrypt_token(token.refresh_token) if token.refresh_token else None
+        pairing.oauth_token_expiry = _utcnow() + timedelta(seconds=int(token.expires_in or 3600))
+        pairing.oauth_scopes = token.scope
+        pairing.custom_token_ready = bool(pairing.paired_user_uid)
+        pairing.status = "authorized"
+        pairing.error_code = None
+        pairing.error_message = None
+        db.commit()
+        db.refresh(pairing)
+        logger.info(
+            "pairing_authorized pairing_id=%s provider=%s intent=%s paired_uid=%s",
+            pairing.pairing_id,
+            pairing.provider,
+            pairing.intent,
+            pairing.paired_user_uid,
+        )
         return pairing
 
     if pairing.owner_user_uid:
@@ -196,6 +232,13 @@ def store_oauth_callback_result(
         pairing.error_message = None
         db.commit()
         db.refresh(pairing)
+        logger.info(
+            "pairing_authorized pairing_id=%s provider=%s intent=%s paired_uid=%s",
+            pairing.pairing_id,
+            pairing.provider,
+            pairing.intent,
+            pairing.paired_user_uid,
+        )
         return pairing
 
     pairing.oauth_access_token_enc = encrypt_token(token.access_token) if token.access_token else None
@@ -209,6 +252,13 @@ def store_oauth_callback_result(
     pairing.error_message = None
     db.commit()
     db.refresh(pairing)
+    logger.info(
+        "pairing_authorized pairing_id=%s provider=%s intent=%s paired_uid=%s",
+        pairing.pairing_id,
+        pairing.provider,
+        pairing.intent,
+        pairing.paired_user_uid,
+    )
     return pairing
 
 
@@ -217,14 +267,21 @@ def bind_pairing_to_actor(db: Session, pairing: AuthPairing, actor: FirebaseActo
     if pairing.status == "expired":
         return pairing
 
-    if not pairing.owner_user_uid:
-        pairing.owner_user_uid = actor.uid
+    if pairing.intent == "create_account" and pairing.paired_user_uid:
+        target_uid = pairing.paired_user_uid
+        if not pairing.owner_user_uid:
+            pairing.owner_user_uid = target_uid
+    else:
+        target_uid = pairing.owner_user_uid or actor.uid
+        if not pairing.owner_user_uid:
+            pairing.owner_user_uid = actor.uid
+
     if actor.email and not pairing.owner_email:
         pairing.owner_email = actor.email
-    pairing.paired_user_uid = pairing.owner_user_uid
-    pairing.paired_user_email = pairing.owner_email or pairing.paired_user_email or actor.email
+    pairing.paired_user_uid = target_uid
+    pairing.paired_user_email = pairing.paired_user_email or pairing.owner_email or actor.email
 
-    if pairing.oauth_refresh_token_enc and pairing.owner_user_uid:
+    if pairing.oauth_refresh_token_enc and target_uid:
         refresh_token = decrypt_token(pairing.oauth_refresh_token_enc)
         access_token = decrypt_token(pairing.oauth_access_token_enc) if pairing.oauth_access_token_enc else ""
         if pairing.oauth_token_expiry is not None:
@@ -240,7 +297,7 @@ def bind_pairing_to_actor(db: Session, pairing: AuthPairing, actor: FirebaseActo
         _upsert_oauth_credential(
             db,
             mirror_id=pairing.mirror_id,
-            user_uid=pairing.owner_user_uid,
+            user_uid=target_uid,
             provider=pairing.provider,
             token=token,
         )
@@ -256,6 +313,77 @@ def bind_pairing_to_actor(db: Session, pairing: AuthPairing, actor: FirebaseActo
     pairing.error_message = None
     db.commit()
     db.refresh(pairing)
+    logger.info(
+        "pairing_bound pairing_id=%s provider=%s intent=%s paired_uid=%s actor_uid=%s",
+        pairing.pairing_id,
+        pairing.provider,
+        pairing.intent,
+        pairing.paired_user_uid,
+        actor.uid,
+    )
+    return pairing
+
+
+def bind_pairing_to_uid(
+    db: Session,
+    *,
+    pairing: AuthPairing,
+    target_uid: str,
+    target_email: str | None,
+) -> AuthPairing:
+    pairing = mark_expired_if_needed(db, pairing)
+    if pairing.status == "expired":
+        return pairing
+
+    if not target_uid:
+        raise HTTPException(status_code=409, detail="Pairing is not ready")
+
+    pairing.paired_user_uid = target_uid
+    pairing.paired_user_email = target_email or pairing.paired_user_email
+    if not pairing.owner_user_uid:
+        pairing.owner_user_uid = target_uid
+    if not pairing.owner_email:
+        pairing.owner_email = pairing.paired_user_email
+
+    if pairing.oauth_refresh_token_enc:
+        refresh_token = decrypt_token(pairing.oauth_refresh_token_enc)
+        access_token = decrypt_token(pairing.oauth_access_token_enc) if pairing.oauth_access_token_enc else ""
+        if pairing.oauth_token_expiry is not None:
+            expires_in = max(1, int((pairing.oauth_token_expiry - _utcnow()).total_seconds()))
+        else:
+            expires_in = 3600
+        token = TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=expires_in,
+            scope=pairing.oauth_scopes,
+        )
+        _upsert_oauth_credential(
+            db,
+            mirror_id=pairing.mirror_id,
+            user_uid=target_uid,
+            provider=pairing.provider,
+            token=token,
+        )
+        pairing.oauth_access_token_enc = None
+        pairing.oauth_refresh_token_enc = None
+        pairing.oauth_token_expiry = None
+        pairing.oauth_scopes = None
+
+    pairing.custom_token_ready = True
+    pairing.requires_session_replacement = False
+    pairing.status = "authorized"
+    pairing.error_code = None
+    pairing.error_message = None
+    db.commit()
+    db.refresh(pairing)
+    logger.info(
+        "pairing_bound pairing_id=%s provider=%s intent=%s paired_uid=%s actor_uid=none",
+        pairing.pairing_id,
+        pairing.provider,
+        pairing.intent,
+        pairing.paired_user_uid,
+    )
     return pairing
 
 

@@ -16,6 +16,10 @@ from backend.config import get_oauth_public_base_url
 from backend.database.models import Mirror
 from backend.database.session import get_db
 from backend.services.auth_context import FirebaseActor
+from backend.services.firebase_auth import (
+    FirebaseUserResolutionError,
+    get_or_create_firebase_user_from_google,
+)
 from backend.services.pairing_service import (
     create_pairing,
     get_pairing_by_code,
@@ -181,6 +185,14 @@ async def oauth_start(
 
     redirect_uri = f"{_public_base(request)}/api/oauth/{provider}/callback"
     state = _new_state(provider, pairing.pairing_id)
+    logger.info(
+        "pairing_start pairing_id=%s provider=%s intent=%s status=%s mirror_id=%s",
+        pairing.pairing_id,
+        pairing.provider,
+        pairing.intent,
+        pairing.status,
+        pairing.mirror_id,
+    )
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -221,6 +233,13 @@ async def oauth_callback(
     pairing = mark_expired_if_needed(db, pairing)
     if pairing.status == "expired":
         return _success_html("Pairing expired", "This pairing is no longer valid. Please start again.")
+    logger.info(
+        "pairing_callback pairing_id=%s provider=%s intent=%s status=%s",
+        pairing.pairing_id,
+        pairing.provider,
+        pairing.intent,
+        pairing.status,
+    )
 
     client_id, client_secret = get_google_web_oauth_credentials()
     redirect_uri = f"{_public_base(request)}/api/oauth/{provider}/callback"
@@ -254,7 +273,38 @@ async def oauth_callback(
         )
         userinfo = await _fetch_google_user_profile(token.access_token)
         oauth_email = str(userinfo.get("email") or "").strip() or None
-        pairing = store_oauth_callback_result(db, pairing=pairing, token=token, oauth_email=oauth_email)
+        oauth_display_name = str(userinfo.get("name") or "").strip() or None
+        oauth_photo_url = str(userinfo.get("picture") or "").strip() or None
+        firebase_actor = None
+        if pairing.intent == "create_account":
+            try:
+                resolved = get_or_create_firebase_user_from_google(
+                    email=oauth_email,
+                    display_name=oauth_display_name,
+                    photo_url=oauth_photo_url,
+                )
+                firebase_actor = FirebaseActor(
+                    uid=resolved["uid"],
+                    email=resolved.get("email"),
+                    display_name=resolved.get("display_name"),
+                    photo_url=resolved.get("photo_url"),
+                )
+            except FirebaseUserResolutionError as exc:
+                pairing.status = "error"
+                pairing.error_code = "FIREBASE_USER_RESOLUTION_FAILED"
+                pairing.error_message = str(exc)
+                db.commit()
+                db.refresh(pairing)
+                raise HTTPException(status_code=502, detail=pairing.error_message) from exc
+        pairing = store_oauth_callback_result(
+            db,
+            pairing=pairing,
+            token=token,
+            oauth_email=oauth_email,
+            firebase_actor=firebase_actor,
+        )
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Google callback failed while persisting pairing tokens")
         pairing.status = "error"
@@ -266,14 +316,33 @@ async def oauth_callback(
 
     redirect_url = pairing.redirect_to or _post_auth_redirect_url()
     if redirect_url:
+        logger.info(
+            "pairing_authorized pairing_id=%s provider=%s intent=%s status=%s paired_uid=%s",
+            pairing.pairing_id,
+            pairing.provider,
+            pairing.intent,
+            pairing.status,
+            pairing.paired_user_uid,
+        )
         redirect_url = _append_query(
             redirect_url,
             {
                 "pairing_id": pairing.pairing_id,
                 "pairing_code": pairing.pairing_code,
+                "mirror_hardware_id": pairing.mirror.hardware_id if pairing.mirror else "",
+                "hardware_id": pairing.mirror.hardware_id if pairing.mirror else "",
+                "mirror_user_id": pairing.paired_user_uid or "",
             },
         )
         return RedirectResponse(redirect_url, status_code=302)
+    logger.info(
+        "pairing_authorized pairing_id=%s provider=%s intent=%s status=%s paired_uid=%s",
+        pairing.pairing_id,
+        pairing.provider,
+        pairing.intent,
+        pairing.status,
+        pairing.paired_user_uid,
+    )
     return _success_html(
         "Google connected",
         "Sign-in complete. You can close this tab and return to the app.",

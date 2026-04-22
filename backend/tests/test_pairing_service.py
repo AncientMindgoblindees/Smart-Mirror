@@ -7,7 +7,8 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.database.models import AuthPairing, Base, Mirror
 from backend.services.auth_context import FirebaseActor
-from backend.services.pairing_service import bind_pairing_to_actor
+from backend.services.pairing_service import bind_pairing_to_actor, store_oauth_callback_result
+from backend.services.providers.base import TokenResponse
 
 
 def _hash_secret(value: str) -> str:
@@ -65,6 +66,46 @@ class PairingServiceTests(unittest.TestCase):
         result = bind_pairing_to_actor(self.db, pairing, actor)
         self.assertTrue(result.requires_session_replacement)
         self.assertEqual(result.paired_user_uid, "paired-user-uid")
+
+    def test_create_account_callback_sets_firebase_identity_and_custom_token_ready(self) -> None:
+        pairing = AuthPairing(
+            pairing_id="pair_create_1",
+            pairing_code="ZXCV1234",
+            mirror_id=self.mirror_id,
+            provider="google",
+            intent="create_account",
+            status="awaiting_oauth",
+            owner_user_uid="google-user-temp123",
+            owner_email=None,
+            expires_at=datetime.utcnow() + timedelta(minutes=10),
+        )
+        self.db.add(pairing)
+        self.db.commit()
+        self.db.refresh(pairing)
+
+        token = TokenResponse(
+            access_token="access-token",
+            refresh_token="refresh-token",
+            expires_in=3600,
+            scope="calendar tasks",
+        )
+        firebase_actor = FirebaseActor(
+            uid="firebase-uid-123",
+            email="new-user@example.com",
+            display_name="New User",
+            photo_url=None,
+        )
+        result = store_oauth_callback_result(
+            self.db,
+            pairing=pairing,
+            token=token,
+            oauth_email="new-user@example.com",
+            firebase_actor=firebase_actor,
+        )
+        self.assertEqual(result.status, "authorized")
+        self.assertEqual(result.paired_user_uid, "firebase-uid-123")
+        self.assertEqual(result.paired_user_email, "new-user@example.com")
+        self.assertTrue(result.custom_token_ready)
 
 
 if __name__ == "__main__":

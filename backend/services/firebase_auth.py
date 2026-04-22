@@ -14,6 +14,10 @@ class FirebaseAuthError(RuntimeError):
     pass
 
 
+class FirebaseUserResolutionError(FirebaseAuthError):
+    pass
+
+
 _init_lock = threading.Lock()
 _firebase_app: firebase_admin.App | None = None
 
@@ -77,3 +81,50 @@ def create_firebase_custom_token(uid: str) -> str:
         return token.decode("utf-8")
     except Exception as exc:
         raise FirebaseAuthError("Failed to mint Firebase custom token") from exc
+
+
+def get_or_create_firebase_user_from_google(
+    *,
+    email: str | None,
+    display_name: str | None,
+    photo_url: str | None,
+) -> dict[str, Any]:
+    normalized_email = (email or "").strip().lower() or None
+    if not normalized_email:
+        raise FirebaseUserResolutionError("Google account email is required to resolve Firebase user")
+
+    try:
+        app = get_firebase_app()
+        user = firebase_auth.get_user_by_email(normalized_email, app=app)
+        updates: dict[str, Any] = {}
+        if display_name and user.display_name != display_name:
+            updates["display_name"] = display_name
+        if photo_url and user.photo_url != photo_url:
+            updates["photo_url"] = photo_url
+        if updates:
+            user = firebase_auth.update_user(user.uid, app=app, **updates)
+        return {
+            "uid": user.uid,
+            "email": user.email,
+            "display_name": user.display_name,
+            "photo_url": user.photo_url,
+        }
+    except firebase_auth.UserNotFoundError:
+        try:
+            app = get_firebase_app()
+            user = firebase_auth.create_user(
+                email=normalized_email,
+                display_name=display_name,
+                photo_url=photo_url,
+                app=app,
+            )
+            return {
+                "uid": user.uid,
+                "email": user.email,
+                "display_name": user.display_name,
+                "photo_url": user.photo_url,
+            }
+        except Exception as exc:
+            raise FirebaseUserResolutionError("Failed to create Firebase user from Google identity") from exc
+    except Exception as exc:
+        raise FirebaseUserResolutionError("Failed to resolve Firebase user from Google identity") from exc

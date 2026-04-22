@@ -166,6 +166,44 @@
   font-size: 0.95rem;
 }
 
+.mirror-session-pill__identity-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.mirror-session-pill__identity {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.mirror-session-pill__avatar {
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  object-fit: cover;
+}
+
+.mirror-session-pill__avatar--fallback {
+  display: grid;
+  place-items: center;
+  background: rgba(117, 98, 79, 0.8);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.mirror-session-pill__email {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
+.mirror-session-pill__meta {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
 .mirror-session-pill span:last-child {
   font-size: 0.76rem;
   color: var(--color-text-secondary);

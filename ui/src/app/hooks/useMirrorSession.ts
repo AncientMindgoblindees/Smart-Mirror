@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { MirrorProfile, MirrorRegistrationResponse, MirrorSyncResponse } from '@/api/backendTypes';
+import type {
+  MirrorProfile,
+  MirrorRegistrationResponse,
+  MirrorSyncResponse,
+  SessionActiveProfile,
+  SessionMeResponse,
+} from '@/api/backendTypes';
 import {
   activateProfile,
   deleteProfile,
   enrollProfile,
   getMirrorSync,
+  getSessionMe,
   listProfiles,
   registerMirror,
 } from '@/api/mirrorApi';
@@ -23,6 +30,12 @@ type MirrorSummary = MirrorRegistrationResponse | {
   updated_at: string;
 };
 
+type RefreshSnapshot = {
+  activeProfile: MirrorProfile | null;
+  session: SessionMeResponse | null;
+  mismatch: boolean;
+};
+
 function slugifyProfileId(displayName: string, existingUserIds: string[]): string {
   const base = displayName
     .toLowerCase()
@@ -37,15 +50,132 @@ function slugifyProfileId(displayName: string, existingUserIds: string[]): strin
   return `${base}-${suffix}`;
 }
 
+function toErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message.trim()) {
+    const message = err.message.trim();
+    if (/401|auth required|invalid firebase|not authenticated/i.test(message)) {
+      return 'Session is not signed in yet. Complete QR pairing to load your active profile.';
+    }
+    return message;
+  }
+  return fallback;
+}
+
+function mapSessionProfile(activeProfile: SessionActiveProfile, mirrorId: string): MirrorProfile {
+  const nowIso = new Date().toISOString();
+  return {
+    id: -1,
+    mirror_id: mirrorId,
+    user_id: activeProfile.user_uid,
+    display_name: activeProfile.display_name ?? null,
+    email: activeProfile.email ?? null,
+    photo_url: activeProfile.photo_url ?? null,
+    widget_config: null,
+    is_active: Boolean(activeProfile.is_active),
+    created_at: nowIso,
+    updated_at: nowIso,
+  };
+}
+
+function mergeProfiles(list: MirrorProfile[]): MirrorProfile[] {
+  const map = new Map<string, MirrorProfile>();
+  list.forEach((profile) => {
+    const existing = map.get(profile.user_id);
+    if (!existing) {
+      map.set(profile.user_id, profile);
+      return;
+    }
+    map.set(profile.user_id, {
+      ...existing,
+      ...profile,
+      display_name: profile.display_name ?? existing.display_name ?? null,
+      email: profile.email ?? existing.email ?? null,
+      photo_url: profile.photo_url ?? existing.photo_url ?? null,
+      is_active: profile.is_active || existing.is_active,
+    });
+  });
+  return Array.from(map.values());
+}
+
 export function useMirrorSession() {
   const [mirror, setMirror] = useState<MirrorSummary | null>(null);
   const [profiles, setProfiles] = useState<MirrorProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<MirrorProfile | null>(null);
   const [mirrorSyncSnapshot, setMirrorSyncSnapshot] = useState<MirrorSyncResponse | null>(null);
+  const [sessionMe, setSessionMe] = useState<SessionMeResponse | null>(null);
+  const [sessionMismatch, setSessionMismatch] = useState(false);
+  const [sessionMismatchMessage, setSessionMismatchMessage] = useState<string | null>(null);
+  const [sessionProfileReady, setSessionProfileReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const hardwareId = useMemo(() => readMirrorHardwareId(), []);
+
+  const refreshSessionState = useCallback(
+    async (opts?: { includeProfileList?: boolean; registration?: MirrorSummary | null }): Promise<RefreshSnapshot> => {
+      const includeProfileList = Boolean(opts?.includeProfileList);
+      const registration = opts?.registration ?? mirror;
+      const fallbackMirrorId = registration?.id ?? hardwareId;
+
+      const [sessionResult, syncResult, profileResult] = await Promise.allSettled([
+        getSessionMe(),
+        getMirrorSync(),
+        includeProfileList ? listProfiles() : Promise.resolve([] as MirrorProfile[]),
+      ]);
+
+      const sessionPayload = sessionResult.status === 'fulfilled' ? sessionResult.value : null;
+      const syncPayload = syncResult.status === 'fulfilled' ? syncResult.value : null;
+      const profileList = profileResult.status === 'fulfilled' ? profileResult.value : [];
+
+      const sessionActive = sessionPayload?.active_profile
+        ? mapSessionProfile(sessionPayload.active_profile, syncPayload?.mirror.id ?? fallbackMirrorId)
+        : null;
+      const fallbackActive = syncPayload?.active_profile ?? profileList.find((profile) => profile.is_active) ?? null;
+      const resolvedActiveProfile = sessionActive ?? fallbackActive;
+
+      const resolvedProfiles = mergeProfiles([
+        ...profileList,
+        ...(syncPayload?.active_profile ? [syncPayload.active_profile] : []),
+        ...(sessionActive ? [sessionActive] : []),
+      ]);
+
+      const mismatch =
+        Boolean(sessionPayload?.user?.uid) &&
+        Boolean(resolvedActiveProfile?.user_id) &&
+        sessionPayload?.user?.uid !== resolvedActiveProfile?.user_id;
+
+      setSessionMe(sessionPayload);
+      setMirrorSyncSnapshot(syncPayload);
+      if (syncPayload?.mirror) {
+        setMirror(syncPayload.mirror);
+      } else if (registration) {
+        setMirror(registration);
+      }
+      setProfiles(resolvedProfiles);
+      setActiveProfile(resolvedActiveProfile);
+      setSessionProfileReady(Boolean(sessionPayload?.active_profile?.is_active));
+      setSessionMismatch(mismatch);
+      setSessionMismatchMessage(
+        mismatch
+          ? `Authenticated user (${sessionPayload?.user?.uid}) does not match active mirror profile (${resolvedActiveProfile?.user_id}).`
+          : null,
+      );
+      saveActiveMirrorUserId(resolvedActiveProfile?.user_id ?? null);
+
+      if (sessionResult.status === 'rejected') {
+        setError(toErrorMessage(sessionResult.reason, 'Failed to load /session/me.'));
+      } else {
+        setError(null);
+      }
+
+      return {
+        activeProfile: resolvedActiveProfile,
+        session: sessionPayload,
+        mismatch,
+      };
+    },
+    [hardwareId, mirror],
+  );
 
   const refresh = useCallback(async () => {
     saveMirrorHardwareId(hardwareId);
@@ -56,27 +186,8 @@ export function useMirrorSession() {
     });
     saveMirrorHardwareToken(registration.hardware_token);
     setMirror(registration);
-
-    const profileList = await listProfiles();
-    setProfiles(profileList);
-
-    try {
-      const sync = await getMirrorSync();
-      setMirrorSyncSnapshot(sync);
-      setMirror(sync.mirror);
-      setActiveProfile(sync.active_profile ?? null);
-      saveActiveMirrorUserId(sync.active_profile?.user_id ?? null);
-      setProfiles((current) => {
-        if (current.length > 0) return current;
-        return sync.active_profile ? [sync.active_profile] : current;
-      });
-    } catch {
-      setMirrorSyncSnapshot(null);
-      const selected = profileList.find((profile) => profile.is_active) ?? null;
-      setActiveProfile(selected);
-      saveActiveMirrorUserId(selected?.user_id ?? null);
-    }
-  }, [hardwareId]);
+    await refreshSessionState({ includeProfileList: true, registration });
+  }, [hardwareId, refreshSessionState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +208,28 @@ export function useMirrorSession() {
       cancelled = true;
     };
   }, [refresh]);
+
+  const waitForActiveProfile = useCallback(
+    async (opts?: { expectedUserUid?: string | null; timeoutMs?: number; intervalMs?: number }) => {
+      const expectedUserUid = opts?.expectedUserUid?.trim() || null;
+      const timeoutMs = opts?.timeoutMs ?? 25_000;
+      const intervalMs = opts?.intervalMs ?? 1_500;
+      const deadline = Date.now() + timeoutMs;
+
+      let latest = await refreshSessionState();
+      while (Date.now() < deadline) {
+        const activeUid = latest.activeProfile?.user_id ?? null;
+        const matches = activeUid && (!expectedUserUid || activeUid === expectedUserUid);
+        if (matches) return latest.activeProfile;
+        await new Promise<void>((resolve) => {
+          window.setTimeout(() => resolve(), intervalMs);
+        });
+        latest = await refreshSessionState();
+      }
+      return latest.activeProfile;
+    },
+    [refreshSessionState],
+  );
 
   const activateUser = useCallback(
     async (userId: string) => {
@@ -144,10 +277,15 @@ export function useMirrorSession() {
     mirror,
     profiles,
     activeProfile,
+    sessionMe,
+    sessionMismatch,
+    sessionMismatchMessage,
+    sessionProfileReady,
     mirrorSyncSnapshot,
     loading,
     error,
     refresh,
+    waitForActiveProfile,
     activateUser,
     createProfile,
     removeProfile,

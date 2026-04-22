@@ -115,10 +115,34 @@ export interface MirrorProfile {
   mirror_id: string;
   user_id: string;
   display_name?: string | null;
+  email?: string | null;
+  photo_url?: string | null;
   widget_config?: Record<string, unknown> | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface SessionActiveProfile {
+  user_uid: string;
+  display_name?: string | null;
+  photo_url?: string | null;
+  email?: string | null;
+  is_active: boolean;
+}
+
+export interface SessionMeResponse {
+  user: {
+    uid: string;
+    email?: string | null;
+    display_name?: string | null;
+    photo_url?: string | null;
+  };
+  hardware_id: string;
+  hardware_claimed: boolean;
+  claimed_by_user_uid?: string | null;
+  role: 'admin' | 'member' | string;
+  active_profile?: SessionActiveProfile | null;
 }
 
 export interface MirrorSyncResponse {
@@ -153,10 +177,16 @@ export interface AuthProviderStatus {
   status: string;
   scopes?: string | null;
   connected_at?: string | null;
+  owner_user_uid?: string | null;
+  owner_email?: string | null;
+  is_current_user_owner?: boolean;
+  can_manage?: boolean;
+  can_disconnect?: boolean;
 }
 
 export interface DeviceCodeResponse {
   provider: string;
+  pairing_id?: string | null;
   verification_uri: string;
   user_code: string;
   expires_in: number;
@@ -169,6 +199,9 @@ export interface DeviceCodeResponse {
 export interface AuthLoginStatus {
   provider: string;
   status: string;
+  pairing_id?: string | null;
+  paired_user_uid?: string | null;
+  custom_token_ready?: boolean;
   message?: string | null;
   intent?: string | null;
 }
