@@ -237,10 +237,12 @@ function ConnectionStatusPill({
   phase,
   errorMessage,
   onRetry,
+  reducedMotion,
 }: {
   phase: ConnectionPhase;
   errorMessage: string | null;
   onRetry?: () => void;
+  reducedMotion: boolean;
 }) {
   const isError = phase === 'error';
   return (
@@ -253,9 +255,11 @@ function ConnectionStatusPill({
     >
       <motion.div
         className={`connection-pill-dot ${isError ? 'connection-pill-dot--error' : ''}`}
-        animate={isError ? { scale: 1, opacity: 1 } : { scale: [1, 1.3, 1], opacity: [0.5, 0.9, 0.5] }}
+        animate={
+          isError || reducedMotion ? { scale: 1, opacity: 1 } : { scale: [1, 1.3, 1], opacity: [0.5, 0.9, 0.5] }
+        }
         transition={
-          isError
+          isError || reducedMotion
             ? { duration: 0.3 }
             : { duration: 2, repeat: Infinity, ease: 'easeInOut' }
         }
@@ -285,7 +289,7 @@ type Props = {
 
 export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
   const reduced = useReducedMotion();
-  const parallax = useParallax();
+  const parallax = useParallax(!reduced);
   const { phase } = state;
 
   const isIdle = phase === 'idle';
@@ -324,6 +328,7 @@ export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
           phase={phase}
           errorMessage={state.errorMessage}
           onRetry={onRetry}
+          reducedMotion={reduced}
         />
       )}
     </AnimatePresence>
@@ -358,8 +363,8 @@ export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
               }}
               transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
             />
-            {isIdle && <IdleParticleField />}
-            <ParticleField active={isSearching || isConnecting} />
+            {!reduced && isIdle && <IdleParticleField />}
+            <ParticleField active={!reduced && (isSearching || isConnecting)} />
           </motion.div>
 
           {/* Mid parallax layer: scan rings */}
@@ -380,9 +385,9 @@ export function DeviceConnectionOverlay({ state, onRetry, onSoundCue }: Props) {
                 height: 'clamp(200px, 50vmin, 400px)',
               }}
             >
-              {isIdle && <IdleBreathingRing />}
-              <ScanRings active={isSearching} />
-              <DataStream active={isConnecting} />
+              {!reduced && isIdle && <IdleBreathingRing />}
+              <ScanRings active={!reduced && isSearching} />
+              <DataStream active={!reduced && isConnecting} />
             </div>
           </motion.div>
 

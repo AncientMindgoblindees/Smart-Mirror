@@ -12,7 +12,9 @@ Microsoft OAuth has been removed from the backend. The mirror now supports Googl
    - `http://<PI_IP>:8002/api/oauth/google/callback`
    - `https://<your-public-host>/api/oauth/google/callback`
 4. Fill in `.env` with `GOOGLE_WEB_CLIENT_ID` and `GOOGLE_WEB_CLIENT_SECRET`.
-5. Optionally set `GOOGLE_TV_CLIENT_ID` and `GOOGLE_TV_CLIENT_SECRET` if you use a separate limited-input client.
+5. Set `OAUTH_PUBLIC_BASE_URL=https://<your-public-host>` if you want to force the QR URL.
+   If left blank, the backend will auto-detect `~/.cloudflared/config.yml` and use the configured tunnel hostname, preferring `mirror.*` when present.
+6. Optionally set `GOOGLE_TV_CLIENT_ID` and `GOOGLE_TV_CLIENT_SECRET` if you use a separate limited-input client.
 
 ## Mirror profile flow
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
   CheckCircle2,
   Link2,
@@ -23,6 +23,7 @@ import { DEV_PANEL_STORAGE_KEY, WidgetFrame, useWidgetPersistence } from '@/feat
 import { useControlEvents } from '@/hooks/useControlEvents';
 import { type MirrorButtonInput, useMirrorInput } from '@/hooks/useMirrorInput';
 import { useParallax } from '@/hooks/useParallax';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
 import { getApiBase } from '@/config/backendOrigin';
 import { useAuthState } from '@/features/auth';
@@ -355,6 +356,7 @@ function MirrorDashboard({
   disconnectGoogle,
   refreshAuth,
 }: DashboardProps) {
+  const reducedMotion = useReducedMotion();
   const { widgets, setWidgets } = useWidgetPersistence({
     refreshKey: `${hardwareId}:${activeProfile.user_id}`,
     initialWidgets: syncWidgets,
@@ -365,7 +367,7 @@ function MirrorDashboard({
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
   const { connectionState, handlers: deviceHandlers, retry: retryConnection } = useDeviceConnectionState();
-  const parallax = useParallax();
+  const parallax = useParallax(!reducedMotion);
 
   useEffect(() => {
     const element = canvasRef.current;
@@ -455,9 +457,9 @@ function MirrorDashboard({
         className="mirror-canvas mirror-canvas-freeform"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+        transition={reducedMotion ? { duration: 0 } : { duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
         style={{
-          transform: `translate3d(${parallax.x * 0.3}px, ${parallax.y * 0.3}px, 0)`,
+          transform: reducedMotion ? undefined : `translate3d(${parallax.x * 0.3}px, ${parallax.y * 0.3}px, 0)`,
         }}
       >
         <AnimatePresence mode="popLayout">
@@ -548,6 +550,7 @@ function MirrorDashboard({
 }
 
 export default function MirrorApp() {
+  const reducedMotion = useReducedMotion();
   const { hardwareId, mirror, profiles, activeProfile, mirrorSyncSnapshot, loading, error, refresh, activateUser, createProfile } =
     useMirrorSession();
   const [menuOpen, setMenuOpen] = useState(true);
@@ -1026,260 +1029,262 @@ export default function MirrorApp() {
   });
 
   return (
-    <TooltipProvider delayDuration={400}>
-      <div className={`mirror-shell mirror-shell--${animationMode}`}>
-        <div className="mirror-ambient-layer" aria-hidden="true" />
-        <div className="mirror-orbit-layer" aria-hidden="true" />
+    <MotionConfig reducedMotion={reducedMotion ? 'always' : 'never'}>
+      <TooltipProvider delayDuration={400}>
+        <div className={`mirror-shell mirror-shell--${animationMode} ${reducedMotion ? 'mirror-shell--performance' : ''}`}>
+          <div className="mirror-ambient-layer" aria-hidden="true" />
+          <div className="mirror-orbit-layer" aria-hidden="true" />
 
-        {activeProfile && (
-          <MirrorDashboard
-            key={activeProfile.user_id}
-            hardwareId={hardwareId}
-            activeProfile={activeProfile}
-            syncWidgets={mirrorSyncSnapshot?.widget_config ?? null}
-            syncUserSettings={mirrorSyncSnapshot?.user_settings ?? null}
-            showDevPanel={showDevPanel}
-            toggleDim={toggleDim}
-            toggleSleep={toggleSleep}
-            fullScreenTryOnUrl={fullScreenTryOnUrl}
-            setFullScreenTryOnUrl={setFullScreenTryOnUrl}
-            authProviders={authProviders}
-            pendingAuth={pendingAuth}
-            authError={authError}
-            signInGoogle={signInGoogle}
-            disconnectGoogle={disconnectGoogle}
-            refreshAuth={refreshAuth}
-          />
-        )}
+          {activeProfile && (
+            <MirrorDashboard
+              key={activeProfile.user_id}
+              hardwareId={hardwareId}
+              activeProfile={activeProfile}
+              syncWidgets={mirrorSyncSnapshot?.widget_config ?? null}
+              syncUserSettings={mirrorSyncSnapshot?.user_settings ?? null}
+              showDevPanel={showDevPanel}
+              toggleDim={toggleDim}
+              toggleSleep={toggleSleep}
+              fullScreenTryOnUrl={fullScreenTryOnUrl}
+              setFullScreenTryOnUrl={setFullScreenTryOnUrl}
+              authProviders={authProviders}
+              pendingAuth={pendingAuth}
+              authError={authError}
+              signInGoogle={signInGoogle}
+              disconnectGoogle={disconnectGoogle}
+              refreshAuth={refreshAuth}
+            />
+          )}
 
-        {!activeProfile && !loading && (
-          <div className="mirror-empty-state">
-            <Waves size={32} />
-            <h2>No active profile yet</h2>
-            <p>Create or activate a household profile from the mirror HUD to start the dashboard.</p>
-          </div>
-        )}
+          {!activeProfile && !loading && (
+            <div className="mirror-empty-state">
+              <Waves size={32} />
+              <h2>No active profile yet</h2>
+              <p>Create or activate a household profile from the mirror HUD to start the dashboard.</p>
+            </div>
+          )}
 
-        <AnimatePresence>
-          {menuOpen && (
-            <motion.div
-              className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/35 px-4 py-6 backdrop-blur-[8px]"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.22 }}
-            >
+          <AnimatePresence>
+            {menuOpen && (
               <motion.div
-                className="relative flex w-full max-w-[420px] flex-col overflow-hidden rounded-[40px] border border-white/10 bg-[rgba(255,255,255,0.03)] text-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-[24px]"
-                initial={{ opacity: 0, y: 20, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 14, scale: 0.98 }}
-                transition={SPRING_SOFT}
+                className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/35 px-4 py-6 backdrop-blur-[8px]"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22 }}
               >
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(230,213,184,0.12),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.01))]" />
-                <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/30" />
+                <motion.div
+                  className="relative flex w-full max-w-[420px] flex-col overflow-hidden rounded-[40px] border border-white/10 bg-[rgba(255,255,255,0.03)] text-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-[24px]"
+                  initial={{ opacity: 0, y: 20, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 14, scale: 0.98 }}
+                  transition={SPRING_SOFT}
+                >
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(230,213,184,0.12),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.01))]" />
+                  <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/30" />
 
-                <div className="relative flex items-start justify-between gap-4 px-6 pt-6">
-                  <div className="min-w-0">
-                    <p className="text-[11px] uppercase tracking-[0.4em] text-white/55">
-                      {currentView === 'identity' ? 'Identity Select' : 'System Menu'}
-                    </p>
-                    <h1
-                      className="mt-3 text-[clamp(1.7rem,2.8vw,2.15rem)] leading-none"
-                      style={{ fontFamily: 'var(--font-display)' }}
-                    >
-                      {currentView === 'identity'
-                        ? identityIntent === 'pair'
-                          ? 'Choose a profile to pair'
-                          : 'Choose who is here'
-                        : 'Mirror controls'}
-                    </h1>
-                    <p className="mt-3 max-w-[18rem] text-sm leading-5 text-white/60">
-                      {currentView === 'identity'
-                        ? identitySubstate === 'pairing'
-                          ? 'Keep your phone ready while the selected profile waits for pairing.'
-                          : activeProfile
-                            ? `Current profile: ${profileLabel(activeProfile)}`
-                            : 'Use the tactile controls or keyboard to enter the mirror.'
-                        : selectedSystemItem?.helper ?? 'Navigate with tactile controls or the keyboard.'}
-                    </p>
-                  </div>
-                  <div className="rounded-[20px] border border-white/10 bg-black/15 px-3 py-2 text-right text-[11px] leading-4 text-white/55">
-                    <div className="font-medium text-white/80">{mirror?.friendly_name || 'Shared Smart Mirror'}</div>
-                    <div>{hardwareId}</div>
-                  </div>
-                </div>
-
-                <div className="relative flex-1 overflow-hidden px-4 pb-4 pt-5">
-                  <AnimatePresence mode="wait">
-                    {currentView === 'identity' ? (
-                      <motion.div
-                        key={`identity-${identityIntent}-${identitySubstate}`}
-                        className="flex max-h-[68vh] flex-col gap-4"
-                        initial={{ opacity: 0, x: -14 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 14 }}
-                        transition={SPRING_SOFT}
+                  <div className="relative flex items-start justify-between gap-4 px-6 pt-6">
+                    <div className="min-w-0">
+                      <p className="text-[11px] uppercase tracking-[0.4em] text-white/55">
+                        {currentView === 'identity' ? 'Identity Select' : 'System Menu'}
+                      </p>
+                      <h1
+                        className="mt-3 text-[clamp(1.7rem,2.8vw,2.15rem)] leading-none"
+                        style={{ fontFamily: 'var(--font-display)' }}
                       >
-                        {identitySubstate === 'pairing' ? (
-                          <div className="space-y-4">
-                            <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/65">
-                              <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Pairing Target</div>
-                              <div className="mt-2 text-base text-white">
-                                {selectedProfile ? profileLabel(selectedProfile) : 'Selected profile'}
+                        {currentView === 'identity'
+                          ? identityIntent === 'pair'
+                            ? 'Choose a profile to pair'
+                            : 'Choose who is here'
+                          : 'Mirror controls'}
+                      </h1>
+                      <p className="mt-3 max-w-[18rem] text-sm leading-5 text-white/60">
+                        {currentView === 'identity'
+                          ? identitySubstate === 'pairing'
+                            ? 'Keep your phone ready while the selected profile waits for pairing.'
+                            : activeProfile
+                              ? `Current profile: ${profileLabel(activeProfile)}`
+                              : 'Use the tactile controls or keyboard to enter the mirror.'
+                          : selectedSystemItem?.helper ?? 'Navigate with tactile controls or the keyboard.'}
+                      </p>
+                    </div>
+                    <div className="rounded-[20px] border border-white/10 bg-black/15 px-3 py-2 text-right text-[11px] leading-4 text-white/55">
+                      <div className="font-medium text-white/80">{mirror?.friendly_name || 'Shared Smart Mirror'}</div>
+                      <div>{hardwareId}</div>
+                    </div>
+                  </div>
+
+                  <div className="relative flex-1 overflow-hidden px-4 pb-4 pt-5">
+                    <AnimatePresence mode="wait">
+                      {currentView === 'identity' ? (
+                        <motion.div
+                          key={`identity-${identityIntent}-${identitySubstate}`}
+                          className="flex max-h-[68vh] flex-col gap-4"
+                          initial={{ opacity: 0, x: -14 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: 14 }}
+                          transition={SPRING_SOFT}
+                        >
+                          {identitySubstate === 'pairing' ? (
+                            <div className="space-y-4">
+                              <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/65">
+                                <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Pairing Target</div>
+                                <div className="mt-2 text-base text-white">
+                                  {selectedProfile ? profileLabel(selectedProfile) : 'Selected profile'}
+                                </div>
                               </div>
-                            </div>
-                            <div className="rounded-[28px] border border-white/10 bg-white/[0.04] px-5 py-5">
-                              <div className="mx-auto flex w-full max-w-[252px] items-center justify-center rounded-[24px] bg-white p-5">
-                                {pendingAuth ? (
-                                  <QRCodeSVG
-                                    value={pendingAuth.deviceCode.verification_uri}
-                                    size={188}
-                                    bgColor="#FFFFFF"
-                                    fgColor="#111111"
-                                    level="M"
-                                  />
-                                ) : (
-                                  <motion.div
-                                    className="flex h-[188px] w-[188px] items-center justify-center rounded-[18px] bg-[#F5F1EA] text-[#2A2017]"
-                                    animate={{ opacity: [0.55, 1, 0.55] }}
-                                    transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-                                  >
-                                    Requesting QR
-                                  </motion.div>
+                              <div className="rounded-[28px] border border-white/10 bg-white/[0.04] px-5 py-5">
+                                <div className="mx-auto flex w-full max-w-[252px] items-center justify-center rounded-[24px] bg-white p-5">
+                                  {pendingAuth ? (
+                                    <QRCodeSVG
+                                      value={pendingAuth.deviceCode.verification_uri}
+                                      size={188}
+                                      bgColor="#FFFFFF"
+                                      fgColor="#111111"
+                                      level="M"
+                                    />
+                                  ) : (
+                                    <motion.div
+                                      className="flex h-[188px] w-[188px] items-center justify-center rounded-[18px] bg-[#F5F1EA] text-[#2A2017]"
+                                      animate={reducedMotion ? { opacity: 1 } : { opacity: [0.55, 1, 0.55] }}
+                                      transition={reducedMotion ? { duration: 0 } : { duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                                    >
+                                      Requesting QR
+                                    </motion.div>
+                                  )}
+                                </div>
+                                <motion.p
+                                  className="mt-5 text-center text-sm uppercase tracking-[0.3em] text-[#E6D5B8]"
+                                  animate={reducedMotion ? { opacity: 0.92 } : { opacity: [0.45, 0.92, 0.45] }}
+                                  transition={reducedMotion ? { duration: 0 } : { duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+                                >
+                                  Waiting for pairing
+                                </motion.p>
+                                {pendingAuth?.deviceCode.user_code && (
+                                  <div className="mt-4 text-center text-lg font-semibold tracking-[0.28em] text-white">
+                                    {pendingAuth.deviceCode.user_code}
+                                  </div>
+                                )}
+                                {pendingAuth?.deviceCode.verification_uri && (
+                                  <p className="mt-4 text-center text-xs leading-5 text-white/45">
+                                    {pendingAuth.deviceCode.verification_uri}
+                                  </p>
                                 )}
                               </div>
-                              <motion.p
-                                className="mt-5 text-center text-sm uppercase tracking-[0.3em] text-[#E6D5B8]"
-                                animate={{ opacity: [0.45, 0.92, 0.45] }}
-                                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-                              >
-                                Waiting for pairing
-                              </motion.p>
-                              {pendingAuth?.deviceCode.user_code && (
-                                <div className="mt-4 text-center text-lg font-semibold tracking-[0.28em] text-white">
-                                  {pendingAuth.deviceCode.user_code}
-                                </div>
-                              )}
-                              {pendingAuth?.deviceCode.verification_uri && (
-                                <p className="mt-4 text-center text-xs leading-5 text-white/45">
-                                  {pendingAuth.deviceCode.verification_uri}
-                                </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3 overflow-y-auto pr-1">
+                              {profiles.length === 0 ? (
+                                <IdentityEmptyTile active={clampedIdentityIndex === 0} onClick={() => void handleIdentitySelect()} />
+                              ) : (
+                                profiles.map((profile, index) => (
+                                  <IdentityTile
+                                    key={profile.user_id}
+                                    profile={profile}
+                                    index={index}
+                                    active={index === clampedIdentityIndex}
+                                    live={profile.user_id === activeProfile?.user_id}
+                                    googleConnected={index === clampedIdentityIndex && googleConnected}
+                                    onClick={() => {
+                                      setSelectedIndex(index);
+                                      setSelectionMemory((previous) => ({ ...previous, identity: index }));
+                                    }}
+                                  />
+                                ))
                               )}
                             </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-3 overflow-y-auto pr-1">
-                            {profiles.length === 0 ? (
-                              <IdentityEmptyTile active={clampedIdentityIndex === 0} onClick={() => void handleIdentitySelect()} />
-                            ) : (
-                              profiles.map((profile, index) => (
-                                <IdentityTile
-                                  key={profile.user_id}
-                                  profile={profile}
-                                  index={index}
-                                  active={index === clampedIdentityIndex}
-                                  live={profile.user_id === activeProfile?.user_id}
-                                  googleConnected={index === clampedIdentityIndex && googleConnected}
-                                  onClick={() => {
-                                    setSelectedIndex(index);
-                                    setSelectionMemory((previous) => ({ ...previous, identity: index }));
-                                  }}
-                                />
-                              ))
-                            )}
-                          </div>
-                        )}
+                          )}
 
-                        <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/60">
-                          <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">
-                            {identityIntent === 'pair' ? 'Pairing Mode' : 'Selection Mode'}
+                          <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/60">
+                            <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">
+                              {identityIntent === 'pair' ? 'Pairing Mode' : 'Selection Mode'}
+                            </div>
+                            <p className="mt-2 leading-5">
+                              {identityIntent === 'pair'
+                                ? 'Select a profile, then scan the QR code on your phone. Escape or Backspace cancels pairing.'
+                                : 'Use Up and Down to wrap through profiles. Enter confirms the highlighted identity.'}
+                            </p>
                           </div>
-                          <p className="mt-2 leading-5">
-                            {identityIntent === 'pair'
-                              ? 'Select a profile, then scan the QR code on your phone. Escape or Backspace cancels pairing.'
-                              : 'Use Up and Down to wrap through profiles. Enter confirms the highlighted identity.'}
-                          </p>
-                        </div>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="system"
-                        className="flex max-h-[68vh] flex-col gap-4"
-                        initial={{ opacity: 0, x: 14 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -14 }}
-                        transition={SPRING_SOFT}
-                      >
-                        <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/60">
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Active Identity</div>
-                              <div className="mt-2 text-base text-white">
-                                {activeProfile ? profileLabel(activeProfile) : 'No active profile'}
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="system"
+                          className="flex max-h-[68vh] flex-col gap-4"
+                          initial={{ opacity: 0, x: 14 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -14 }}
+                          transition={SPRING_SOFT}
+                        >
+                          <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/60">
+                            <div className="flex items-center justify-between gap-4">
+                              <div>
+                                <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Active Identity</div>
+                                <div className="mt-2 text-base text-white">
+                                  {activeProfile ? profileLabel(activeProfile) : 'No active profile'}
+                                </div>
+                              </div>
+                              <div className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-white/55">
+                                {googleConnected ? 'Google Linked' : 'Google Ready'}
                               </div>
                             </div>
-                            <div className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-white/55">
-                              {googleConnected ? 'Google Linked' : 'Google Ready'}
-                            </div>
                           </div>
-                        </div>
 
-                        <div className="space-y-3 overflow-y-auto pr-1">
-                          {systemMenuItems.map((item, index) => (
-                            <SystemMenuRow
-                              key={item.id}
-                              item={item}
-                              active={index === currentSystemIndex}
-                              onClick={() => {
-                                setSelectedIndex(index);
-                                setSelectionMemory((previous) => ({ ...previous, system: index }));
-                                void handleSystemSelect(item);
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {statusMessage && (
-                  <div className={`relative px-6 pb-4 text-sm ${error || menuError || authError ? 'text-rose-300' : 'text-white/55'}`}>
-                    {statusMessage}
+                          <div className="space-y-3 overflow-y-auto pr-1">
+                            {systemMenuItems.map((item, index) => (
+                              <SystemMenuRow
+                                key={item.id}
+                                item={item}
+                                active={index === currentSystemIndex}
+                                onClick={() => {
+                                  setSelectedIndex(index);
+                                  setSelectionMemory((previous) => ({ ...previous, system: index }));
+                                  void handleSystemSelect(item);
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                )}
 
-                <div className="relative border-t border-white/8 bg-black/15 px-6 py-4">
-                  <FooterLegend />
-                </div>
+                  {statusMessage && (
+                    <div className={`relative px-6 pb-4 text-sm ${error || menuError || authError ? 'text-rose-300' : 'text-white/55'}`}>
+                      {statusMessage}
+                    </div>
+                  )}
+
+                  <div className="relative border-t border-white/8 bg-black/15 px-6 py-4">
+                    <FooterLegend />
+                  </div>
+                </motion.div>
               </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+          </AnimatePresence>
 
-        <AnimatePresence>
-          {sleepMode && (
-            <motion.div
-              className="mirror-sleep-overlay"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
-              aria-hidden="true"
-            >
-              <motion.span
-                className="mirror-sleep-hint"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.8, duration: 1, ease: [0.16, 1, 0.3, 1] }}
+          <AnimatePresence>
+            {sleepMode && (
+              <motion.div
+                className="mirror-sleep-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
+                aria-hidden="true"
               >
-                Sleep mode - press any mapped key or hold the display button to wake
-              </motion.span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </TooltipProvider>
+                <motion.span
+                  className="mirror-sleep-hint"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.8, duration: 1, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  Sleep mode - press any mapped key or hold the display button to wake
+                </motion.span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </TooltipProvider>
+    </MotionConfig>
   );
 }

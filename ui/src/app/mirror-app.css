@@ -26,6 +26,10 @@
     linear-gradient(160deg, #030509 0%, #07111b 48%, #020406 100%);
 }
 
+.mirror-shell--performance {
+  background: linear-gradient(160deg, #030509 0%, #09111a 48%, #020406 100%);
+}
+
 @media (orientation: portrait) {
   .mirror-shell {
     padding: 1rem;
@@ -56,6 +60,11 @@
     radial-gradient(circle at 70% 35%, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px);
   background-size: 32rem 32rem, 24rem 24rem;
   animation: orbitDrift 22s linear infinite;
+}
+
+.mirror-shell--performance .mirror-ambient-layer,
+.mirror-shell--performance .mirror-orbit-layer {
+  display: none;
 }
 
 @keyframes breathingGlow {
@@ -118,6 +127,32 @@
   background: rgba(7, 12, 18, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(18px);
+}
+
+.mirror-shell--performance .mirror-empty-state,
+.mirror-shell--performance .mirror-session-pill,
+.mirror-shell--performance .widget-frame,
+.mirror-shell--performance .connection-focus-inner,
+.mirror-shell--performance .connection-pill,
+.mirror-shell--performance .auth-qr-overlay,
+.mirror-shell--performance .auth-qr-card {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.mirror-shell--performance .widget-frame {
+  animation: none !important;
+  background: rgba(18, 24, 32, 0.92);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.mirror-shell--performance .widget-glass-highlight {
+  opacity: 0.2;
+}
+
+.mirror-shell--performance [class*='backdrop-blur-'] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .mirror-session-pill__label {

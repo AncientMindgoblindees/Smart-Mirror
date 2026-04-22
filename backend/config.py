@@ -9,6 +9,46 @@ load_dotenv(BASE_DIR / ".env")
 load_dotenv()  # optional: cwd .env overrides for local dev
 
 
+def _cloudflared_config_path() -> Path:
+    override = os.getenv("CLOUDFLARED_CONFIG", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".cloudflared" / "config.yml"
+
+
+def _cloudflared_hostnames() -> list[str]:
+    config_path = _cloudflared_config_path()
+    if not config_path.exists():
+        return []
+
+    hostnames: list[str] = []
+    try:
+        for raw_line in config_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = raw_line.strip()
+            if not line.startswith("hostname:"):
+                continue
+            hostname = line.split(":", 1)[1].strip().strip("'\"")
+            if hostname:
+                hostnames.append(hostname)
+    except OSError:
+        return []
+
+    return hostnames
+
+
+def get_oauth_public_base_url(request_base_url: str | None = None) -> str:
+    configured = os.getenv("OAUTH_PUBLIC_BASE_URL", "").strip()
+    if configured:
+        return configured.rstrip("/")
+
+    hostnames = _cloudflared_hostnames()
+    if hostnames:
+        preferred = next((host for host in hostnames if host.startswith("mirror.")), hostnames[0])
+        return f"https://{preferred}"
+
+    return (request_base_url or "").rstrip("/")
+
+
 def get_db_path() -> Path:
     """
     Resolve the SQLite database path.
@@ -81,4 +121,3 @@ CAMERA_NATIVE_COUNTDOWN_OVERLAY = os.getenv("CAMERA_NATIVE_COUNTDOWN_OVERLAY", "
 )
 
 TRYON_LOCAL_KEEP_LAST = int(os.getenv("TRYON_LOCAL_KEEP_LAST", "10"))
-

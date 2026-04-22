@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from backend.config import get_oauth_public_base_url
 from backend.database.session import get_db
 from backend.schemas.auth import AuthStatusOut, DeviceCodeOut, ProviderStatusOut
 from backend.services.auth_manager import auth_manager
@@ -44,8 +44,7 @@ async def start_login(
     if mirror is None:
         raise HTTPException(status_code=404, detail="Mirror is not registered")
 
-    configured_base = os.getenv("OAUTH_PUBLIC_BASE_URL", "").strip()
-    base = configured_base or str(request.base_url).rstrip("/")
+    base = get_oauth_public_base_url(str(request.base_url))
     start_url = (
         f"{base}/api/oauth/google/start?source=qr"
         f"&hardware_id={mirror.hardware_id}&user_id={user_id}"

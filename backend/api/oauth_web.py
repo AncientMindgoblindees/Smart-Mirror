@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from backend.config import get_oauth_public_base_url
 from backend.database.session import get_db
 from backend.services import user_service
 from backend.services.auth_manager import auth_manager
@@ -57,7 +58,7 @@ def _pop_state(state: str | None) -> tuple[str, str, str, str] | None:
 
 
 def _public_base(request: Request) -> str:
-    return str(request.base_url).rstrip("/")
+    return get_oauth_public_base_url(str(request.base_url))
 
 
 def _success_html(title: str, body: str) -> HTMLResponse:

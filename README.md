@@ -166,7 +166,6 @@ If you suspect duplicate mirror backends:
 
 ```
 bash scripts/stop-mirror-app.sh
-MIRROR_STOP_EXTRA_BACKENDS=1 bash scripts/stop-mirror-app.sh
 bash scripts/start-mirror-app.sh
 ```
 
