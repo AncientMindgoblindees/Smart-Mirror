@@ -31,6 +31,9 @@ GOOGLE_CALENDAR_EVENTS_URL = (
 )
 
 GOOGLE_WEB_SCOPES = (
+    "openid "
+    "email "
+    "profile "
     "https://www.googleapis.com/auth/calendar.readonly "
     "https://www.googleapis.com/auth/gmail.readonly"
 )

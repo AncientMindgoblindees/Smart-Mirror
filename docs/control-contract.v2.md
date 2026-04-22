@@ -58,12 +58,25 @@ Legacy `SYNC_STATE` remains supported for backward compatibility.
 
 ### OAuth provider management
 
-- `GET /api/oauth/providers?hardware_id=...&user_id=...`
-- `POST /api/oauth/providers/token`
-- `DELETE /api/oauth/providers/{provider}?hardware_id=...&user_id=...`
-- `POST /api/auth/login/google?hardware_id=...&user_id=...`
+- `GET /api/auth/providers?hardware_id=...&user_id=...`
+- `POST /api/auth/login/google?hardware_id=...&user_id=...&intent=pair_profile|create_account`
+- `GET /api/auth/login/google/status?hardware_id=...&user_id=...`
+- `POST /api/auth/login/google/cancel?hardware_id=...&user_id=...`
+- `DELETE /api/auth/logout/google?hardware_id=...&user_id=...`
+- `GET /api/oauth/google/start?hardware_id=...&user_id=...&source=browser|qr&intent=pair_profile|create_account`
+- `GET /api/oauth/google/callback?code=...&state=...`
 
 Google is the only supported OAuth provider in the current contract.
+
+### Identity startup flow
+
+- Mirror startup identity HUD always presents:
+  - existing profile selection rows
+  - a `Create Account` row
+- `Create Account` triggers Google QR browser auth (`intent=create_account`).
+- Successful callback creates/enrolls and activates the target mirror profile, then redirects the phone browser to companion URL with:
+  - `mirror_hardware_id`
+  - `mirror_user_id`
 
 ### Camera
 

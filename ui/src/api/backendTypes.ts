@@ -162,12 +162,15 @@ export interface DeviceCodeResponse {
   expires_in: number;
   interval: number;
   message?: string | null;
+  target_user_id?: string | null;
+  intent?: string | null;
 }
 
 export interface AuthLoginStatus {
   provider: string;
   status: string;
   message?: string | null;
+  intent?: string | null;
 }
 
 export interface CalendarEventItem {

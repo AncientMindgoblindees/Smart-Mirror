@@ -29,6 +29,8 @@ export type DeviceCodeInfo = {
 export type PendingAuth = {
   provider: string;
   deviceCode: DeviceCodeInfo;
+  targetUserId: string;
+  intent: 'pair_profile' | 'create_account';
 };
 
 function clearIntervalRef(pollRef: { current: ReturnType<typeof setInterval> | null }) {
@@ -49,15 +51,17 @@ export function useAuthState({ hardwareId, userId, enabled = true }: AuthContext
   const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingProviderRef = useRef<string | null>(null);
+  const pendingTargetUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     pendingProviderRef.current = pendingAuth?.provider ?? null;
+    pendingTargetUserIdRef.current = pendingAuth?.targetUserId ?? null;
   }, [pendingAuth]);
 
-  const ready = enabled && Boolean(hardwareId) && Boolean(userId);
+  const canRefreshProviders = enabled && Boolean(hardwareId) && Boolean(userId);
 
   const refresh = useCallback(async () => {
-    if (!ready || !hardwareId || !userId) {
+    if (!canRefreshProviders || !hardwareId || !userId) {
       setProviders([]);
       return;
     }
@@ -65,30 +69,34 @@ export function useAuthState({ hardwareId, userId, enabled = true }: AuthContext
       const list = await getAuthProviders(hardwareId, userId);
       setProviders(list);
     } catch {
-      // backend unavailable — keep stale state
+      // Backend unavailable; keep stale state.
     }
-  }, [hardwareId, ready, userId]);
+  }, [canRefreshProviders, hardwareId, userId]);
 
   useEffect(() => {
-    if (!ready) {
+    if (!enabled || !hardwareId) {
       clearIntervalRef(pollRef);
       setPendingAuth(null);
       setProviders([]);
       return;
     }
+    if (!userId) {
+      setProviders([]);
+      return;
+    }
     void refresh();
-  }, [ready, refresh]);
+  }, [enabled, hardwareId, refresh, userId]);
 
-  useIntervalWhen(() => void refresh(), 10_000, ready);
+  useIntervalWhen(() => void refresh(), 10_000, canRefreshProviders);
 
   const startPollForProvider = useCallback(
-    (provider: string, intervalSec: number) => {
-      if (!hardwareId || !userId) return;
+    (provider: string, intervalSec: number, targetUserId: string) => {
+      if (!hardwareId || !targetUserId) return;
       clearIntervalRef(pollRef);
       const ms = Math.max(3000, (intervalSec || 5) * 1000);
       pollRef.current = setInterval(async () => {
         try {
-          const status = await getLoginStatus(provider, hardwareId, userId);
+          const status = await getLoginStatus(provider, hardwareId, targetUserId);
           if (status.status === 'active' || status.status === 'complete') {
             clearIntervalRef(pollRef);
             setPendingAuth(null);
@@ -99,17 +107,19 @@ export function useAuthState({ hardwareId, userId, enabled = true }: AuthContext
             await refresh();
           }
         } catch {
-          // ignore poll failures
+          // Ignore poll failures and let the next tick retry.
         }
       }, ms);
     },
-    [hardwareId, refresh, userId],
+    [hardwareId, refresh],
   );
 
   const applyDeviceCodePayload = useCallback(
     (detail: Record<string, unknown>) => {
       const provider = String(detail.provider ?? '');
       if (!provider) return;
+      const targetUserId = String(detail.target_user_id ?? userId ?? '').trim();
+      if (!targetUserId) return;
       const deviceCode: DeviceCodeInfo = {
         provider,
         verification_uri: String(detail.verification_uri ?? ''),
@@ -118,23 +128,26 @@ export function useAuthState({ hardwareId, userId, enabled = true }: AuthContext
         interval: Number(detail.interval) || 5,
         message: detail.message == null ? null : String(detail.message),
       };
-      setPendingAuth({ provider, deviceCode });
-      startPollForProvider(provider, deviceCode.interval);
+      setPendingAuth({ provider, deviceCode, targetUserId, intent: 'pair_profile' });
+      startPollForProvider(provider, deviceCode.interval, targetUserId);
     },
-    [startPollForProvider],
+    [startPollForProvider, userId],
   );
 
   useWindowEvent<Record<string, unknown>>('mirror:oauth_device_code', (detail) => {
-    if (!ready) return;
+    if (!enabled || !hardwareId) return;
     applyDeviceCodePayload(detail ?? {});
   });
 
   const initiateLogin = useCallback(
-    async (provider: string) => {
-      if (!hardwareId || !userId) {
+    async (provider: string, opts?: { targetUserId?: string; intent?: 'pair_profile' | 'create_account' }) => {
+      const targetUserId = opts?.targetUserId?.trim() || userId;
+      if (!hardwareId || !targetUserId) {
         throw new Error('Select a mirror profile before linking Google.');
       }
-      const deviceCode = await startLogin(provider, hardwareId, userId);
+      const intent = opts?.intent ?? 'pair_profile';
+      const deviceCode = await startLogin(provider, hardwareId, targetUserId, { targetUserId, intent });
+      const resolvedTargetUserId = deviceCode.target_user_id?.trim() || targetUserId;
       setPendingAuth({
         provider,
         deviceCode: {
@@ -145,23 +158,26 @@ export function useAuthState({ hardwareId, userId, enabled = true }: AuthContext
           interval: deviceCode.interval,
           message: deviceCode.message ?? null,
         },
+        targetUserId: resolvedTargetUserId,
+        intent,
       });
-      startPollForProvider(provider, deviceCode.interval || 5);
+      startPollForProvider(provider, deviceCode.interval || 5, resolvedTargetUserId);
     },
     [hardwareId, startPollForProvider, userId],
   );
 
   const cancelPendingAuth = useCallback(async () => {
     const provider = pendingProviderRef.current;
+    const targetUserId = pendingTargetUserIdRef.current;
     clearIntervalRef(pollRef);
     setPendingAuth(null);
-    if (!provider || !hardwareId || !userId) return;
+    if (!provider || !hardwareId || !targetUserId) return;
     try {
-      await cancelLogin(provider, hardwareId, userId);
+      await cancelLogin(provider, hardwareId, targetUserId);
     } catch {
-      // ignore cancellation failures
+      // Ignore cancellation failures.
     }
-  }, [hardwareId, userId]);
+  }, [hardwareId]);
 
   const disconnectProvider = useCallback(
     async (provider: string) => {

@@ -33,7 +33,7 @@ import { useOverlayState } from './hooks/useOverlayState';
 import './mirror-app.css';
 
 type OverlayView = 'identity' | 'system';
-type IdentityIntent = 'activate' | 'pair';
+type IdentityIntent = 'activate' | 'pair' | 'create';
 type IdentitySubstate = 'list' | 'pairing';
 type AnimationMode = 'aurora' | 'pulse' | 'drift';
 type SystemAction = 'profiles' | 'google' | 'guest' | 'animation' | 'refresh' | 'resume';
@@ -101,6 +101,10 @@ function profileLabel(profile: MirrorProfile): string {
 function nextIndex(current: number, delta: number, length: number): number {
   if (length <= 0) return 0;
   return (current + delta + length) % length;
+}
+
+function createPendingAccountUserId(): string {
+  return `google-user-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`;
 }
 
 function profileInitials(profile: MirrorProfile): string {
@@ -274,7 +278,7 @@ function IdentityTile({
   );
 }
 
-function IdentityEmptyTile({
+function CreateAccountTile({
   active,
   onClick,
 }: {
@@ -311,9 +315,9 @@ function IdentityEmptyTile({
         </motion.div>
         <div className="min-w-0 flex-1">
           <motion.div className="text-[17px] leading-none" animate={{ opacity: active ? 1 : 0.82 }} transition={SPRING_SOFT}>
-            Create Guest Profile
+            Create Account
           </motion.div>
-          <div className="mt-2 text-[11px] uppercase tracking-[0.18em] text-white/45">Auto-activate tactile guest access</div>
+          <div className="mt-2 text-[11px] uppercase tracking-[0.18em] text-white/45">Scan QR and link Google profile</div>
         </div>
       </div>
     </motion.button>
@@ -548,7 +552,7 @@ function MirrorDashboard({
 }
 
 export default function MirrorApp() {
-  const { hardwareId, mirror, profiles, activeProfile, mirrorSyncSnapshot, loading, error, refresh, activateUser, createProfile } =
+  const { hardwareId, mirror, profiles, activeProfile, mirrorSyncSnapshot, loading, error, refresh, activateUser } =
     useMirrorSession();
   const [menuOpen, setMenuOpen] = useState(true);
   const [viewStack, setViewStack] = useState<OverlayView[]>(['identity']);
@@ -569,11 +573,12 @@ export default function MirrorApp() {
 
   const currentView = viewStack[viewStack.length - 1] ?? 'identity';
   const activeProfileIndex = profiles.findIndex((profile) => profile.user_id === activeProfile?.user_id);
-  const identityEntryCount = profiles.length > 0 ? profiles.length : 1;
+  const identityEntryCount = identitySubstate === 'list' ? profiles.length + 1 : Math.max(profiles.length, 1);
   const currentIdentityIndex = currentView === 'identity' ? selectedIndex : selectionMemory.identity;
   const clampedIdentityIndex = Math.max(0, Math.min(currentIdentityIndex, identityEntryCount - 1));
   const animationIndex = Math.max(0, ANIMATION_PRESETS.findIndex((preset) => preset.id === animationMode));
-  const selectedProfile = profiles[clampedIdentityIndex] ?? activeProfile ?? null;
+  const selectedProfile = profiles[clampedIdentityIndex] ?? null;
+  const selectedCreateAccount = identitySubstate === 'list' && clampedIdentityIndex === profiles.length;
 
   const {
     providers: authProviders,
@@ -585,7 +590,7 @@ export default function MirrorApp() {
   } = useAuthState({
     hardwareId,
     userId: selectedProfile?.user_id ?? activeProfile?.user_id ?? null,
-    enabled: Boolean(selectedProfile ?? activeProfile),
+    enabled: Boolean(hardwareId),
   });
   const { authError, signInGoogle, disconnectGoogle } = useAuthActions(initiateLogin, disconnectProvider);
   const googleConnected = authProviders.some((provider) => provider.provider === 'google' && provider.connected);
@@ -610,9 +615,9 @@ export default function MirrorApp() {
       },
       {
         id: 'guest',
-        label: 'New Guest',
-        helper: 'Auto-create a tactile-friendly guest profile and activate it immediately.',
-        status: 'Auto',
+        label: 'Create Account',
+        helper: 'Start QR pairing and create a Google-linked account for this mirror.',
+        status: 'QR',
         icon: UserPlus,
       },
       {
@@ -766,14 +771,16 @@ export default function MirrorApp() {
     setMenuError(null);
   };
 
-  const handleCreateGuestProfile = async () => {
+  const handleCreateAccount = async () => {
     try {
-      setActionPending('guest');
+      setActionPending('create');
       setMenuError(null);
-      await createProfile(`Guest ${profiles.length + 1}`);
-      showSystemMenu(true);
-    } catch (err) {
-      setMenuError(err instanceof Error ? err.message : 'Failed to create a guest profile.');
+      setIdentityIntent('create');
+      setIdentitySubstate('pairing');
+      await signInGoogle({
+        intent: 'create_account',
+        targetUserId: createPendingAccountUserId(),
+      });
     } finally {
       setActionPending(null);
     }
@@ -804,15 +811,20 @@ export default function MirrorApp() {
     }
   };
 
-  const handlePairSelectedProfile = async () => {
-    if (!selectedProfile) {
+  const handlePairSelectedProfile = async (opts?: { createAccount?: boolean }) => {
+    const createAccount = Boolean(opts?.createAccount);
+    if (!selectedProfile && !createAccount) {
       setMenuError('Select a profile before pairing Google.');
       return;
     }
     setActionPending('pair');
     setMenuError(null);
     setIdentitySubstate('pairing');
-    await signInGoogle();
+    await signInGoogle(
+      createAccount
+        ? { intent: 'create_account', targetUserId: createPendingAccountUserId() }
+        : { intent: 'pair_profile' },
+    );
     setActionPending(null);
   };
 
@@ -845,7 +857,7 @@ export default function MirrorApp() {
         showIdentityMenu('pair');
         return;
       case 'guest':
-        await handleCreateGuestProfile();
+        await handleCreateAccount();
         return;
       case 'animation':
         cycleAnimation();
@@ -862,12 +874,16 @@ export default function MirrorApp() {
   };
 
   const handleIdentitySelect = async () => {
+    if (selectedCreateAccount || identityIntent === 'create') {
+      await handlePairSelectedProfile({ createAccount: true });
+      return;
+    }
     if (profiles.length === 0) {
       if (identityIntent === 'pair') {
         setMenuError('Create a profile before pairing Google.');
         return;
       }
-      await handleCreateGuestProfile();
+      setMenuError('Select Create Account to continue.');
       return;
     }
     if (!selectedProfile) {
@@ -1089,18 +1105,26 @@ export default function MirrorApp() {
                       style={{ fontFamily: 'var(--font-display)' }}
                     >
                       {currentView === 'identity'
-                        ? identityIntent === 'pair'
-                          ? 'Choose a profile to pair'
-                          : 'Choose who is here'
+                        ? identitySubstate === 'pairing'
+                          ? identityIntent === 'create'
+                            ? 'Create a Google account'
+                            : 'Choose a profile to pair'
+                          : identityIntent === 'pair'
+                            ? 'Choose a profile to pair'
+                            : 'Choose who is here'
                         : 'Mirror controls'}
                     </h1>
                     <p className="mt-3 max-w-[18rem] text-sm leading-5 text-white/60">
                       {currentView === 'identity'
                         ? identitySubstate === 'pairing'
-                          ? 'Keep your phone ready while the selected profile waits for pairing.'
-                          : activeProfile
-                            ? `Current profile: ${profileLabel(activeProfile)}`
-                            : 'Use the tactile controls or keyboard to enter the mirror.'
+                          ? identityIntent === 'create'
+                            ? 'Scan the QR code and sign in with Google to create your mirror account.'
+                            : 'Keep your phone ready while the selected profile waits for pairing.'
+                          : identityIntent === 'pair'
+                            ? 'Select an existing profile or choose Create Account to start Google pairing.'
+                            : activeProfile
+                              ? `Current profile: ${profileLabel(activeProfile)}`
+                              : 'Select an existing profile or choose Create Account.'
                         : selectedSystemItem?.helper ?? 'Navigate with tactile controls or the keyboard.'}
                     </p>
                   </div>
@@ -1126,7 +1150,11 @@ export default function MirrorApp() {
                             <div className="rounded-[24px] border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/65">
                               <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Pairing Target</div>
                               <div className="mt-2 text-base text-white">
-                                {selectedProfile ? profileLabel(selectedProfile) : 'Selected profile'}
+                                {identityIntent === 'create'
+                                  ? 'New Google Account'
+                                  : selectedProfile
+                                    ? profileLabel(selectedProfile)
+                                    : 'Selected profile'}
                               </div>
                             </div>
                             <div className="rounded-[28px] border border-white/10 bg-white/[0.04] px-5 py-5">
@@ -1170,24 +1198,28 @@ export default function MirrorApp() {
                           </div>
                         ) : (
                           <div className="space-y-3 overflow-y-auto pr-1">
-                            {profiles.length === 0 ? (
-                              <IdentityEmptyTile active={clampedIdentityIndex === 0} onClick={() => void handleIdentitySelect()} />
-                            ) : (
-                              profiles.map((profile, index) => (
-                                <IdentityTile
-                                  key={profile.user_id}
-                                  profile={profile}
-                                  index={index}
-                                  active={index === clampedIdentityIndex}
-                                  live={profile.user_id === activeProfile?.user_id}
-                                  googleConnected={index === clampedIdentityIndex && googleConnected}
-                                  onClick={() => {
-                                    setSelectedIndex(index);
-                                    setSelectionMemory((previous) => ({ ...previous, identity: index }));
-                                  }}
-                                />
-                              ))
-                            )}
+                            {profiles.map((profile, index) => (
+                              <IdentityTile
+                                key={profile.user_id}
+                                profile={profile}
+                                index={index}
+                                active={index === clampedIdentityIndex}
+                                live={profile.user_id === activeProfile?.user_id}
+                                googleConnected={index === clampedIdentityIndex && googleConnected}
+                                onClick={() => {
+                                  setSelectedIndex(index);
+                                  setSelectionMemory((previous) => ({ ...previous, identity: index }));
+                                }}
+                              />
+                            ))}
+                            <CreateAccountTile
+                              active={clampedIdentityIndex === profiles.length}
+                              onClick={() => {
+                                const index = profiles.length;
+                                setSelectedIndex(index);
+                                setSelectionMemory((previous) => ({ ...previous, identity: index }));
+                              }}
+                            />
                           </div>
                         )}
 
@@ -1198,6 +1230,8 @@ export default function MirrorApp() {
                           <p className="mt-2 leading-5">
                             {identityIntent === 'pair'
                               ? 'Select a profile, then scan the QR code on your phone. Escape or Backspace cancels pairing.'
+                              : selectedCreateAccount
+                                ? 'Create Account opens a Google QR sign-in and will activate the new profile automatically.'
                               : 'Use Up and Down to wrap through profiles. Enter confirms the highlighted identity.'}
                           </p>
                         </div>

@@ -103,9 +103,19 @@ export function getAuthProviders(hardwareId: string, userId: string): Promise<Au
   );
 }
 
-export function startLogin(provider: string, hardwareId: string, userId: string): Promise<DeviceCodeResponse> {
+export function startLogin(
+  provider: string,
+  hardwareId: string,
+  userId: string,
+  opts?: { intent?: 'pair_profile' | 'create_account'; targetUserId?: string },
+): Promise<DeviceCodeResponse> {
+  const effectiveUserId = opts?.targetUserId?.trim() || userId;
   return jsonRequest<DeviceCodeResponse>(
-    withQuery(`/auth/login/${provider}`, { hardware_id: hardwareId, user_id: userId }),
+    withQuery(`/auth/login/${provider}`, {
+      hardware_id: hardwareId,
+      user_id: effectiveUserId,
+      intent: opts?.intent,
+    }),
     { method: 'POST' },
   );
 }
