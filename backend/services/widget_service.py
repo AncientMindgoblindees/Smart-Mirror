@@ -97,12 +97,11 @@ def _seed_default_widgets(db: Session, mirror_id: str, user_id: str) -> List[Wid
     return _list_widgets_query(db, mirror_id, user_id).all()
 
 
-def _list_widgets_query(db: Session, mirror_id: str, user_id: str):
-    return (
-        db.query(WidgetConfig)
-        .filter(WidgetConfig.mirror_id == mirror_id, WidgetConfig.user_id == user_id)
-        .order_by(WidgetConfig.position_row, WidgetConfig.position_col, WidgetConfig.id)
-    )
+def _list_widgets_query(db: Session, mirror_id: str, user_id: str, *, include_deleted: bool = False):
+    query = db.query(WidgetConfig).filter(WidgetConfig.mirror_id == mirror_id, WidgetConfig.user_id == user_id)
+    if not include_deleted:
+        query = query.filter(WidgetConfig.deleted_at.is_(None))
+    return query.order_by(WidgetConfig.position_row, WidgetConfig.position_col, WidgetConfig.id)
 
 
 def _widget_snapshot(widgets: List[WidgetConfig]) -> dict:
@@ -131,13 +130,15 @@ def get_all_widgets(db: Session, mirror_id: str, user_id: str) -> List[WidgetCon
 
 
 def replace_widgets(db: Session, mirror_id: str, user_id: str, configs: List[WidgetConfigUpdate]) -> List[WidgetConfig]:
-    initial_rows = list(_list_widgets_query(db, mirror_id, user_id).all())
-    existing_by_id = {w.id: w for w in initial_rows}
+    all_rows = list(_list_widgets_query(db, mirror_id, user_id, include_deleted=True).all())
+    initial_rows = [row for row in all_rows if row.deleted_at is None]
+    existing_by_id = {w.id: w for w in all_rows}
     existing_by_widget_id: dict[str, WidgetConfig] = {}
-    for row in sorted(initial_rows, key=lambda item: item.id):
+    for row in sorted(all_rows, key=lambda item: (item.deleted_at is not None, item.id)):
         existing_by_widget_id.setdefault(row.widget_id, row)
 
     seen_ids: set[int] = set()
+    now = datetime.utcnow()
     for cfg in configs:
         data = cfg.model_dump(exclude_unset=True)
         row_id = data.pop("id", None)
@@ -155,13 +156,15 @@ def replace_widgets(db: Session, mirror_id: str, user_id: str, configs: List[Wid
             existing_by_id[obj.id] = obj
             existing_by_widget_id[obj.widget_id] = obj
         else:
+            obj.deleted_at = None
             for field, value in data.items():
                 setattr(obj, field, value)
         seen_ids.add(obj.id)
 
     for row in initial_rows:
         if row.id not in seen_ids:
-            db.delete(row)
+            row.deleted_at = now
+            row.updated_at = now
     db.commit()
 
     widgets = get_all_widgets(db, mirror_id, user_id)

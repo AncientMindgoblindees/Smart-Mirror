@@ -23,8 +23,8 @@ import type {
 import { withQuery } from './endpoints';
 import { jsonRequest } from './httpClient';
 
-export function getWidgets(): Promise<WidgetConfigOut[]> {
-  return jsonRequest<WidgetConfigOut[]>('/widgets/');
+export function getWidgets(request?: RequestInit): Promise<WidgetConfigOut[]> {
+  return jsonRequest<WidgetConfigOut[]>('/widgets/', request);
 }
 
 export function putWidgets(configs: WidgetConfigUpdate[]): Promise<WidgetConfigOut[]> {
@@ -34,8 +34,8 @@ export function putWidgets(configs: WidgetConfigUpdate[]): Promise<WidgetConfigO
   });
 }
 
-export function getUserSettings(): Promise<UserSettingsOut> {
-  return jsonRequest<UserSettingsOut>('/user/settings');
+export function getUserSettings(request?: RequestInit): Promise<UserSettingsOut> {
+  return jsonRequest<UserSettingsOut>('/user/settings', request);
 }
 
 export function putUserSettings(updates: UserSettingsUpdate): Promise<UserSettingsOut> {
@@ -52,8 +52,8 @@ export function getCameraStatus(): Promise<CameraStatusOut> {
 export function getWeather(opts?: {
   q?: string;
   units?: 'metric' | 'imperial';
-}): Promise<WeatherSnapshotOut> {
-  return jsonRequest<WeatherSnapshotOut>(withQuery('/weather/', { q: opts?.q, units: opts?.units }));
+}, request?: RequestInit): Promise<WeatherSnapshotOut> {
+  return jsonRequest<WeatherSnapshotOut>(withQuery('/weather/', { q: opts?.q, units: opts?.units }), request);
 }
 
 export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ status: string }> {
@@ -70,16 +70,16 @@ export function registerMirror(payload: MirrorRegistrationRequest): Promise<Mirr
   });
 }
 
-export function getMirrorSync(): Promise<MirrorSyncResponse> {
-  return jsonRequest<MirrorSyncResponse>('/mirror/sync');
+export function getMirrorSync(request?: RequestInit): Promise<MirrorSyncResponse> {
+  return jsonRequest<MirrorSyncResponse>('/mirror/sync', request);
 }
 
-export function getSessionMe(): Promise<SessionMeResponse> {
-  return jsonRequest<SessionMeResponse>('/session/me');
+export function getSessionMe(request?: RequestInit): Promise<SessionMeResponse> {
+  return jsonRequest<SessionMeResponse>('/session/me', request);
 }
 
-export function listProfiles(): Promise<MirrorProfile[]> {
-  return jsonRequest<MirrorProfile[]>('/profile/');
+export function listProfiles(request?: RequestInit): Promise<MirrorProfile[]> {
+  return jsonRequest<MirrorProfile[]>('/profile/', request);
 }
 
 export function enrollProfile(payload: ProfileEnrollRequest): Promise<MirrorProfile> {
@@ -102,9 +102,14 @@ export function deleteProfile(userId: string): Promise<{ status: string }> {
   });
 }
 
-export function getAuthProviders(hardwareId: string, userId?: string | null): Promise<AuthProviderStatus[]> {
+export function getAuthProviders(
+  hardwareId: string,
+  userId?: string | null,
+  request?: RequestInit,
+): Promise<AuthProviderStatus[]> {
   return jsonRequest<AuthProviderStatus[]>(
     withQuery('/auth/providers', { hardware_id: hardwareId, user_id: userId ?? undefined }),
+    request,
   );
 }
 
@@ -113,6 +118,7 @@ export function startLogin(
   hardwareId: string,
   userId?: string | null,
   opts?: { intent?: 'pair_profile' | 'create_account'; targetUserId?: string },
+  request?: RequestInit,
 ): Promise<DeviceCodeResponse> {
   const effectiveUserId = opts?.targetUserId?.trim() || userId?.trim();
   return jsonRequest<DeviceCodeResponse>(
@@ -121,7 +127,7 @@ export function startLogin(
       user_id: effectiveUserId || undefined,
       intent: opts?.intent,
     }),
-    { method: 'POST' },
+    { method: 'POST', ...request },
   );
 }
 
@@ -134,6 +140,7 @@ export function getLoginStatusWithPairing(
   hardwareId: string,
   userId?: string | null,
   pairingId?: string | null,
+  request?: RequestInit,
 ): Promise<AuthLoginStatus> {
   return jsonRequest<AuthLoginStatus>(
     withQuery(`/auth/login/${provider}/status`, {
@@ -141,6 +148,7 @@ export function getLoginStatusWithPairing(
       user_id: userId ?? undefined,
       pairing_id: pairingId ?? undefined,
     }),
+    request,
   );
 }
 
@@ -174,25 +182,28 @@ export function cancelLoginWithPairing(
 export function getCalendarEvents(opts?: {
   days?: number;
   provider?: string;
-}): Promise<CalendarEventsResponse> {
+}, request?: RequestInit): Promise<CalendarEventsResponse> {
   return jsonRequest<CalendarEventsResponse>(
     withQuery('/calendar/events', { days: opts?.days, provider: opts?.provider }),
+    request,
   );
 }
 
 export function getCalendarTasks(opts?: {
   provider?: string;
-}): Promise<CalendarTasksResponse> {
+}, request?: RequestInit): Promise<CalendarTasksResponse> {
   return jsonRequest<CalendarTasksResponse>(
     withQuery('/calendar/tasks', { provider: opts?.provider }),
+    request,
   );
 }
 
 export function getEmailMessages(opts?: {
   provider?: string;
   limit?: number;
-}): Promise<EmailMessagesResponse> {
+}, request?: RequestInit): Promise<EmailMessagesResponse> {
   return jsonRequest<EmailMessagesResponse>(
     withQuery('/email/messages', { provider: opts?.provider, limit: opts?.limit }),
+    request,
   );
 }

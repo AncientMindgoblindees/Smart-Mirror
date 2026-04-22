@@ -44,6 +44,7 @@ class PairingCreateRequest(BaseModel):
     provider: str = Field(default="google")
     intent: str = Field(default="link_provider")
     redirect_to: str | None = None
+    target_user_uid: str | None = None
 
 
 class PairingRedeemRequest(BaseModel):
@@ -57,6 +58,11 @@ class PairingFinalizeRequest(BaseModel):
 class PairingExchangeRequest(BaseModel):
     replace_current_session: bool = False
     pairing_code: str | None = None
+
+
+class PairingCodeExchangeRequest(BaseModel):
+    pairing_code: str = Field(..., min_length=4, max_length=32)
+    replace_current_session: bool = False
 
 
 def _provider_status_string(row: OAuthCredential | None) -> str:
@@ -114,6 +120,98 @@ def _ensure_pairing_profile_binding(db: Session, pairing: AuthPairing, target_ui
         display_name=_fallback_display_name(target_email, target_uid),
         activate=True,
     )
+
+
+def _target_user_email(db: Session, mirror_id: str, target_user_uid: str | None) -> str | None:
+    if not target_user_uid:
+        return None
+    membership = (
+        db.query(HouseholdMembership)
+        .filter(
+            HouseholdMembership.mirror_id == mirror_id,
+            HouseholdMembership.user_uid == target_user_uid,
+        )
+        .first()
+    )
+    return membership.email if membership else None
+
+
+def _exchange_token_for_pairing(
+    *,
+    pairing: AuthPairing,
+    payload: PairingExchangeRequest | PairingCodeExchangeRequest,
+    context: OptionalAuthContext,
+    db: Session,
+) -> dict[str, Any]:
+    if pairing.mirror_id != context.mirror.id:
+        raise HTTPException(status_code=403, detail="authenticated but not allowed")
+    pairing = mark_expired_if_needed(db, pairing)
+    if pairing.status == "expired":
+        raise HTTPException(status_code=409, detail="Pairing has expired")
+    if pairing.status == "complete":
+        raise HTTPException(status_code=409, detail="Pairing already consumed")
+
+    if context.actor is not None and context.membership is not None:
+        auth_context = AuthContext(actor=context.actor, mirror=context.mirror, membership=context.membership)
+        _authorize_pairing_view(auth_context, pairing)
+        paired_uid = pairing.paired_user_uid
+        if not paired_uid:
+            raise HTTPException(status_code=409, detail="Pairing is not ready")
+        needs_replacement = paired_uid != context.actor.uid
+        if needs_replacement and not payload.replace_current_session:
+            raise HTTPException(status_code=409, detail="Session replacement required")
+        pairing = bind_pairing_to_actor(db, pairing, context.actor)
+        paired_uid = pairing.paired_user_uid
+        if not paired_uid:
+            raise HTTPException(status_code=409, detail="Pairing is not ready")
+    else:
+        supplied_code = getattr(payload, "pairing_code", "")
+        supplied_code = (supplied_code or "").strip().upper()
+        if not supplied_code:
+            raise HTTPException(status_code=403, detail="authenticated but not allowed")
+        if supplied_code != pairing.pairing_code:
+            raise HTTPException(status_code=403, detail="authenticated but not allowed")
+        if pairing.status != "authorized":
+            raise HTTPException(status_code=409, detail="Pairing is not ready")
+        paired_uid = pairing.paired_user_uid
+        if not paired_uid:
+            raise HTTPException(status_code=409, detail="Pairing is not ready")
+        pairing = bind_pairing_to_uid(
+            db,
+            pairing=pairing,
+            target_uid=paired_uid,
+            target_email=pairing.paired_user_email,
+        )
+        needs_replacement = False
+
+    try:
+        custom_token = create_firebase_custom_token(paired_uid)
+    except FirebaseAuthError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    _ensure_pairing_profile_binding(db, pairing, paired_uid, pairing.paired_user_email)
+    pairing.status = "complete"
+    pairing.custom_token_ready = False
+    db.commit()
+    db.refresh(pairing)
+    logger.info(
+        "pairing_complete pairing_id=%s provider=%s intent=%s paired_uid=%s replaced_session=%s",
+        pairing.pairing_id,
+        pairing.provider,
+        pairing.intent,
+        paired_uid,
+        bool(needs_replacement and payload.replace_current_session),
+    )
+    return {
+        "pairing_id": pairing.pairing_id,
+        "custom_token": custom_token,
+        "provider": pairing.provider,
+        "user": {
+            "uid": paired_uid,
+            "email": pairing.paired_user_email,
+        },
+        "replaced_session": bool(needs_replacement and payload.replace_current_session),
+    }
 
 
 @router.get("/providers")
@@ -359,6 +457,16 @@ def create_pairing_session(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     base = get_oauth_public_base_url(str(request.base_url)).rstrip("/")
+    target_user_uid = (payload.target_user_uid or "").strip() or None
+    target_user_email = None
+    if context.actor is not None and context.membership is not None:
+        if target_user_uid:
+            auth_context = AuthContext(actor=context.actor, mirror=context.mirror, membership=context.membership)
+            ensure_can_manage_user(auth_context, target_user_uid)
+            target_user_email = _target_user_email(db, context.mirror.id, target_user_uid)
+        elif payload.intent != "create_account":
+            target_user_uid = context.actor.uid
+            target_user_email = context.actor.email
     row, oauth_url = create_pairing(
         db,
         mirror_id=context.mirror.id,
@@ -367,6 +475,8 @@ def create_pairing_session(
         redirect_to=payload.redirect_to,
         public_base_url=base,
         owner=context.actor,
+        target_user_uid=target_user_uid,
+        target_user_email=target_user_email,
     )
     logger.info(
         "pairing_start pairing_id=%s provider=%s intent=%s mirror_id=%s owner_uid=%s",
@@ -390,7 +500,8 @@ def redeem_pairing(
         raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
     _authorize_pairing_view(context, pairing)
     pairing = mark_expired_if_needed(db, pairing)
-    if pairing.status != "expired":
+    needs_replacement = bool(pairing.paired_user_uid and pairing.paired_user_uid != context.actor.uid)
+    if pairing.status != "expired" and not needs_replacement:
         pairing = bind_pairing_to_actor(db, pairing, context.actor)
     return redeem_payload(pairing, context.actor)
 
@@ -422,9 +533,11 @@ def finalize_pairing(
     _authorize_pairing_view(context, pairing)
     pairing = mark_expired_if_needed(db, pairing)
     if pairing.status != "expired":
-        pairing = bind_pairing_to_actor(db, pairing, context.actor)
-        if pairing.paired_user_uid:
-            _ensure_pairing_profile_binding(db, pairing, pairing.paired_user_uid, pairing.paired_user_email)
+        needs_replacement = bool(pairing.paired_user_uid and pairing.paired_user_uid != context.actor.uid)
+        if not needs_replacement or payload.replace_current_session:
+            pairing = bind_pairing_to_actor(db, pairing, context.actor)
+            if pairing.paired_user_uid and (pairing.paired_user_uid == context.actor.uid or payload.replace_current_session):
+                _ensure_pairing_profile_binding(db, pairing, pairing.paired_user_uid, pairing.paired_user_email)
         if payload.replace_current_session and pairing.paired_user_uid and pairing.paired_user_uid != context.actor.uid:
             pairing.status = "complete"
             pairing.custom_token_ready = False
@@ -450,71 +563,19 @@ def exchange_pairing_token(
     pairing = get_pairing_by_id(db, pairing_id)
     if pairing is None:
         raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
-    if pairing.mirror_id != context.mirror.id:
-        raise HTTPException(status_code=403, detail="authenticated but not allowed")
-    pairing = mark_expired_if_needed(db, pairing)
-    if pairing.status == "expired":
-        raise HTTPException(status_code=409, detail="Pairing has expired")
-    if pairing.status == "complete":
-        raise HTTPException(status_code=409, detail="Pairing already consumed")
+    return _exchange_token_for_pairing(pairing=pairing, payload=payload, context=context, db=db)
 
-    if context.actor is not None and context.membership is not None:
-        auth_context = AuthContext(actor=context.actor, mirror=context.mirror, membership=context.membership)
-        _authorize_pairing_view(auth_context, pairing)
-        pairing = bind_pairing_to_actor(db, pairing, context.actor)
-        paired_uid = pairing.paired_user_uid
-        if not paired_uid:
-            raise HTTPException(status_code=409, detail="Pairing is not ready")
-        needs_replacement = paired_uid != context.actor.uid
-        if needs_replacement and not payload.replace_current_session:
-            raise HTTPException(status_code=409, detail="Session replacement required")
-    else:
-        supplied_code = (payload.pairing_code or "").strip().upper()
-        if not supplied_code:
-            raise HTTPException(status_code=403, detail="authenticated but not allowed")
-        if supplied_code != pairing.pairing_code:
-            raise HTTPException(status_code=403, detail="authenticated but not allowed")
-        if pairing.status != "authorized":
-            raise HTTPException(status_code=409, detail="Pairing is not ready")
-        paired_uid = pairing.paired_user_uid
-        if not paired_uid:
-            raise HTTPException(status_code=409, detail="Pairing is not ready")
-        pairing = bind_pairing_to_uid(
-            db,
-            pairing=pairing,
-            target_uid=paired_uid,
-            target_email=pairing.paired_user_email,
-        )
-        needs_replacement = False
 
-    try:
-        custom_token = create_firebase_custom_token(paired_uid)
-    except FirebaseAuthError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    _ensure_pairing_profile_binding(db, pairing, paired_uid, pairing.paired_user_email)
-    pairing.status = "complete"
-    pairing.custom_token_ready = False
-    db.commit()
-    db.refresh(pairing)
-    logger.info(
-        "pairing_complete pairing_id=%s provider=%s intent=%s paired_uid=%s replaced_session=%s",
-        pairing.pairing_id,
-        pairing.provider,
-        pairing.intent,
-        paired_uid,
-        bool(needs_replacement and payload.replace_current_session),
-    )
-    return {
-        "pairing_id": pairing.pairing_id,
-        "custom_token": custom_token,
-        "provider": pairing.provider,
-        "user": {
-            "uid": paired_uid,
-            "email": pairing.paired_user_email,
-        },
-        "replaced_session": bool(needs_replacement and payload.replace_current_session),
-    }
+@router.post("/pairings/exchange")
+def exchange_pairing_token_by_code(
+    payload: PairingCodeExchangeRequest,
+    context: OptionalAuthContext = Depends(optional_auth_context_no_token),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    pairing = get_pairing_by_code(db, payload.pairing_code.strip().upper())
+    if pairing is None:
+        raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
+    return _exchange_token_for_pairing(pairing=pairing, payload=payload, context=context, db=db)
 
 
 @router.delete("/logout/{provider}")

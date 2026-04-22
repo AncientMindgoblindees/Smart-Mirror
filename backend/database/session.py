@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -25,6 +27,8 @@ def init_db() -> None:
     _ensure_d1_checkpoint_columns()
     _ensure_multitenant_columns()
     _ensure_mirror_claim_columns()
+    _ensure_sync_identity_columns()
+    _ensure_soft_delete_columns()
 
 
 def _ensure_d1_checkpoint_columns() -> None:
@@ -67,6 +71,82 @@ def _ensure_sync_columns() -> None:
             if "synced_at" in columns:
                 continue
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN synced_at DATETIME"))
+
+
+def _ensure_sync_identity_columns() -> None:
+    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+        return
+
+    targets = (
+        "user_profiles",
+        "widget_config",
+        "user_settings",
+        "oauth_credentials",
+        "clothing_item",
+        "clothing_image",
+    )
+    with engine.begin() as conn:
+        for table in targets:
+            rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+            columns = {str(row[1]) for row in rows}
+            if not columns:
+                continue
+            if "sync_id" not in columns:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN sync_id VARCHAR(40)"))
+            missing = conn.execute(
+                text(f"SELECT rowid FROM {table} WHERE sync_id IS NULL OR TRIM(sync_id) = ''")
+            ).fetchall()
+            for (rowid,) in missing:
+                conn.execute(
+                    text(f"UPDATE {table} SET sync_id = :sync_id WHERE rowid = :rowid"),
+                    {"sync_id": f"sync_{uuid4().hex}", "rowid": rowid},
+                )
+            conn.execute(
+                text(f"CREATE UNIQUE INDEX IF NOT EXISTS uq_{table}_sync_id ON {table}(sync_id)")
+            )
+
+
+def _ensure_soft_delete_columns() -> None:
+    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+        return
+
+    targets = (
+        "user_profiles",
+        "widget_config",
+        "user_settings",
+        "clothing_item",
+        "clothing_image",
+    )
+    with engine.begin() as conn:
+        for table in targets:
+            rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+            columns = {str(row[1]) for row in rows}
+            if not columns:
+                continue
+            if "deleted_at" not in columns:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN deleted_at DATETIME"))
+            if table == "clothing_image":
+                if "updated_at" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE clothing_image ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+                        )
+                    )
+                if "user_id" not in columns:
+                    conn.execute(text("ALTER TABLE clothing_image ADD COLUMN user_id VARCHAR(128)"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE clothing_image
+                        SET user_id = (
+                          SELECT clothing_item.user_id
+                          FROM clothing_item
+                          WHERE clothing_item.id = clothing_image.clothing_item_id
+                        )
+                        WHERE user_id IS NULL OR TRIM(user_id) = ''
+                        """
+                    )
+                )
 
 
 def _ensure_multitenant_columns() -> None:

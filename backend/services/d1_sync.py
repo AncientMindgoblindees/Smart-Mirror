@@ -6,25 +6,16 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Type
 from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import func, or_
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
 from backend import config
-from backend.database.models import (
-    ClothingImage,
-    ClothingItem,
-    D1SyncCheckpoint,
-    Mirror,
-    OAuthCredential,
-    UserProfile,
-    UserSettings,
-    WidgetConfig,
-)
+from backend.database.models import D1SyncCheckpoint, Mirror, UserProfile, UserSettings, WidgetConfig
 from backend.database.session import SessionLocal
 from backend.services.d1_conflict import remote_wins
 from backend.services.datetime_utils import parse_datetime_utc_naive, to_iso_utc_z
@@ -49,19 +40,14 @@ class D1SyncService:
         "user_profiles": UserProfile,
         "widget_config": WidgetConfig,
         "user_settings": UserSettings,
-        "oauth_credentials": OAuthCredential,
-        "clothing_item": ClothingItem,
-        "clothing_image": ClothingImage,
     }
-    TABLE_ORDER = [
-        "mirrors",
-        "user_profiles",
-        "widget_config",
-        "user_settings",
-        "oauth_credentials",
-        "clothing_item",
-        "clothing_image",
-    ]
+    TABLE_ORDER = ["mirrors", "user_profiles", "widget_config", "user_settings"]
+    ROW_KEY_FIELDS = {
+        "mirrors": "id",
+        "user_profiles": "sync_id",
+        "widget_config": "sync_id",
+        "user_settings": "sync_id",
+    }
 
     def __init__(self) -> None:
         self.worker_url = config.D1_WORKER_URL.rstrip("/")
@@ -117,11 +103,14 @@ class D1SyncService:
     async def sync_all(self) -> None:
         if self._local_readonly_mode:
             return
+        mirror_id = self._current_mirror_id()
+        if not mirror_id:
+            return
         widget_changed = False
         for table in self.TABLE_ORDER:
-            await self.push(table)
-            want_full = self._force_full_sync_pending or await self._detect_drift_full_pull(table)
-            changed = await self.pull(table, full=want_full)
+            await self.push(table, mirror_id)
+            want_full = self._force_full_sync_pending or await self._detect_drift_full_pull(table, mirror_id)
+            changed = await self.pull(table, mirror_id, full=want_full)
             if table == "widget_config" and changed:
                 widget_changed = True
         if self._force_full_sync_pending:
@@ -137,22 +126,16 @@ class D1SyncService:
                 }
             )
 
-    async def push(self, table_name: str) -> None:
+    async def push(self, table_name: str, mirror_id: str) -> None:
         model = self.TABLE_MODELS[table_name]
         db: Session = SessionLocal()
         try:
-            if hasattr(model, "updated_at"):
-                dirty_rows = (
-                    db.query(model)
-                    .filter(or_(model.synced_at.is_(None), model.updated_at > model.synced_at))
-                    .all()
-                )
-            else:
-                dirty_rows = (
-                    db.query(model)
-                    .filter(or_(model.synced_at.is_(None), model.created_at > model.synced_at))
-                    .all()
-                )
+            order_attr = self._order_column_attr(model)
+            dirty_rows = (
+                self._scoped_query(db.query(model), table_name, mirror_id)
+                .filter(or_(model.synced_at.is_(None), order_attr > model.synced_at))
+                .all()
+            )
             payload_rows = [self._serialize_row(table_name, row) for row in dirty_rows]
         finally:
             db.close()
@@ -163,8 +146,8 @@ class D1SyncService:
         response = await self._request(
             "POST",
             "/sync/push",
-            params=None,
-            json_body={"table": table_name, "rows": payload_rows},
+            params={"table": table_name, "mirror_id": mirror_id},
+            json_body={"rows": payload_rows},
         )
         if response is None:
             logger.warning("D1 push failed for %s: no response", table_name)
@@ -182,25 +165,30 @@ class D1SyncService:
             body = response.json()
         except ValueError:
             body = {}
-        accepted_ids_raw = body.get("accepted_ids") if isinstance(body, dict) else None
-        if isinstance(accepted_ids_raw, list):
-            accepted_ids = [int(v) for v in accepted_ids_raw if isinstance(v, (int, float, str)) and str(v).isdigit()]
+        accepted_keys_raw = body.get("accepted_keys") if isinstance(body, dict) else None
+        if isinstance(accepted_keys_raw, list):
+            accepted_keys = [str(value).strip() for value in accepted_keys_raw if str(value).strip()]
         else:
             logger.warning(
-                "D1 push protocol error for %s [code=D1_PUSH_ACCEPTED_IDS_MISSING]: status=%s body=%s",
+                "D1 push protocol error for %s [code=D1_PUSH_ACCEPTED_KEYS_MISSING]: status=%s body=%s",
                 table_name,
                 response.status_code,
                 response.text[:500],
             )
             return
 
-        now = datetime.utcnow()
-        if not accepted_ids:
+        if not accepted_keys:
             return
 
         db = SessionLocal()
+        now = datetime.utcnow()
         try:
-            rows = db.query(model).filter(model.id.in_(accepted_ids)).all()
+            key_attr = getattr(model, self.ROW_KEY_FIELDS[table_name])
+            rows = (
+                self._scoped_query(db.query(model), table_name, mirror_id)
+                .filter(key_attr.in_(accepted_keys))
+                .all()
+            )
             for row in rows:
                 row.synced_at = now
             try:
@@ -212,7 +200,7 @@ class D1SyncService:
                     logger.warning(
                         "D1 push local marker skipped for %s [code=LOCAL_DB_READONLY_SYNCED_AT_SKIPPED, accepted_remote=%d, pushed_rows=%d]; disabling D1 sync until restart",
                         table_name,
-                        len(accepted_ids),
+                        len(accepted_keys),
                         len(payload_rows),
                     )
                 else:
@@ -220,18 +208,12 @@ class D1SyncService:
         finally:
             db.close()
 
-    async def pull(self, table_name: str, *, full: bool = False) -> bool:
+    async def pull(self, table_name: str, mirror_id: str, *, full: bool = False) -> bool:
         since = self._remote_cursor_iso.get(table_name, PULL_FLOOR_ISO)
-        since_id = self._remote_cursor_id.get(table_name, 0)
-        params: Dict[str, str] = {"table": table_name, "since": since, "since_id": str(since_id)}
+        params: Dict[str, str] = {"table": table_name, "since": since, "mirror_id": mirror_id}
         if full:
             params["full"] = "1"
-        response = await self._request(
-            "GET",
-            "/sync/pull",
-            params=params,
-            json_body=None,
-        )
+        response = await self._request("GET", "/sync/pull", params=params, json_body=None)
         if response is None:
             logger.warning("D1 pull failed for %s: no response", table_name)
             return False
@@ -264,31 +246,29 @@ class D1SyncService:
             )
             return False
 
-        max_cursor_iso, max_cursor_id = self._max_remote_cursor(table_name, rows)
+        max_cursor_iso = self._max_remote_cursor(table_name, rows)
         if max_cursor_iso is None:
-            # Must advance cursor after a non-empty pull or incremental pulls repeat forever.
             max_cursor_iso = self._utc_now_iso_z()
-            max_cursor_id = 0
             logger.warning(
                 "D1 pull had rows but no parseable order column for %s; using wall-clock cursor fallback",
                 table_name,
             )
-        self._persist_remote_cursor(table_name, max_cursor_iso, max_cursor_id)
+        self._persist_remote_cursor(table_name, max_cursor_iso, 0)
         self._touch_last_pull_at(table_name)
         return merge.changed
 
-    async def _detect_drift_full_pull(self, table_name: str) -> bool:
-        stats = await self._fetch_table_stats(table_name)
+    async def _detect_drift_full_pull(self, table_name: str, mirror_id: str) -> bool:
+        stats = await self._fetch_table_stats(table_name, mirror_id)
         if stats is None:
             return False
-        local = self._local_table_stats(table_name)
+        local = self._local_table_stats(table_name, mirror_id)
         if local is None:
             return False
         remote_count = int(stats.get("count", 0))
         local_count = local["count"]
-        if remote_count > local_count:
+        if remote_count != local_count:
             logger.info(
-                "D1 drift: remote count %s > local %s for %s; full pull",
+                "D1 drift: remote count %s != local %s for %s; full pull",
                 remote_count,
                 local_count,
                 table_name,
@@ -302,11 +282,11 @@ class D1SyncService:
                 return True
         return False
 
-    async def _fetch_table_stats(self, table_name: str) -> Optional[Dict[str, Any]]:
+    async def _fetch_table_stats(self, table_name: str, mirror_id: str) -> Optional[Dict[str, Any]]:
         response = await self._request(
             "GET",
             "/sync/stats",
-            params={"table": table_name},
+            params={"table": table_name, "mirror_id": mirror_id},
             json_body=None,
         )
         if response is None or response.status_code >= 400:
@@ -319,22 +299,25 @@ class D1SyncService:
             return None
         return data
 
-    def _local_table_stats(self, table_name: str) -> Optional[Dict[str, Any]]:
+    def _local_table_stats(self, table_name: str, mirror_id: str) -> Optional[Dict[str, Any]]:
         model = self.TABLE_MODELS[table_name]
-        order_attr = self._order_column_attr(model, table_name)
+        order_attr = self._order_column_attr(model)
         db = SessionLocal()
         try:
-            count = int(db.query(func.count(model.id)).scalar() or 0)
-            max_val = db.query(func.max(order_attr)).scalar()
+            query = self._scoped_query(db.query(model), table_name, mirror_id)
+            count = int(query.with_entities(func.count()).scalar() or 0)
+            max_val = query.with_entities(func.max(order_attr)).scalar()
             return {"count": count, "max_order": max_val}
         finally:
             db.close()
 
     @staticmethod
-    def _order_column_attr(model: Type[Any], table_name: str) -> Any:
-        if table_name == "clothing_image":
-            return model.created_at
-        return model.updated_at
+    def _order_column_attr(model: Type[Any]) -> Any:
+        return getattr(model, "updated_at", model.created_at)
+
+    @staticmethod
+    def _utc_now_iso_z() -> str:
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     @classmethod
     def _local_order_ts_ms(cls, value: Any) -> float:
@@ -345,25 +328,19 @@ class D1SyncService:
             return float("-inf")
         return float(dt.replace(tzinfo=timezone.utc).timestamp()) * 1000.0
 
-    @staticmethod
-    def _utc_now_iso_z() -> str:
-        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
     @classmethod
     def _remote_order_ts_ms(cls, value: Any) -> float:
         if value is None:
             return float("-inf")
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            v = float(value)
-            # Seconds since epoch vs milliseconds (D1 JSON is usually ISO strings).
-            return v if v > 1e12 else v * 1000.0
+            numeric = float(value)
+            return numeric if numeric > 1e12 else numeric * 1000.0
         text = str(value).strip()
         if not text:
             return float("-inf")
         if text.endswith("Z"):
             text = text[:-1] + "+00:00"
         elif " " in text and "T" not in text.split(" ", 1)[0]:
-            # SQLite / D1 often returns "YYYY-MM-DD HH:MM:SS" (Python < 3.11 fromisoformat needs T).
             text = text.replace(" ", "T", 1)
         if "+" not in text and not text.endswith("Z"):
             text = text + "+00:00"
@@ -466,33 +443,22 @@ class D1SyncService:
         finally:
             db.close()
 
-    def _max_remote_cursor(self, table_name: str, rows: List[Dict[str, Any]]) -> Tuple[Optional[str], int]:
+    def _max_remote_cursor(self, table_name: str, rows: List[Dict[str, Any]]) -> Optional[str]:
         best_iso: Optional[str] = None
-        best_id = 0
         best_ms = float("-inf")
+        best_key = ""
+        key_field = self.ROW_KEY_FIELDS[table_name]
         for incoming in rows:
-            row_id = incoming.get("id")
-            if row_id is None:
-                continue
-            try:
-                row_id_int = int(row_id)
-            except (TypeError, ValueError):
-                continue
-            raw = self._order_value_raw_from_payload(table_name, incoming)
+            raw = incoming.get("updated_at") or incoming.get("created_at")
             if raw is None:
                 continue
             ms = self._remote_order_ts_ms(raw)
-            if ms > best_ms or (ms == best_ms and row_id_int > best_id):
+            row_key = str(incoming.get(key_field) or "")
+            if ms > best_ms or (ms == best_ms and row_key > best_key):
                 best_ms = ms
+                best_key = row_key
                 best_iso = self._normalize_remote_cursor_iso(raw)
-                best_id = row_id_int
-        return best_iso, best_id
-
-    @staticmethod
-    def _order_value_raw_from_payload(table_name: str, incoming: Dict[str, Any]) -> Any:
-        if table_name == "clothing_image":
-            return incoming.get("created_at")
-        return incoming.get("updated_at") or incoming.get("created_at")
+        return best_iso
 
     @classmethod
     def _normalize_remote_cursor_iso(cls, raw: Any) -> str:
@@ -550,9 +516,33 @@ class D1SyncService:
             return None
 
     def _serialize_row(self, table_name: str, row: Any) -> Dict[str, Any]:
-        if table_name == "widget_config":
+        if table_name == "mirrors":
             return {
                 "id": row.id,
+                "hardware_id": row.hardware_id,
+                "friendly_name": row.friendly_name,
+                "claimed_by_user_uid": row.claimed_by_user_uid,
+                "claimed_at": self._to_iso(row.claimed_at),
+                "created_at": self._to_iso(row.created_at),
+                "updated_at": self._to_iso(row.updated_at),
+                "synced_at": self._to_iso(row.synced_at),
+            }
+        if table_name == "user_profiles":
+            return {
+                "sync_id": row.sync_id,
+                "mirror_id": row.mirror_id,
+                "user_id": row.user_id,
+                "display_name": row.display_name,
+                "widget_config": row.widget_config or {},
+                "is_active": row.is_active,
+                "created_at": self._to_iso(row.created_at),
+                "updated_at": self._to_iso(row.updated_at),
+                "deleted_at": self._to_iso(row.deleted_at),
+                "synced_at": self._to_iso(row.synced_at),
+            }
+        if table_name == "widget_config":
+            return {
+                "sync_id": row.sync_id,
                 "mirror_id": row.mirror_id,
                 "user_id": row.user_id,
                 "widget_id": row.widget_id,
@@ -564,77 +554,19 @@ class D1SyncService:
                 "config_json": row.config_json or {},
                 "created_at": self._to_iso(row.created_at),
                 "updated_at": self._to_iso(row.updated_at),
-                "synced_at": self._to_iso(row.synced_at),
-            }
-        if table_name == "user_settings":
-            return {
-                "id": row.id,
-                "mirror_id": row.mirror_id,
-                "user_id": row.user_id,
-                "theme": row.theme,
-                "primary_font_size": row.primary_font_size,
-                "accent_color": row.accent_color,
-                "created_at": self._to_iso(row.created_at),
-                "updated_at": self._to_iso(row.updated_at),
-                "synced_at": self._to_iso(row.synced_at),
-            }
-        if table_name == "mirrors":
-            return {
-                "id": row.id,
-                "hardware_id": row.hardware_id,
-                "hardware_token_hash": row.hardware_token_hash,
-                "friendly_name": row.friendly_name,
-                "created_at": self._to_iso(row.created_at),
-                "updated_at": self._to_iso(row.updated_at),
-                "synced_at": self._to_iso(row.synced_at),
-            }
-        if table_name == "user_profiles":
-            return {
-                "id": row.id,
-                "mirror_id": row.mirror_id,
-                "user_id": row.user_id,
-                "display_name": row.display_name,
-                "widget_config": row.widget_config or {},
-                "is_active": row.is_active,
-                "created_at": self._to_iso(row.created_at),
-                "updated_at": self._to_iso(row.updated_at),
-                "synced_at": self._to_iso(row.synced_at),
-            }
-        if table_name == "oauth_credentials":
-            return {
-                "id": row.id,
-                "mirror_id": row.mirror_id,
-                "user_id": row.user_id,
-                "provider": row.provider,
-                "access_token_enc": row.access_token_enc,
-                "refresh_token_enc": row.refresh_token_enc,
-                "token_expiry": self._to_iso(row.token_expiry),
-                "scopes": row.scopes,
-                "status": row.status,
-                "created_at": self._to_iso(row.created_at),
-                "updated_at": self._to_iso(row.updated_at),
-                "synced_at": self._to_iso(row.synced_at),
-            }
-        if table_name == "clothing_item":
-            return {
-                "id": row.id,
-                "user_id": row.user_id,
-                "name": row.name,
-                "category": row.category,
-                "color": row.color,
-                "season": row.season,
-                "notes": row.notes,
-                "created_at": self._to_iso(row.created_at),
-                "updated_at": self._to_iso(row.updated_at),
+                "deleted_at": self._to_iso(row.deleted_at),
                 "synced_at": self._to_iso(row.synced_at),
             }
         return {
-            "id": row.id,
-            "clothing_item_id": row.clothing_item_id,
-            "storage_provider": row.storage_provider,
-            "storage_key": row.storage_key,
-            "image_url": row.image_url,
+            "sync_id": row.sync_id,
+            "mirror_id": row.mirror_id,
+            "user_id": row.user_id,
+            "theme": row.theme,
+            "primary_font_size": row.primary_font_size,
+            "accent_color": row.accent_color,
             "created_at": self._to_iso(row.created_at),
+            "updated_at": self._to_iso(row.updated_at),
+            "deleted_at": self._to_iso(row.deleted_at),
             "synced_at": self._to_iso(row.synced_at),
         }
 
@@ -645,20 +577,20 @@ class D1SyncService:
         now = datetime.utcnow()
         try:
             for incoming in rows:
-                row_id = incoming.get("id")
-                if row_id is None:
-                    continue
-                existing = db.query(model).filter_by(id=row_id).first()
+                existing = self._find_existing_entity(db, table_name, incoming)
                 remote_updated = incoming.get("updated_at") or incoming.get("created_at")
                 if existing is None:
-                    entity = model(id=row_id)
+                    entity = model()
                     db.add(entity)
                     self._apply_incoming_row(table_name, entity, incoming, now)
                     changed = True
                     continue
 
                 local_updated = getattr(existing, "updated_at", None) or getattr(existing, "created_at", None)
-                if not remote_wins(table_name, row_id, local_updated, remote_updated):
+                row_key = incoming.get(self.ROW_KEY_FIELDS[table_name]) or getattr(
+                    existing, self.ROW_KEY_FIELDS[table_name], None
+                )
+                if not remote_wins(table_name, row_key, local_updated, remote_updated):
                     continue
                 self._apply_incoming_row(table_name, existing, incoming, now)
                 changed = True
@@ -678,8 +610,63 @@ class D1SyncService:
             db.close()
         return MergeOutcome(changed=changed, persisted=True)
 
+    def _find_existing_entity(self, db: Session, table_name: str, incoming: Dict[str, Any]) -> Any | None:
+        model = self.TABLE_MODELS[table_name]
+        row_key = str(incoming.get(self.ROW_KEY_FIELDS[table_name]) or "").strip()
+        if table_name == "mirrors":
+            existing = db.query(model).filter(model.id == row_key).first() if row_key else None
+            if existing is None:
+                hardware_id = str(incoming.get("hardware_id") or "").strip()
+                if hardware_id:
+                    existing = db.query(model).filter(model.hardware_id == hardware_id).first()
+            return existing
+        if row_key:
+            existing = db.query(model).filter(model.sync_id == row_key).first()
+            if existing is not None:
+                return existing
+        if table_name == "user_profiles":
+            return (
+                db.query(model)
+                .filter(model.mirror_id == incoming.get("mirror_id"), model.user_id == incoming.get("user_id"))
+                .first()
+            )
+        if table_name == "user_settings":
+            return (
+                db.query(model)
+                .filter(model.mirror_id == incoming.get("mirror_id"), model.user_id == incoming.get("user_id"))
+                .first()
+            )
+        return (
+            db.query(model)
+            .filter(
+                model.mirror_id == incoming.get("mirror_id"),
+                model.user_id == incoming.get("user_id"),
+                model.widget_id == incoming.get("widget_id"),
+            )
+            .first()
+        )
+
     def _apply_incoming_row(self, table_name: str, entity: Any, incoming: Dict[str, Any], synced_at: datetime) -> None:
-        if table_name == "widget_config":
+        if table_name == "mirrors":
+            entity.id = incoming.get("id") or entity.id
+            entity.hardware_id = incoming.get("hardware_id") or entity.hardware_id
+            entity.friendly_name = incoming.get("friendly_name")
+            entity.claimed_by_user_uid = incoming.get("claimed_by_user_uid")
+            entity.claimed_at = self._parse_datetime(incoming.get("claimed_at"))
+            entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
+            entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
+        elif table_name == "user_profiles":
+            entity.sync_id = incoming.get("sync_id") or entity.sync_id
+            entity.mirror_id = self._incoming_or_existing(entity, incoming, "mirror_id")
+            entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
+            entity.display_name = incoming.get("display_name")
+            entity.widget_config = self._json_value(incoming.get("widget_config"))
+            entity.is_active = bool(incoming.get("is_active", False))
+            entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
+            entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
+            entity.deleted_at = self._parse_datetime(incoming.get("deleted_at"))
+        elif table_name == "widget_config":
+            entity.sync_id = incoming.get("sync_id") or entity.sync_id
             entity.mirror_id = self._incoming_or_existing(entity, incoming, "mirror_id")
             entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
             entity.widget_id = incoming.get("widget_id")
@@ -691,7 +678,9 @@ class D1SyncService:
             entity.config_json = self._json_value(incoming.get("config_json"))
             entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
             entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
-        elif table_name == "user_settings":
+            entity.deleted_at = self._parse_datetime(incoming.get("deleted_at"))
+        else:
+            entity.sync_id = incoming.get("sync_id") or entity.sync_id
             entity.mirror_id = self._incoming_or_existing(entity, incoming, "mirror_id")
             entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
             entity.theme = incoming.get("theme", "dark")
@@ -699,46 +688,7 @@ class D1SyncService:
             entity.accent_color = incoming.get("accent_color", "#4a9eff")
             entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
             entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
-        elif table_name == "mirrors":
-            entity.hardware_id = incoming.get("hardware_id")
-            entity.hardware_token_hash = incoming.get("hardware_token_hash")
-            entity.friendly_name = incoming.get("friendly_name")
-            entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
-            entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
-        elif table_name == "user_profiles":
-            entity.mirror_id = self._incoming_or_existing(entity, incoming, "mirror_id")
-            entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
-            entity.display_name = incoming.get("display_name")
-            entity.widget_config = self._json_value(incoming.get("widget_config"))
-            entity.is_active = bool(incoming.get("is_active", False))
-            entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
-            entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
-        elif table_name == "oauth_credentials":
-            entity.mirror_id = self._incoming_or_existing(entity, incoming, "mirror_id")
-            entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
-            entity.provider = incoming.get("provider", "google")
-            entity.access_token_enc = incoming.get("access_token_enc")
-            entity.refresh_token_enc = incoming.get("refresh_token_enc")
-            entity.token_expiry = self._parse_datetime(incoming.get("token_expiry"))
-            entity.scopes = incoming.get("scopes")
-            entity.status = incoming.get("status", "active")
-            entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
-            entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
-        elif table_name == "clothing_item":
-            entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
-            entity.name = incoming.get("name")
-            entity.category = incoming.get("category")
-            entity.color = incoming.get("color")
-            entity.season = incoming.get("season")
-            entity.notes = incoming.get("notes")
-            entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
-            entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
-        elif table_name == "clothing_image":
-            entity.clothing_item_id = incoming.get("clothing_item_id")
-            entity.storage_provider = incoming.get("storage_provider", "cloud")
-            entity.storage_key = incoming.get("storage_key")
-            entity.image_url = incoming.get("image_url")
-            entity.created_at = self._parse_datetime(incoming.get("created_at")) or datetime.utcnow()
+            entity.deleted_at = self._parse_datetime(incoming.get("deleted_at"))
         entity.synced_at = synced_at
 
     @staticmethod
@@ -770,11 +720,7 @@ class D1SyncService:
     def _load_checkpoints(self) -> None:
         db = SessionLocal()
         try:
-            rows = (
-                db.query(D1SyncCheckpoint)
-                .filter(D1SyncCheckpoint.table_name.in_(self.TABLE_ORDER))
-                .all()
-            )
+            rows = db.query(D1SyncCheckpoint).filter(D1SyncCheckpoint.table_name.in_(self.TABLE_ORDER)).all()
             for row in rows:
                 self._remote_cursor_iso[row.table_name] = self._checkpoint_cursor_iso(row)
                 self._remote_cursor_id[row.table_name] = int(row.last_remote_cursor_id or 0)
@@ -788,6 +734,20 @@ class D1SyncService:
         if isinstance(row.last_remote_cursor, str) and row.last_remote_cursor.strip():
             return row.last_remote_cursor.strip()
         return PULL_FLOOR_ISO
+
+    def _current_mirror_id(self) -> Optional[str]:
+        db = SessionLocal()
+        try:
+            mirror = db.query(Mirror).order_by(Mirror.created_at.asc()).first()
+            return mirror.id if mirror is not None else None
+        finally:
+            db.close()
+
+    def _scoped_query(self, query: Query[Any], table_name: str, mirror_id: str) -> Query[Any]:
+        model = self.TABLE_MODELS[table_name]
+        if table_name == "mirrors":
+            return query.filter(model.id == mirror_id)
+        return query.filter(model.mirror_id == mirror_id)
 
 
 d1_sync_service = D1SyncService()

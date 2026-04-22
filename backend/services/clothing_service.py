@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import tempfile
 import uuid
@@ -15,7 +16,7 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 def list_clothing_items(db: Session, user_id: str, include_images: bool = False) -> List[ClothingItem]:
-    q = db.query(ClothingItem).filter(ClothingItem.user_id == user_id)
+    q = db.query(ClothingItem).filter(ClothingItem.user_id == user_id, ClothingItem.deleted_at.is_(None))
     if include_images:
         q = q.options(joinedload(ClothingItem.images))
     return q.order_by(ClothingItem.updated_at.desc()).all()
@@ -42,7 +43,11 @@ def get_clothing_item_by_id(
     item_id: int,
     include_images: bool = False,
 ) -> Optional[ClothingItem]:
-    q = db.query(ClothingItem).filter(ClothingItem.id == item_id, ClothingItem.user_id == user_id)
+    q = db.query(ClothingItem).filter(
+        ClothingItem.id == item_id,
+        ClothingItem.user_id == user_id,
+        ClothingItem.deleted_at.is_(None),
+    )
     if include_images:
         q = q.options(joinedload(ClothingItem.images))
     return q.first()
@@ -57,7 +62,13 @@ def update_clothing_item(db: Session, item: ClothingItem, payload: ClothingItemU
 
 
 def delete_clothing_item(db: Session, item: ClothingItem) -> None:
-    db.delete(item)
+    now = datetime.utcnow()
+    item.deleted_at = now
+    item.updated_at = now
+    for image in item.images:
+        if image.deleted_at is None:
+            image.deleted_at = now
+            image.updated_at = now
     db.commit()
 
 
@@ -65,7 +76,12 @@ def list_clothing_images(db: Session, user_id: str, item_id: int) -> List[Clothi
     return (
         db.query(ClothingImage)
         .join(ClothingItem, ClothingItem.id == ClothingImage.clothing_item_id)
-        .filter(ClothingItem.user_id == user_id, ClothingImage.clothing_item_id == item_id)
+        .filter(
+            ClothingItem.user_id == user_id,
+            ClothingItem.deleted_at.is_(None),
+            ClothingImage.clothing_item_id == item_id,
+            ClothingImage.deleted_at.is_(None),
+        )
         .all()
     )
 
@@ -76,15 +92,18 @@ def get_clothing_image_by_id(db: Session, user_id: str, item_id: int, image_id: 
         .join(ClothingItem, ClothingItem.id == ClothingImage.clothing_item_id)
         .filter(
             ClothingItem.user_id == user_id,
+            ClothingItem.deleted_at.is_(None),
             ClothingImage.id == image_id,
             ClothingImage.clothing_item_id == item_id,
+            ClothingImage.deleted_at.is_(None),
         )
         .first()
     )
 
 
 def delete_clothing_image(db: Session, image: ClothingImage) -> None:
-    db.delete(image)
+    image.deleted_at = datetime.utcnow()
+    image.updated_at = datetime.utcnow()
     db.commit()
 
 
@@ -116,6 +135,7 @@ async def upload_clothing_image_file(db: Session, item: ClothingItem, file: Uplo
 
         image = ClothingImage(
             clothing_item_id=item.id,
+            user_id=item.user_id,
             storage_provider=upload_result["storage_provider"],
             storage_key=upload_result["storage_key"],
             image_url=upload_result["image_url"],
@@ -130,9 +150,15 @@ async def upload_clothing_image_file(db: Session, item: ClothingItem, file: Uplo
 
 
 def delete_user_clothing_cache(db: Session, user_id: str) -> int:
-    rows = db.query(ClothingItem).filter(ClothingItem.user_id == user_id).all()
+    rows = db.query(ClothingItem).filter(ClothingItem.user_id == user_id, ClothingItem.deleted_at.is_(None)).all()
     count = len(rows)
+    now = datetime.utcnow()
     for row in rows:
-        db.delete(row)
+        row.deleted_at = now
+        row.updated_at = now
+        for image in row.images:
+            if image.deleted_at is None:
+                image.deleted_at = now
+                image.updated_at = now
     db.commit()
     return count

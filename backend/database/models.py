@@ -21,6 +21,10 @@ def _uuid_str() -> str:
     return str(uuid4())
 
 
+def _sync_uuid() -> str:
+    return f"sync_{uuid4().hex}"
+
+
 class Mirror(Base):
     __tablename__ = "mirrors"
 
@@ -116,6 +120,7 @@ class UserProfile(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    sync_id = Column(String(40), nullable=False, default=_sync_uuid, unique=True, index=True)
     user_id = Column(String(128), nullable=False, index=True)
     mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=False, index=True)
     display_name = Column(String(128), nullable=True)
@@ -125,6 +130,7 @@ class UserProfile(Base):
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    deleted_at = Column(DateTime, nullable=True, default=None)
     synced_at = Column(DateTime, nullable=True, default=None)
 
     mirror = relationship("Mirror", back_populates="profiles")
@@ -134,6 +140,7 @@ class WidgetConfig(Base):
     __tablename__ = "widget_config"
 
     id = Column(Integer, primary_key=True, index=True)
+    sync_id = Column(String(40), nullable=False, default=_sync_uuid, unique=True, index=True)
     mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=True, index=True)
     user_id = Column(String(128), nullable=True, index=True)
     widget_id = Column(String(50), nullable=False, index=True)
@@ -150,6 +157,7 @@ class WidgetConfig(Base):
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    deleted_at = Column(DateTime, nullable=True, default=None)
     synced_at = Column(DateTime, nullable=True, default=None)
 
 
@@ -160,6 +168,7 @@ class UserSettings(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    sync_id = Column(String(40), nullable=False, default=_sync_uuid, unique=True, index=True)
     mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=True, index=True)
     user_id = Column(String(128), nullable=True, index=True)
 
@@ -171,6 +180,7 @@ class UserSettings(Base):
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    deleted_at = Column(DateTime, nullable=True, default=None)
     synced_at = Column(DateTime, nullable=True, default=None)
 
 
@@ -186,6 +196,7 @@ class OAuthCredential(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    sync_id = Column(String(40), nullable=False, default=_sync_uuid, unique=True, index=True)
     mirror_id = Column(String(36), ForeignKey("mirrors.id"), nullable=False, index=True)
     user_id = Column(String(128), nullable=False, index=True)
     provider = Column(String(32), nullable=False, default="google")
@@ -205,6 +216,7 @@ class ClothingItem(Base):
     __tablename__ = "clothing_item"
 
     id = Column(Integer, primary_key=True, index=True)
+    sync_id = Column(String(40), nullable=False, default=_sync_uuid, unique=True, index=True)
     user_id = Column(String(128), nullable=True, index=True)
     name = Column(String(100), nullable=False)
     category = Column(String(50), nullable=False)
@@ -216,6 +228,7 @@ class ClothingItem(Base):
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    deleted_at = Column(DateTime, nullable=True, default=None)
     synced_at = Column(DateTime, nullable=True, default=None)
 
     images = relationship(
@@ -257,13 +270,19 @@ class ClothingImage(Base):
     __tablename__ = "clothing_image"
 
     id = Column(Integer, primary_key=True, index=True)
+    sync_id = Column(String(40), nullable=False, default=_sync_uuid, unique=True, index=True)
     clothing_item_id = Column(Integer, ForeignKey("clothing_item.id"), nullable=False)
+    user_id = Column(String(128), nullable=True, index=True)
 
     storage_provider = Column(String(50), nullable=False, default="cloud")
     storage_key = Column(String(255), nullable=False)
     image_url = Column(String(500), nullable=False)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    deleted_at = Column(DateTime, nullable=True, default=None)
     synced_at = Column(DateTime, nullable=True, default=None)
 
     clothing_item = relationship("ClothingItem", back_populates="images")

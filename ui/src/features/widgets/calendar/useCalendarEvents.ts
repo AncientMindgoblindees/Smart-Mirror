@@ -13,7 +13,7 @@ export function useCalendarEvents(timeFormat: CalendarTimeFormat = '24h'): {
   loading: boolean;
 } {
   const { items, hasProviders, loading } = useCalendarFeed<CalendarEventsResponse, CalendarEventDisplay>({
-    fetcher: () => getCalendarEvents({ days: 3 }),
+    fetcher: (signal) => getCalendarEvents({ days: 3 }, { signal }),
     mapItems: (resp) => resp.events.map((event) => toCalendarEventDisplay(event, timeFormat)),
   });
   return { events: items, hasProviders, loading };

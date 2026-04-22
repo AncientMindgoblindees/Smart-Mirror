@@ -13,15 +13,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from backend.config import get_oauth_public_base_url
-from backend.database.models import Mirror
 from backend.database.session import get_db
-from backend.services.auth_context import FirebaseActor
 from backend.services.firebase_auth import (
     FirebaseUserResolutionError,
     get_or_create_firebase_user_from_google,
 )
 from backend.services.pairing_service import (
-    create_pairing,
     get_pairing_by_code,
     get_pairing_by_id,
     mark_expired_if_needed,
@@ -82,6 +79,39 @@ def _append_query(url: str, params: dict[str, str]) -> str:
     )
 
 
+def _allowed_redirect_origins(request: Request) -> set[str]:
+    origins: set[str] = set()
+    public_base = _public_base(request)
+    if public_base:
+        parsed = urlparse(public_base)
+        if parsed.scheme and parsed.netloc:
+            origins.add(f"{parsed.scheme}://{parsed.netloc}".lower())
+    configured = _post_auth_redirect_url()
+    if configured:
+        parsed = urlparse(configured)
+        if parsed.scheme and parsed.netloc:
+            origins.add(f"{parsed.scheme}://{parsed.netloc}".lower())
+    raw = os.getenv("OAUTH_ALLOWED_REDIRECT_ORIGINS", "")
+    for value in raw.split(","):
+        candidate = value.strip().rstrip("/")
+        if candidate:
+            origins.add(candidate.lower())
+    return origins
+
+
+def _normalize_redirect_to(request: Request, redirect_to: str | None) -> str | None:
+    target = (redirect_to or "").strip()
+    if not target:
+        return None
+    parsed = urlparse(target)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="redirect_to must be an absolute allowed URL")
+    origin = f"{parsed.scheme}://{parsed.netloc}".lower()
+    if origin not in _allowed_redirect_origins(request):
+        raise HTTPException(status_code=400, detail="redirect_to origin is not allowed")
+    return target
+
+
 def _success_html(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(
         f"""<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width"/><title>{title}</title>
@@ -120,9 +150,6 @@ async def oauth_start(
     pairing_id: str | None = Query(default=None),
     pairing_id_camel: str | None = Query(default=None, alias="pairingId"),
     pairing_code: str | None = Query(default=None),
-    hardware_id: str | None = Query(default=None),
-    user_id: str | None = Query(default=None),
-    intent: str = Query(default="link_provider"),
     redirect_to: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -140,30 +167,9 @@ async def oauth_start(
     elif resolved_pairing_code:
         pairing = get_pairing_by_code(db, resolved_pairing_code)
     else:
-        legacy_hardware_id = (hardware_id or "").strip()
-        legacy_user_id = (user_id or "").strip()
-        if not legacy_hardware_id or not legacy_user_id:
-            raise HTTPException(
-                status_code=400,
-                detail="pairing_id, pairingId, pairing_code, or hardware_id+user_id is required",
-            )
-        mirror = db.query(Mirror).filter(Mirror.hardware_id == legacy_hardware_id).first()
-        if mirror is None:
-            raise HTTPException(status_code=404, detail="Mirror is not registered")
-        legacy_owner = FirebaseActor(
-            uid=legacy_user_id,
-            email=None,
-            display_name=None,
-            photo_url=None,
-        )
-        pairing, _ = create_pairing(
-            db,
-            mirror_id=mirror.id,
-            provider=provider,
-            intent="create_account" if intent == "create_account" else "link_provider",
-            redirect_to=redirect_to,
-            public_base_url=_public_base(request),
-            owner=legacy_owner,
+        raise HTTPException(
+            status_code=400,
+            detail="pairing_id, pairingId, or pairing_code is required",
         )
 
     if pairing is None:
@@ -174,10 +180,11 @@ async def oauth_start(
     if pairing.provider != provider:
         raise HTTPException(status_code=400, detail="Pairing/provider mismatch")
 
+    normalized_redirect = _normalize_redirect_to(request, redirect_to)
     if redirect_to is not None:
-        pairing.redirect_to = redirect_to
-        if redirect_to:
-            deep_link = _append_query(redirect_to, {"pairing_code": pairing.pairing_code})
+        pairing.redirect_to = normalized_redirect
+        if normalized_redirect:
+            deep_link = _append_query(normalized_redirect, {"pairing_code": pairing.pairing_code})
             pairing.deep_link_url = deep_link
             pairing.verification_url = deep_link
         db.commit()

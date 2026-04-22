@@ -33,6 +33,11 @@
   --widget-scale-multiplier: 1;
 }
 
+.widget-frame[data-performance-mode='true'] {
+  transition: none;
+  will-change: auto;
+}
+
 .widget-frame:hover {
   box-shadow: var(--glow-widget-hover);
   border-color: var(--glass-strong-border);
@@ -165,7 +170,7 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .widget-frame {
+  .widget-frame:not([data-performance-mode='true']) {
     animation: widgetFloat 6s ease-in-out infinite alternate;
   }
 }

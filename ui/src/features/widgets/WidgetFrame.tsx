@@ -9,9 +9,10 @@ import './widget-frame.css';
 interface Props {
   config: WidgetConfig;
   canvasRect: DOMRect | null;
+  performanceMode?: boolean;
 }
 
-export const WidgetFrame: React.FC<Props> = React.memo(({ config, canvasRect }) => {
+export const WidgetFrame: React.FC<Props> = React.memo(({ config, canvasRect, performanceMode = false }) => {
   const metadata = getWidgetMetadata(config.type);
   const Body = metadata?.Component ?? UnknownWidget;
 
@@ -35,6 +36,7 @@ export const WidgetFrame: React.FC<Props> = React.memo(({ config, canvasRect }) 
         <motion.div
           className={`widget-frame widget-frame-freeform widget-size-${sizePreset}`}
           data-size={sizePreset}
+          data-performance-mode={performanceMode ? 'true' : undefined}
           style={{
             position: 'absolute',
             left: pxLeft,
@@ -46,8 +48,8 @@ export const WidgetFrame: React.FC<Props> = React.memo(({ config, canvasRect }) 
           }}
           initial={{
             opacity: 0,
-            y: enterFromTop ? -24 : 24,
-            scale: 0.96,
+            y: performanceMode ? 0 : enterFromTop ? -24 : 24,
+            scale: performanceMode ? 1 : 0.96,
           }}
           animate={{
             opacity: 1,
@@ -56,20 +58,21 @@ export const WidgetFrame: React.FC<Props> = React.memo(({ config, canvasRect }) 
           }}
           exit={{
             opacity: 0,
-            scale: 0.95,
-            transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+            scale: performanceMode ? 1 : 0.95,
+            transition: performanceMode ? { duration: 0.12 } : { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
           }}
           transition={{
-            type: 'spring',
-            stiffness: 260,
-            damping: 28,
+            type: performanceMode ? 'tween' : 'spring',
+            stiffness: performanceMode ? undefined : 260,
+            damping: performanceMode ? undefined : 28,
+            duration: performanceMode ? 0.16 : undefined,
             delay: staggerDelay,
           }}
-          whileHover={{
+          whileHover={performanceMode ? undefined : {
             scale: 1.018,
             transition: { type: 'spring', stiffness: 400, damping: 25 },
           }}
-          whileTap={{ scale: 0.98 }}
+          whileTap={performanceMode ? undefined : { scale: 0.98 }}
         >
           <div className="widget-glass-highlight" aria-hidden="true" />
           <div className="widget-body">

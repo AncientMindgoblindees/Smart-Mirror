@@ -30,6 +30,14 @@
   background: linear-gradient(160deg, #030509 0%, #09111a 48%, #020406 100%);
 }
 
+.mirror-shell--performance *,
+.mirror-shell--performance *::before,
+.mirror-shell--performance *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.12s !important;
+}
+
 @media (orientation: portrait) {
   .mirror-shell {
     padding: 1rem;
@@ -148,6 +156,12 @@
 
 .mirror-shell--performance .widget-glass-highlight {
   opacity: 0.2;
+}
+
+.mirror-shell--performance .mirror-canvas,
+.mirror-shell--performance .mirror-session-pill,
+.mirror-shell--performance .mirror-empty-state {
+  transform: none !important;
 }
 
 .mirror-shell--performance [class*='backdrop-blur-'] {

@@ -21,9 +21,30 @@ function detectAutoPerformanceMode(): boolean {
   return isLinuxArm || lowCoreDevice;
 }
 
+export function readPerformanceModeState(): boolean {
+  return detectAutoPerformanceMode();
+}
+
 function readReducedMotionState(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches || detectAutoPerformanceMode();
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches || readPerformanceModeState();
+}
+
+export function usePerformanceMode(): boolean {
+  const [performanceMode, setPerformanceMode] = useState(readPerformanceModeState);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handler = () => setPerformanceMode(readPerformanceModeState());
+    mq.addEventListener('change', handler);
+    window.addEventListener('storage', handler);
+    return () => {
+      mq.removeEventListener('change', handler);
+      window.removeEventListener('storage', handler);
+    };
+  }, []);
+
+  return performanceMode;
 }
 
 export function useReducedMotion(): boolean {
@@ -33,7 +54,11 @@ export function useReducedMotion(): boolean {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     const handler = () => setReduced(readReducedMotionState());
     mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
+    window.addEventListener('storage', handler);
+    return () => {
+      mq.removeEventListener('change', handler);
+      window.removeEventListener('storage', handler);
+    };
   }, []);
 
   return reduced;

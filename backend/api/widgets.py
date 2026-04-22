@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -56,6 +57,8 @@ def create_widget_item(
     db.add(row)
     db.commit()
     db.refresh(row)
+    widgets = widget_service.get_all_widgets(db, context.mirror.id, context.user_uid)
+    user_service.update_profile_widget_snapshot(db, context.mirror.id, context.user_uid, widget_service._widget_snapshot(widgets))
     return row
 
 
@@ -67,7 +70,7 @@ def get_widget_item(
 ) -> WidgetConfigOut:
     row = (
         db.query(WidgetConfig)
-        .filter_by(id=item_id, mirror_id=context.mirror.id, user_id=context.user_uid)
+        .filter_by(id=item_id, mirror_id=context.mirror.id, user_id=context.user_uid, deleted_at=None)
         .first()
     )
     if row is None:
@@ -84,7 +87,7 @@ def patch_widget_item(
 ) -> WidgetConfigOut:
     row = (
         db.query(WidgetConfig)
-        .filter_by(id=item_id, mirror_id=context.mirror.id, user_id=context.user_uid)
+        .filter_by(id=item_id, mirror_id=context.mirror.id, user_id=context.user_uid, deleted_at=None)
         .first()
     )
     if row is None:
@@ -93,6 +96,8 @@ def patch_widget_item(
         setattr(row, key, value)
     db.commit()
     db.refresh(row)
+    widgets = widget_service.get_all_widgets(db, context.mirror.id, context.user_uid)
+    user_service.update_profile_widget_snapshot(db, context.mirror.id, context.user_uid, widget_service._widget_snapshot(widgets))
     return row
 
 
@@ -104,13 +109,16 @@ def delete_widget_item(
 ) -> dict:
     row = (
         db.query(WidgetConfig)
-        .filter_by(id=item_id, mirror_id=context.mirror.id, user_id=context.user_uid)
+        .filter_by(id=item_id, mirror_id=context.mirror.id, user_id=context.user_uid, deleted_at=None)
         .first()
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Widget row not found")
-    db.delete(row)
+    row.deleted_at = datetime.utcnow()
+    row.updated_at = datetime.utcnow()
     db.commit()
+    widgets = widget_service.get_all_widgets(db, context.mirror.id, context.user_uid)
+    user_service.update_profile_widget_snapshot(db, context.mirror.id, context.user_uid, widget_service._widget_snapshot(widgets))
     return {"status": "ok", "deleted_id": item_id}
 
 

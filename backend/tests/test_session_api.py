@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.api import session as session_api
-from backend.database.models import Base, Mirror
+from backend.database.models import Base, Mirror, UserProfile
 from backend.database.session import get_db
 
 
@@ -27,6 +27,15 @@ class SessionApiTests(unittest.TestCase):
             hardware_token_hash=_hash_secret("hardware-secret"),
         )
         self.db.add(mirror)
+        self.db.flush()
+        self.db.add(
+            UserProfile(
+                mirror_id=mirror.id,
+                user_id="firebase-uid",
+                display_name="Mirror User",
+                is_active=True,
+            )
+        )
         self.db.commit()
 
         app = FastAPI()
@@ -78,6 +87,9 @@ class SessionApiTests(unittest.TestCase):
         self.assertTrue(body["hardware_claimed"])
         self.assertEqual(body["role"], "admin")
         self.assertEqual(body["claimed_by_user_uid"], "firebase-uid")
+        self.assertEqual(body["active_profile"]["user_uid"], "firebase-uid")
+        self.assertEqual(body["active_profile"]["display_name"], "Mirror User")
+        self.assertTrue(body["active_profile"]["is_active"])
 
 
 if __name__ == "__main__":

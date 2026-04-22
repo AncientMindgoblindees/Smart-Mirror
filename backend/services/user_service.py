@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import os
 import secrets
+from datetime import datetime
 from typing import Optional, Tuple
 
 from fastapi import HTTPException, Request, status
@@ -32,8 +33,8 @@ def register_mirror(
     hardware_token: Optional[str] = None,
 ) -> tuple[Mirror, str]:
     mirror = db.query(Mirror).filter(Mirror.hardware_id == hardware_id).first()
-    issued_token = hardware_token or issue_hardware_token()
     if mirror is None:
+        issued_token = hardware_token or issue_hardware_token()
         mirror = Mirror(
             hardware_id=hardware_id,
             friendly_name=friendly_name,
@@ -41,10 +42,13 @@ def register_mirror(
         )
         db.add(mirror)
     else:
+        supplied_token = (hardware_token or "").strip()
+        if not supplied_token:
+            raise HTTPException(status_code=401, detail="Existing mirror registration requires hardware token")
+        if not hmac.compare_digest(mirror.hardware_token_hash, _hash_secret(supplied_token)):
+            raise HTTPException(status_code=401, detail="Invalid hardware token")
         mirror.friendly_name = friendly_name or mirror.friendly_name
-        # Re-issuing the mirror registration token keeps the device-side
-        # bootstrap flow idempotent even when the backend stores only a hash.
-        mirror.hardware_token_hash = _hash_secret(issued_token)
+        issued_token = supplied_token
     db.commit()
     db.refresh(mirror)
     return mirror, issued_token
@@ -57,7 +61,7 @@ def get_mirror_by_hardware_id(db: Session, hardware_id: str) -> Optional[Mirror]
 def list_profiles_for_mirror(db: Session, mirror_id: str) -> list[UserProfile]:
     return (
         db.query(UserProfile)
-        .filter(UserProfile.mirror_id == mirror_id)
+        .filter(UserProfile.mirror_id == mirror_id, UserProfile.deleted_at.is_(None))
         .order_by(UserProfile.is_active.desc(), UserProfile.display_name.asc(), UserProfile.id.asc())
         .all()
     )
@@ -66,7 +70,11 @@ def list_profiles_for_mirror(db: Session, mirror_id: str) -> list[UserProfile]:
 def get_active_profile(db: Session, mirror_id: str) -> Optional[UserProfile]:
     return (
         db.query(UserProfile)
-        .filter(UserProfile.mirror_id == mirror_id, UserProfile.is_active == True)  # noqa: E712
+        .filter(
+            UserProfile.mirror_id == mirror_id,
+            UserProfile.is_active == True,  # noqa: E712
+            UserProfile.deleted_at.is_(None),
+        )
         .first()
     )
 
@@ -95,6 +103,7 @@ def enroll_profile(
         db.add(profile)
         db.flush()
     else:
+        profile.deleted_at = None
         profile.display_name = display_name or profile.display_name
         if widget_config is not None:
             profile.widget_config = widget_config
@@ -109,7 +118,11 @@ def enroll_profile(
 def activate_profile(db: Session, mirror: Mirror, target_user_id: str) -> UserProfile:
     profile = (
         db.query(UserProfile)
-        .filter(UserProfile.mirror_id == mirror.id, UserProfile.user_id == target_user_id)
+        .filter(
+            UserProfile.mirror_id == mirror.id,
+            UserProfile.user_id == target_user_id,
+            UserProfile.deleted_at.is_(None),
+        )
         .first()
     )
     if profile is None:
@@ -128,25 +141,30 @@ def delete_profile(db: Session, mirror: Mirror, user_id: str) -> Optional[UserPr
     )
     if profile is None:
         return None
+    now = datetime.utcnow()
     was_active = bool(profile.is_active)
+    profile.is_active = False
+    profile.deleted_at = now
+    profile.updated_at = now
     db.query(UserSettings).filter(
         UserSettings.mirror_id == mirror.id,
         UserSettings.user_id == user_id,
-    ).delete(synchronize_session=False)
+        UserSettings.deleted_at.is_(None),
+    ).update({"deleted_at": now, "updated_at": now}, synchronize_session=False)
     db.query(WidgetConfig).filter(
         WidgetConfig.mirror_id == mirror.id,
         WidgetConfig.user_id == user_id,
-    ).delete(synchronize_session=False)
+        WidgetConfig.deleted_at.is_(None),
+    ).update({"deleted_at": now, "updated_at": now}, synchronize_session=False)
     db.query(CalendarEvent).filter(
         CalendarEvent.mirror_id == mirror.id,
         CalendarEvent.user_id == user_id,
     ).delete(synchronize_session=False)
-    db.delete(profile)
     db.flush()
     if was_active:
         replacement = (
             db.query(UserProfile)
-            .filter(UserProfile.mirror_id == mirror.id)
+            .filter(UserProfile.mirror_id == mirror.id, UserProfile.deleted_at.is_(None))
             .order_by(UserProfile.created_at.asc(), UserProfile.id.asc())
             .first()
         )
@@ -159,7 +177,7 @@ def delete_profile(db: Session, mirror: Mirror, user_id: str) -> Optional[UserPr
 def _set_active_profile(db: Session, mirror_id: str, target_user_id: str) -> None:
     rows = db.query(UserProfile).filter(UserProfile.mirror_id == mirror_id).all()
     for row in rows:
-        row.is_active = row.user_id == target_user_id
+        row.is_active = row.deleted_at is None and row.user_id == target_user_id
 
 
 def get_or_create_user_settings(
@@ -169,14 +187,19 @@ def get_or_create_user_settings(
 ) -> UserSettings:
     settings = (
         db.query(UserSettings)
-        .filter(UserSettings.mirror_id == mirror_id, UserSettings.user_id == user_id)
+        .filter(
+            UserSettings.mirror_id == mirror_id,
+            UserSettings.user_id == user_id,
+        )
         .first()
     )
     if settings is None:
         settings = UserSettings(mirror_id=mirror_id, user_id=user_id)
         db.add(settings)
-        db.commit()
-        db.refresh(settings)
+    else:
+        settings.deleted_at = None
+    db.commit()
+    db.refresh(settings)
     return settings
 
 
@@ -202,7 +225,11 @@ def update_profile_widget_snapshot(
 ) -> None:
     profile = (
         db.query(UserProfile)
-        .filter(UserProfile.mirror_id == mirror_id, UserProfile.user_id == user_id)
+        .filter(
+            UserProfile.mirror_id == mirror_id,
+            UserProfile.user_id == user_id,
+            UserProfile.deleted_at.is_(None),
+        )
         .first()
     )
     if profile is None:

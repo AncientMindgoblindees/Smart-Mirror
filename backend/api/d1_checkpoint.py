@@ -10,17 +10,31 @@ from backend.schemas.d1_checkpoint import (
     D1SyncCheckpointOut,
     D1SyncCheckpointUpdate,
 )
+from backend.services.auth_context import AuthContext, require_auth_context
 
 router = APIRouter(prefix="/d1/checkpoints", tags=["d1-checkpoints"])
 
 
+def _require_admin(context: AuthContext = Depends(require_auth_context)) -> AuthContext:
+    if context.membership.role != "admin":
+        raise HTTPException(status_code=403, detail="authenticated but not allowed")
+    return context
+
+
 @router.get("/", response_model=list[D1SyncCheckpointOut])
-def list_checkpoints(db: Session = Depends(get_db)) -> list[D1SyncCheckpointOut]:
+def list_checkpoints(
+    _context: AuthContext = Depends(_require_admin),
+    db: Session = Depends(get_db),
+) -> list[D1SyncCheckpointOut]:
     return db.query(D1SyncCheckpoint).order_by(D1SyncCheckpoint.table_name.asc()).all()
 
 
 @router.get("/{table_name}", response_model=D1SyncCheckpointOut)
-def get_checkpoint(table_name: str, db: Session = Depends(get_db)) -> D1SyncCheckpointOut:
+def get_checkpoint(
+    table_name: str,
+    _context: AuthContext = Depends(_require_admin),
+    db: Session = Depends(get_db),
+) -> D1SyncCheckpointOut:
     row = db.query(D1SyncCheckpoint).filter(D1SyncCheckpoint.table_name == table_name).first()
     if row is None:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
@@ -28,7 +42,11 @@ def get_checkpoint(table_name: str, db: Session = Depends(get_db)) -> D1SyncChec
 
 
 @router.post("/", response_model=D1SyncCheckpointOut, status_code=201)
-def create_checkpoint(payload: D1SyncCheckpointCreate, db: Session = Depends(get_db)) -> D1SyncCheckpointOut:
+def create_checkpoint(
+    payload: D1SyncCheckpointCreate,
+    _context: AuthContext = Depends(_require_admin),
+    db: Session = Depends(get_db),
+) -> D1SyncCheckpointOut:
     existing = db.query(D1SyncCheckpoint).filter(D1SyncCheckpoint.table_name == payload.table_name).first()
     if existing is not None:
         raise HTTPException(status_code=409, detail="Checkpoint already exists")
@@ -48,6 +66,7 @@ def create_checkpoint(payload: D1SyncCheckpointCreate, db: Session = Depends(get
 def patch_checkpoint(
     table_name: str,
     payload: D1SyncCheckpointUpdate,
+    _context: AuthContext = Depends(_require_admin),
     db: Session = Depends(get_db),
 ) -> D1SyncCheckpointOut:
     row = db.query(D1SyncCheckpoint).filter(D1SyncCheckpoint.table_name == table_name).first()
@@ -62,7 +81,11 @@ def patch_checkpoint(
 
 
 @router.delete("/{table_name}")
-def delete_checkpoint(table_name: str, db: Session = Depends(get_db)) -> dict:
+def delete_checkpoint(
+    table_name: str,
+    _context: AuthContext = Depends(_require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
     row = db.query(D1SyncCheckpoint).filter(D1SyncCheckpoint.table_name == table_name).first()
     if row is None:
         raise HTTPException(status_code=404, detail="Checkpoint not found")

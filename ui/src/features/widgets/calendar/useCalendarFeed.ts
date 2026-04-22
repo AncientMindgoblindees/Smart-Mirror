@@ -7,7 +7,7 @@ type FeedResponse = {
 };
 
 type UseCalendarFeedOpts<TResp extends FeedResponse, TItem> = {
-  fetcher: () => Promise<TResp>;
+  fetcher: (signal: AbortSignal) => Promise<TResp>;
   mapItems: (resp: TResp) => TItem[];
 };
 

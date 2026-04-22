@@ -17,6 +17,7 @@ import {
 } from '@/api/mirrorApi';
 import {
   readMirrorHardwareId,
+  readMirrorHardwareToken,
   saveActiveMirrorUserId,
   saveMirrorHardwareId,
   saveMirrorHardwareToken,
@@ -34,6 +35,8 @@ type RefreshSnapshot = {
   activeProfile: MirrorProfile | null;
   session: SessionMeResponse | null;
   mismatch: boolean;
+  mirrorReady: boolean;
+  syncError: unknown;
 };
 
 function slugifyProfileId(displayName: string, existingUserIds: string[]): string {
@@ -59,6 +62,15 @@ function toErrorMessage(err: unknown, fallback: string): string {
     return message;
   }
   return fallback;
+}
+
+function shouldRegisterMirror(err: unknown): boolean {
+  if (!err) return false;
+  if (err instanceof Error) {
+    const message = err.message.trim();
+    return /401|403|404|not found|unknown hardware|hardware token|mirror.*register|unregistered/i.test(message);
+  }
+  return false;
 }
 
 function mapSessionProfile(activeProfile: SessionActiveProfile, mirrorId: string): MirrorProfile {
@@ -125,6 +137,7 @@ export function useMirrorSession() {
 
       const sessionPayload = sessionResult.status === 'fulfilled' ? sessionResult.value : null;
       const syncPayload = syncResult.status === 'fulfilled' ? syncResult.value : null;
+      const syncError = syncResult.status === 'rejected' ? syncResult.reason : null;
       const profileList = profileResult.status === 'fulfilled' ? profileResult.value : [];
 
       const sessionActive = sessionPayload?.active_profile
@@ -172,12 +185,14 @@ export function useMirrorSession() {
         activeProfile: resolvedActiveProfile,
         session: sessionPayload,
         mismatch,
+        mirrorReady: Boolean(syncPayload?.mirror ?? registration),
+        syncError,
       };
     },
     [hardwareId, mirror],
   );
 
-  const refresh = useCallback(async () => {
+  const ensureMirrorRegistration = useCallback(async () => {
     saveMirrorHardwareId(hardwareId);
     const friendlyName = import.meta.env.VITE_MIRROR_FRIENDLY_NAME?.trim() || 'Shared Smart Mirror';
     const registration = await registerMirror({
@@ -186,8 +201,21 @@ export function useMirrorSession() {
     });
     saveMirrorHardwareToken(registration.hardware_token);
     setMirror(registration);
+    return registration;
+  }, [hardwareId]);
+
+  const refresh = useCallback(async () => {
+    saveMirrorHardwareId(hardwareId);
+    const snapshot = await refreshSessionState({ includeProfileList: true });
+    if (snapshot.mirrorReady) return;
+
+    const hasStoredToken = Boolean(readMirrorHardwareToken());
+    const needsRegistration = !hasStoredToken || shouldRegisterMirror(snapshot.syncError);
+    if (!needsRegistration) return;
+
+    const registration = await ensureMirrorRegistration();
     await refreshSessionState({ includeProfileList: true, registration });
-  }, [hardwareId, refreshSessionState]);
+  }, [ensureMirrorRegistration, hardwareId, refreshSessionState]);
 
   useEffect(() => {
     let cancelled = false;

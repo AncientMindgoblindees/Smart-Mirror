@@ -20,7 +20,11 @@ def list_clothing(
     items = clothing_service.list_clothing_items(db, context.user_uid, include_images=include_images)
     out: List[ClothingItemRead] = []
     for item in items:
-        images = [ClothingImageRead.model_validate(img) for img in item.images] if include_images else None
+        images = (
+            [ClothingImageRead.model_validate(img) for img in clothing_service.list_clothing_images(db, context.user_uid, item.id)]
+            if include_images
+            else None
+        )
         out.append(
             ClothingItemRead(
                 id=item.id,
@@ -56,7 +60,11 @@ def get_clothing_item(
     item = clothing_service.get_clothing_item_by_id(db, context.user_uid, item_id, include_images=include_images)
     if item is None:
         raise HTTPException(status_code=404, detail="Clothing item not found")
-    images = [ClothingImageRead.model_validate(img) for img in item.images] if include_images else None
+    images = (
+        [ClothingImageRead.model_validate(img) for img in clothing_service.list_clothing_images(db, context.user_uid, item.id)]
+        if include_images
+        else None
+    )
     return ClothingItemRead(
         id=item.id,
         name=item.name,

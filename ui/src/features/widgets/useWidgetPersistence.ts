@@ -11,7 +11,11 @@ import { mergeRowsToWidgets, serverLayoutFingerprint, widgetsSignature } from '.
 import { loadWidgetCache, saveWidgetCache, signatureFromWidgets } from './widgetStorage';
 import type { WidgetConfig } from './types';
 
-const POLL_MS = 1200;
+const CONNECTED_POLL_MS = 2500;
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
 
 type UseWidgetPersistenceOptions = {
   enabled?: boolean;
@@ -41,6 +45,10 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
   const lastServerFingerprintRef = useRef('');
   const pendingPushTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const putInFlightRef = useRef(false);
+  const pullAbortRef = useRef<AbortController | null>(null);
+  const initAbortRef = useRef<AbortController | null>(null);
+  const pullInFlightRef = useRef(false);
+  const pullQueuedRef = useRef(false);
 
   const mergeServerRows = useCallback((list: WidgetConfigOut[], opts?: { force?: boolean }) => {
     const fingerprint = serverLayoutFingerprint(list);
@@ -58,14 +66,37 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
     setWidgets(mapped);
   }, []);
 
-  const pullWidgetsFromServer = useCallback(async () => {
+  const pullWidgetsFromServer = useCallback(async (opts?: { force?: boolean }) => {
     if (!enabled) return;
+    if (pullInFlightRef.current) {
+      if (opts?.force) {
+        pullQueuedRef.current = true;
+      }
+      return;
+    }
+
+    const controller = new AbortController();
+    pullAbortRef.current?.abort();
+    pullAbortRef.current = controller;
+    pullInFlightRef.current = true;
+
     try {
-      const list = await getWidgets();
+      const list = await getWidgets({ signal: controller.signal });
       mergeServerRows(list);
       setServerConnected(true);
-    } catch {
-      setServerConnected(false);
+    } catch (error) {
+      if (!isAbortError(error)) {
+        setServerConnected(false);
+      }
+    } finally {
+      if (pullAbortRef.current === controller) {
+        pullAbortRef.current = null;
+      }
+      pullInFlightRef.current = false;
+      if (pullQueuedRef.current) {
+        pullQueuedRef.current = false;
+        void pullWidgetsFromServer();
+      }
     }
   }, [enabled, mergeServerRows]);
 
@@ -85,35 +116,54 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
     setWidgets(INITIAL_WIDGETS);
     lastPutSig.current = '';
     lastServerFingerprintRef.current = '';
+    pullAbortRef.current?.abort();
+    pullAbortRef.current = null;
+    pullInFlightRef.current = false;
+    pullQueuedRef.current = false;
+    initAbortRef.current?.abort();
     if (pendingPushTimerRef.current !== undefined) {
       clearTimeout(pendingPushTimerRef.current);
       pendingPushTimerRef.current = undefined;
     }
 
     (async () => {
+      const controller = new AbortController();
+      initAbortRef.current = controller;
       try {
         const [settings, list] = initialWidgets && initialUserSettings
           ? [initialUserSettings, initialWidgets]
-          : await Promise.all([getUserSettings(), getWidgets()]);
+          : await Promise.all([
+              getUserSettings({ signal: controller.signal }),
+              getWidgets({ signal: controller.signal }),
+            ]);
         if (cancelled) return;
         applyUserSettings(settings);
         mergeServerRows(list, { force: true });
         setServerConnected(true);
-      } catch {
-        setServerConnected(false);
-        const cached = loadWidgetCache();
-        if (cached) {
-          setWidgets(cached);
-          lastPutSig.current = signatureFromWidgets(cached);
-          lastServerFingerprintRef.current = '';
+      } catch (error) {
+        if (!isAbortError(error)) {
+          setServerConnected(false);
+          const cached = loadWidgetCache();
+          if (cached) {
+            setWidgets(cached);
+            lastPutSig.current = signatureFromWidgets(cached);
+            lastServerFingerprintRef.current = '';
+          }
         }
       } finally {
+        if (initAbortRef.current === controller) {
+          initAbortRef.current = null;
+        }
         if (!cancelled) setReady(true);
       }
     })();
 
     return () => {
       cancelled = true;
+      initAbortRef.current?.abort();
+      initAbortRef.current = null;
+      pullAbortRef.current?.abort();
+      pullAbortRef.current = null;
     };
   }, [enabled, initialUserSettings, initialWidgets, mergeServerRows, refreshKey]);
 
@@ -156,31 +206,26 @@ export function useWidgetPersistence(options: UseWidgetPersistenceOptions = {}):
   useIntervalWhen(
     () => {
       if (document.visibilityState !== 'visible') return;
-      void pullWidgetsFromServer();
+      void pullWidgetsFromServer({ force: true });
     },
-    POLL_MS,
+    CONNECTED_POLL_MS,
     enabled && syncEnabled && ready && serverConnected,
   );
 
   useWindowEvent('focus', () => {
     if (!enabled || !syncEnabled || !ready || !serverConnected) return;
-    void pullWidgetsFromServer();
+    void pullWidgetsFromServer({ force: true });
   });
 
   useEffect(() => {
     if (!enabled || !syncEnabled || !ready || !serverConnected) return;
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
-        void pullWidgetsFromServer();
+        void pullWidgetsFromServer({ force: true });
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [enabled, syncEnabled, ready, serverConnected, pullWidgetsFromServer]);
-
-  useEffect(() => {
-    if (!enabled || !syncEnabled || !ready || !serverConnected) return;
-    void pullWidgetsFromServer();
   }, [enabled, syncEnabled, ready, serverConnected, pullWidgetsFromServer]);
 
   return { widgets, setWidgets, ready, serverConnected };

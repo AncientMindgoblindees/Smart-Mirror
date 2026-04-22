@@ -9,7 +9,7 @@ export function useCalendarTasks(): {
   loading: boolean;
 } {
   const { items, hasProviders, loading } = useCalendarFeed<CalendarTasksResponse, ReminderDisplay>({
-    fetcher: () => getCalendarTasks(),
+    fetcher: (signal) => getCalendarTasks(undefined, { signal }),
     mapItems: (resp) => resp.tasks.map(toReminderDisplay),
   });
   return { tasks: items, hasProviders, loading };

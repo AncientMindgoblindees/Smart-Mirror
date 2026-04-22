@@ -39,12 +39,7 @@ export type PendingAuth = {
   intent: 'pair_profile' | 'create_account';
 };
 
-function clearIntervalRef(pollRef: { current: ReturnType<typeof setInterval> | null }) {
-  if (pollRef.current) {
-    clearInterval(pollRef.current);
-    pollRef.current = null;
-  }
-}
+type AuthIntent = PendingAuth['intent'];
 
 type AuthContext = {
   hardwareId: string | null;
@@ -58,93 +53,189 @@ type AuthContext = {
   }) => void | Promise<void>;
 };
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function clearTimerRef(timerRef: { current: ReturnType<typeof setTimeout> | null }) {
+  if (timerRef.current) {
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }
+}
+
+function resolveIntent(value: unknown, fallback: AuthIntent = 'pair_profile'): AuthIntent {
+  return value === 'create_account' ? 'create_account' : fallback;
+}
+
 export function useAuthState({ hardwareId, userId, enabled = true, onAuthCompleted }: AuthContext) {
   const [providers, setProviders] = useState<ProviderStatus[]>([]);
   const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollSequenceRef = useRef(0);
+  const loginStatusAbortRef = useRef<AbortController | null>(null);
+  const providerRefreshAbortRef = useRef<AbortController | null>(null);
+  const providerRefreshInFlightRef = useRef(false);
+  const providerRefreshQueuedRef = useRef(false);
   const pendingProviderRef = useRef<string | null>(null);
   const pendingTargetUserIdRef = useRef<string | null>(null);
   const pendingPairingIdRef = useRef<string | null>(null);
+  const pendingIntentRef = useRef<AuthIntent>('pair_profile');
+  const pendingAuthRef = useRef<PendingAuth | null>(null);
 
   useEffect(() => {
+    pendingAuthRef.current = pendingAuth;
     pendingProviderRef.current = pendingAuth?.provider ?? null;
     pendingTargetUserIdRef.current = pendingAuth?.targetUserId ?? null;
     pendingPairingIdRef.current = pendingAuth?.pairingId ?? null;
+    if (pendingAuth?.intent) pendingIntentRef.current = pendingAuth.intent;
   }, [pendingAuth]);
 
   const canRefreshProviders = enabled && Boolean(hardwareId);
 
-  const refresh = useCallback(async () => {
-    if (!canRefreshProviders || !hardwareId) {
-      setProviders([]);
-      return;
-    }
-    try {
-      const list = await getAuthProviders(hardwareId, userId);
-      setProviders(list);
-    } catch {
-      // Backend unavailable; keep stale state.
-    }
-  }, [canRefreshProviders, hardwareId, userId]);
+  const clearStatusPolling = useCallback(() => {
+    pollSequenceRef.current += 1;
+    clearTimerRef(pollTimerRef);
+    loginStatusAbortRef.current?.abort();
+    loginStatusAbortRef.current = null;
+  }, []);
 
-  useEffect(() => {
-    if (!enabled || !hardwareId) {
-      clearIntervalRef(pollRef);
-      setPendingAuth(null);
-      setProviders([]);
-      return;
-    }
-    void refresh();
-  }, [enabled, hardwareId, refresh]);
+  const refresh = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (!canRefreshProviders || !hardwareId) {
+        providerRefreshAbortRef.current?.abort();
+        providerRefreshAbortRef.current = null;
+        providerRefreshQueuedRef.current = false;
+        providerRefreshInFlightRef.current = false;
+        setProviders([]);
+        return;
+      }
 
-  useIntervalWhen(() => void refresh(), 10_000, canRefreshProviders);
+      if (providerRefreshInFlightRef.current) {
+        providerRefreshQueuedRef.current = true;
+        return;
+      }
+
+      const controller = new AbortController();
+      providerRefreshAbortRef.current?.abort();
+      providerRefreshAbortRef.current = controller;
+      providerRefreshInFlightRef.current = true;
+
+      try {
+        const list = await getAuthProviders(hardwareId, userId, { signal: controller.signal });
+        if (providerRefreshAbortRef.current === controller) {
+          setProviders(list);
+        }
+      } catch (error) {
+        if (!isAbortError(error)) {
+          // Backend unavailable; keep stale state.
+        }
+      } finally {
+        if (providerRefreshAbortRef.current === controller) {
+          providerRefreshAbortRef.current = null;
+        }
+        providerRefreshInFlightRef.current = false;
+        if (providerRefreshQueuedRef.current && (opts?.force ?? true)) {
+          providerRefreshQueuedRef.current = false;
+          void refresh({ force: true });
+        } else {
+          providerRefreshQueuedRef.current = false;
+        }
+      }
+    },
+    [canRefreshProviders, hardwareId, userId],
+  );
+
+  const pollLoginStatus = useCallback(
+    async (provider: string, targetUserId: string | null, pairingId: string | null) => {
+      if (!hardwareId) return;
+
+      loginStatusAbortRef.current?.abort();
+      const controller = new AbortController();
+      loginStatusAbortRef.current = controller;
+
+      try {
+        const status = await getLoginStatusWithPairing(
+          provider,
+          hardwareId,
+          targetUserId,
+          pairingId,
+          { signal: controller.signal },
+        );
+        const normalizedStatus = status.status.toLowerCase();
+        const inProgress = normalizedStatus === 'pending'
+          || normalizedStatus === 'awaiting_app'
+          || normalizedStatus === 'awaiting_oauth'
+          || normalizedStatus === 'authorized';
+
+        if (normalizedStatus === 'active' || normalizedStatus === 'complete') {
+          clearStatusPolling();
+          setPendingAuth(null);
+          await refresh({ force: true });
+          await onAuthCompleted?.({
+            provider,
+            pairingId: status.pairing_id ?? pairingId ?? null,
+            intent: status.intent ?? pendingIntentRef.current,
+            pairedUserUid: status.paired_user_uid ?? null,
+          });
+          return;
+        }
+
+        if (!inProgress) {
+          clearStatusPolling();
+          setPendingAuth(null);
+          await refresh({ force: true });
+        }
+      } catch (error) {
+        if (!isAbortError(error)) {
+          // Ignore transient poll failures and let the next scheduled tick retry.
+        }
+      } finally {
+        if (loginStatusAbortRef.current === controller) {
+          loginStatusAbortRef.current = null;
+        }
+      }
+    },
+    [clearStatusPolling, hardwareId, onAuthCompleted, refresh],
+  );
 
   const startPollForProvider = useCallback(
     (provider: string, intervalSec: number, targetUserId: string | null, pairingId: string | null) => {
       if (!hardwareId) return;
       if (!pairingId && !targetUserId) return;
-      clearIntervalRef(pollRef);
-      const ms = Math.max(3000, (intervalSec || 5) * 1000);
-      pollRef.current = setInterval(async () => {
-        try {
-          const status = await getLoginStatusWithPairing(provider, hardwareId, targetUserId, pairingId);
-          const normalizedStatus = status.status.toLowerCase();
-          const inProgress = normalizedStatus === 'pending'
-            || normalizedStatus === 'awaiting_app'
-            || normalizedStatus === 'awaiting_oauth'
-            || normalizedStatus === 'authorized';
-          if (normalizedStatus === 'active' || normalizedStatus === 'complete') {
-            clearIntervalRef(pollRef);
-            setPendingAuth(null);
-            await refresh();
-            await onAuthCompleted?.({
-              provider,
-              pairingId: status.pairing_id ?? pairingId ?? null,
-              intent: status.intent ?? null,
-              pairedUserUid: status.paired_user_uid ?? null,
-            });
-          } else if (!inProgress) {
-            clearIntervalRef(pollRef);
-            setPendingAuth(null);
-            await refresh();
-          }
-        } catch {
-          // Ignore poll failures and let the next tick retry.
-        }
-      }, ms);
+
+      clearStatusPolling();
+      const pollSequence = pollSequenceRef.current;
+
+      const runPoll = () => {
+        void pollLoginStatus(provider, targetUserId, pairingId).finally(() => {
+          if (pollSequenceRef.current !== pollSequence) return;
+          const activePending = pendingAuthRef.current;
+          if (!activePending || activePending.provider !== provider) return;
+          const ms = Math.max(3000, (intervalSec || activePending.deviceCode.interval || 5) * 1000);
+          pollTimerRef.current = window.setTimeout(runPoll, ms);
+        });
+      };
+
+      pollTimerRef.current = window.setTimeout(runPoll, 0);
     },
-    [hardwareId, onAuthCompleted, refresh],
+    [clearStatusPolling, hardwareId, pollLoginStatus],
   );
 
   const applyDeviceCodePayload = useCallback(
     (detail: Record<string, unknown>) => {
-      const provider = String(detail.provider ?? '');
+      const provider = String(detail.provider ?? '').trim();
       if (!provider) return;
+
       const parsedTarget = String(detail.target_user_id ?? userId ?? '').trim();
       const targetUserId = parsedTarget || null;
       const pairingId = String(detail.pairing_id ?? '').trim() || null;
       if (!pairingId && !targetUserId) return;
-      const intent = String(detail.intent ?? '').trim() === 'create_account' ? 'create_account' : 'pair_profile';
+
+      const fallbackIntent =
+        pendingProviderRef.current === provider ? pendingIntentRef.current : 'pair_profile';
+      const intent = resolveIntent(detail.intent, fallbackIntent);
       const deviceCode: DeviceCodeInfo = {
         provider,
         verification_uri: String(detail.verification_uri ?? ''),
@@ -153,11 +244,29 @@ export function useAuthState({ hardwareId, userId, enabled = true, onAuthComplet
         interval: Number(detail.interval) || 5,
         message: detail.message == null ? null : String(detail.message),
       };
+
+      pendingIntentRef.current = intent;
       setPendingAuth({ provider, pairingId, deviceCode, targetUserId, intent });
       startPollForProvider(provider, deviceCode.interval, targetUserId, pairingId);
     },
     [startPollForProvider, userId],
   );
+
+  useEffect(() => {
+    if (!enabled || !hardwareId) {
+      clearStatusPolling();
+      providerRefreshAbortRef.current?.abort();
+      providerRefreshAbortRef.current = null;
+      setPendingAuth(null);
+      setProviders([]);
+      return;
+    }
+
+    setProviders([]);
+    void refresh({ force: true });
+  }, [clearStatusPolling, enabled, hardwareId, refresh]);
+
+  useIntervalWhen(() => void refresh(), 10_000, canRefreshProviders);
 
   useWindowEvent<Record<string, unknown>>('mirror:oauth_device_code', (detail) => {
     if (!enabled || !hardwareId) return;
@@ -165,19 +274,29 @@ export function useAuthState({ hardwareId, userId, enabled = true, onAuthComplet
   });
 
   const initiateLogin = useCallback(
-    async (provider: string, opts?: { targetUserId?: string; intent?: 'pair_profile' | 'create_account' }) => {
-      const targetUserId = opts?.targetUserId?.trim() || userId || undefined;
+    async (provider: string, opts?: { targetUserId?: string; intent?: AuthIntent }) => {
+      const requestedTargetUserId = opts?.targetUserId?.trim() || userId || undefined;
       if (!hardwareId) {
         throw new Error('Mirror hardware context is unavailable.');
       }
-      const intent = opts?.intent ?? 'pair_profile';
-      const deviceCode = await startLogin(provider, hardwareId, targetUserId, { targetUserId, intent });
-      const resolvedTargetUserId = deviceCode.target_user_id?.trim() || targetUserId || null;
+
+      const requestedIntent = resolveIntent(opts?.intent);
+      pendingIntentRef.current = requestedIntent;
+
+      const deviceCode = await startLogin(
+        provider,
+        hardwareId,
+        requestedTargetUserId,
+        { targetUserId: requestedTargetUserId, intent: requestedIntent },
+      );
+      const resolvedTargetUserId = deviceCode.target_user_id?.trim() || requestedTargetUserId || null;
       const pairingId = deviceCode.pairing_id?.trim() || null;
       if (!pairingId && !resolvedTargetUserId) {
         throw new Error('Pairing context is missing. Please refresh and try again.');
       }
-      setPendingAuth({
+
+      const intent = resolveIntent(deviceCode.intent, requestedIntent);
+      const nextPendingAuth: PendingAuth = {
         provider,
         pairingId,
         deviceCode: {
@@ -190,7 +309,10 @@ export function useAuthState({ hardwareId, userId, enabled = true, onAuthComplet
         },
         targetUserId: resolvedTargetUserId,
         intent,
-      });
+      };
+
+      pendingIntentRef.current = intent;
+      setPendingAuth(nextPendingAuth);
       startPollForProvider(provider, deviceCode.interval || 5, resolvedTargetUserId, pairingId);
     },
     [hardwareId, startPollForProvider, userId],
@@ -200,30 +322,34 @@ export function useAuthState({ hardwareId, userId, enabled = true, onAuthComplet
     const provider = pendingProviderRef.current;
     const targetUserId = pendingTargetUserIdRef.current;
     const pairingId = pendingPairingIdRef.current;
-    clearIntervalRef(pollRef);
+
+    clearStatusPolling();
     setPendingAuth(null);
     if (!provider || !hardwareId) return;
+
     try {
       await cancelLoginWithPairing(provider, hardwareId, targetUserId, pairingId);
     } catch {
       // Ignore cancellation failures.
     }
-  }, [hardwareId]);
+  }, [clearStatusPolling, hardwareId]);
 
   const disconnectProvider = useCallback(
     async (provider: string) => {
       if (!hardwareId) return;
       await logoutProvider(provider, hardwareId, userId);
-      await refresh();
+      await refresh({ force: true });
     },
     [hardwareId, refresh, userId],
   );
 
   useEffect(() => {
     return () => {
-      clearIntervalRef(pollRef);
+      clearStatusPolling();
+      providerRefreshAbortRef.current?.abort();
+      providerRefreshAbortRef.current = null;
     };
-  }, []);
+  }, [clearStatusPolling]);
 
   return {
     providers,

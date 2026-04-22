@@ -23,7 +23,7 @@ import { DEV_PANEL_STORAGE_KEY, WidgetFrame, useWidgetPersistence } from '@/feat
 import { useControlEvents } from '@/hooks/useControlEvents';
 import { type MirrorButtonInput, useMirrorInput } from '@/hooks/useMirrorInput';
 import { useParallax } from '@/hooks/useParallax';
-import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { usePerformanceMode, useReducedMotion } from '@/hooks/useReducedMotion';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
 import { getApiBase } from '@/config/backendOrigin';
 import { useAuthState } from '@/features/auth';
@@ -364,6 +364,7 @@ type DashboardProps = {
   disconnectGoogle: () => void | Promise<void>;
   refreshAuth: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  performanceMode: boolean;
 };
 
 function MirrorDashboard({
@@ -386,6 +387,7 @@ function MirrorDashboard({
   disconnectGoogle,
   refreshAuth,
   refreshSession,
+  performanceMode,
 }: DashboardProps) {
   const reducedMotion = useReducedMotion();
   const { widgets, setWidgets } = useWidgetPersistence({
@@ -503,7 +505,7 @@ function MirrorDashboard({
       >
         <AnimatePresence mode="popLayout">
           {visibleWidgets.map((widget) => (
-            <WidgetFrame key={widget.id} config={widget} canvasRect={canvasRect} />
+            <WidgetFrame key={widget.id} config={widget} canvasRect={canvasRect} performanceMode={performanceMode} />
           ))}
         </AnimatePresence>
       </motion.div>
@@ -611,6 +613,7 @@ function MirrorDashboard({
 
 export default function MirrorApp() {
   const reducedMotion = useReducedMotion();
+  const performanceMode = usePerformanceMode();
   const {
     hardwareId,
     mirror,
@@ -643,7 +646,8 @@ export default function MirrorApp() {
   const [animationMode, setAnimationMode] = useState<AnimationMode>(readAnimationInitial);
   const previousPendingAuthRef = useRef<ReturnType<typeof useAuthState>['pendingAuth']>(null);
   const { sleepMode, sleepModeRef, toggleDim, toggleSleep } = useMirrorDisplayMode();
-  const lightweightUiMode = reducedMotion || menuOpen;
+  const lightweightUiMode = performanceMode;
+  const motionReducedMode = reducedMotion || menuOpen;
 
   const currentView = viewStack[viewStack.length - 1] ?? 'identity';
   const activeProfileIndex = profiles.findIndex((profile) => profile.user_id === activeProfile?.user_id);
@@ -653,6 +657,8 @@ export default function MirrorApp() {
   const animationIndex = Math.max(0, ANIMATION_PRESETS.findIndex((preset) => preset.id === animationMode));
   const selectedProfile = profiles[clampedIdentityIndex] ?? null;
   const selectedCreateAccount = identitySubstate === 'list' && clampedIdentityIndex === profiles.length;
+  const pairingTargetProfile = selectedProfile ?? activeProfile ?? null;
+  const authContextUserId = currentView === 'identity' ? selectedProfile?.user_id ?? null : activeProfile?.user_id ?? null;
 
   const {
     providers: authProviders,
@@ -663,7 +669,7 @@ export default function MirrorApp() {
     refresh: refreshAuth,
   } = useAuthState({
     hardwareId,
-    userId: activeProfile?.user_id ?? null,
+    userId: authContextUserId,
     enabled: Boolean(hardwareId),
     onAuthCompleted: async ({ intent, pairedUserUid }) => {
       await refresh();
@@ -677,7 +683,8 @@ export default function MirrorApp() {
     },
   });
   const { authError, signInGoogle, disconnectGoogle } = useAuthActions(initiateLogin, disconnectProvider);
-  const googleConnected = authProviders.some((provider) => provider.provider === 'google' && provider.connected);
+  const googleProvider = authProviders.find((provider) => provider.provider === 'google') ?? null;
+  const googleConnected = Boolean(googleProvider?.connected);
 
   const systemMenuItems = useMemo<SystemMenuItem[]>(
     () => [
@@ -787,11 +794,18 @@ export default function MirrorApp() {
     const hadPending = previousPendingAuthRef.current;
 
     if (pendingAuth) {
-      const nextIdentityIndex = profiles.length > 0
-        ? Math.max(0, Math.min(selectionMemory.identity, profiles.length - 1))
-        : 0;
+      const pairingTargetIndex = pendingAuth.targetUserId
+        ? profiles.findIndex((profile) => profile.user_id === pendingAuth.targetUserId)
+        : -1;
+      const nextIdentityIndex = pendingAuth.intent === 'create_account'
+        ? profiles.length
+        : pairingTargetIndex >= 0
+          ? pairingTargetIndex
+          : profiles.length > 0
+            ? Math.max(0, Math.min(selectionMemory.identity, profiles.length - 1))
+            : 0;
       setMenuOpen(true);
-      setIdentityIntent('pair');
+      setIdentityIntent(pendingAuth.intent === 'create_account' ? 'create' : 'pair');
       setIdentitySubstate('pairing');
       setSelectionMemory((previous) => ({ ...previous, identity: nextIdentityIndex }));
       setSelectedIndex(nextIdentityIndex);
@@ -800,7 +814,8 @@ export default function MirrorApp() {
       ));
     } else if (hadPending) {
       setIdentitySubstate('list');
-      if (googleConnected) {
+      const pairingCompleted = hadPending.intent === 'create_account' ? Boolean(activeProfile) : googleConnected;
+      if (pairingCompleted) {
         const nextSystemIndex = Math.max(0, Math.min(selectionMemory.system, systemMenuItems.length - 1));
         setViewStack(['system']);
         setSelectedIndex(nextSystemIndex);
@@ -808,7 +823,7 @@ export default function MirrorApp() {
     }
 
     previousPendingAuthRef.current = pendingAuth;
-  }, [googleConnected, pendingAuth, profiles.length, selectionMemory.identity, selectionMemory.system, systemMenuItems.length]);
+  }, [activeProfile, googleConnected, pendingAuth, profiles.length, selectionMemory.identity, selectionMemory.system, systemMenuItems.length]);
 
   useEffect(() => {
     if (authError && identityIntent === 'pair' && identitySubstate === 'pairing' && !pendingAuth) {
@@ -889,7 +904,12 @@ export default function MirrorApp() {
       setMenuError(null);
       setIdentityIntent('create');
       setIdentitySubstate('pairing');
+      setSelectionMemory((previous) => ({ ...previous, identity: profiles.length }));
+      setSelectedIndex(profiles.length);
       await signInGoogle({ intent: 'create_account' });
+    } catch (err) {
+      setMenuError(err instanceof Error ? err.message : 'Failed to start account creation.');
+      setIdentitySubstate('list');
     } finally {
       setActionPending(null);
     }
@@ -922,15 +942,26 @@ export default function MirrorApp() {
 
   const handlePairSelectedProfile = async (opts?: { createAccount?: boolean }) => {
     const createAccount = Boolean(opts?.createAccount);
-    if (!selectedProfile && !createAccount && !activeProfile) {
+    const targetUserId = createAccount ? undefined : selectedProfile?.user_id ?? activeProfile?.user_id ?? undefined;
+    if (!createAccount && !targetUserId) {
       setMenuError('No active backend profile is available for pairing yet.');
       return;
     }
-    setActionPending('pair');
-    setMenuError(null);
-    setIdentitySubstate('pairing');
-    await signInGoogle(createAccount ? { intent: 'create_account' } : { intent: 'pair_profile' });
-    setActionPending(null);
+    try {
+      setActionPending('pair');
+      setMenuError(null);
+      setIdentitySubstate('pairing');
+      await signInGoogle(
+        createAccount
+          ? { intent: 'create_account' }
+          : { intent: 'pair_profile', targetUserId },
+      );
+    } catch (err) {
+      setMenuError(err instanceof Error ? err.message : 'Failed to start Google pairing.');
+      setIdentitySubstate('list');
+    } finally {
+      setActionPending(null);
+    }
   };
 
   const cycleAnimation = () => {
@@ -989,10 +1020,7 @@ export default function MirrorApp() {
           setMenuError('No active backend profile yet. Choose Create Account to finish pairing.');
           return;
         }
-        setActionPending('pair');
-        setIdentitySubstate('pairing');
-        await signInGoogle({ intent: 'pair_profile' });
-        setActionPending(null);
+        await handlePairSelectedProfile();
         return;
       }
       setMenuError('Select Create Account to continue.');
@@ -1154,7 +1182,7 @@ export default function MirrorApp() {
   });
 
   return (
-    <MotionConfig reducedMotion={lightweightUiMode ? 'always' : 'never'}>
+    <MotionConfig reducedMotion={motionReducedMode ? 'always' : 'never'}>
       <TooltipProvider delayDuration={400}>
         <div
           className={`mirror-shell mirror-shell--${animationMode} ${lightweightUiMode ? 'mirror-shell--performance' : ''}`}
@@ -1184,6 +1212,7 @@ export default function MirrorApp() {
               disconnectGoogle={disconnectGoogle}
               refreshAuth={refreshAuth}
               refreshSession={refresh}
+              performanceMode={lightweightUiMode}
             />
           )}
 
@@ -1242,9 +1271,11 @@ export default function MirrorApp() {
                         ? identitySubstate === 'pairing'
                           ? identityIntent === 'create'
                             ? 'Scan the QR code and sign in with Google to create your mirror account.'
-                            : 'Keep your phone ready while the backend links Google to the active profile.'
+                            : pairingTargetProfile
+                              ? `Keep your phone ready while Google links to ${profileLabel(pairingTargetProfile)}.`
+                              : 'Keep your phone ready while the backend links Google to the selected profile.'
                           : identityIntent === 'pair'
-                            ? 'Start pairing for the active backend profile, or choose Create Account for a new user.'
+                            ? 'Choose exactly which profile should own the Google link, or choose Create Account for a new user.'
                             : activeProfile
                               ? `Current backend profile: ${profileLabel(activeProfile)}`
                               : 'No active backend profile yet. Choose Create Account to continue.'
@@ -1275,11 +1306,9 @@ export default function MirrorApp() {
                               <div className="mt-2 text-base text-white">
                                 {identityIntent === 'create'
                                   ? 'New Google Account'
-                                  : selectedProfile
-                                    ? profileLabel(selectedProfile)
-                                    : activeProfile
-                                      ? profileLabel(activeProfile)
-                                      : 'Backend active profile'}
+                                  : pairingTargetProfile
+                                    ? profileLabel(pairingTargetProfile)
+                                    : 'Backend active profile'}
                               </div>
                             </div>
                             <div className="rounded-[28px] border border-white/10 bg-white/[0.04] px-5 py-5">
@@ -1354,7 +1383,9 @@ export default function MirrorApp() {
                             </div>
                             <p className="mt-2 leading-5">
                               {identityIntent === 'pair'
-                                ? 'Scan the QR code on your phone. The mirror session will refresh automatically once pairing completes.'
+                                ? pairingTargetProfile
+                                  ? `Scan the QR code to link Google to ${profileLabel(pairingTargetProfile)}. The mirror session will refresh automatically once pairing completes.`
+                                  : 'Scan the QR code on your phone. The mirror session will refresh automatically once pairing completes.'
                                 : selectedCreateAccount
                                   ? 'Create Account opens a Google QR sign-in and will activate the new profile automatically.'
                                   : 'Use Up and Down to wrap through profiles. Enter confirms the highlighted identity.'}

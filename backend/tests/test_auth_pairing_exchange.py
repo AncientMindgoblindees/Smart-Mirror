@@ -71,7 +71,10 @@ class AuthPairingExchangeTests(unittest.TestCase):
         with patch("backend.api.auth.create_firebase_custom_token", return_value="firebase-custom-token"):
             response = self.client.post(
                 "/api/auth/pairings/pair_exchange_1/exchange-token?hardware_id=mirror-living-room",
-                headers={"X-Mirror-Hardware-Id": "mirror-living-room"},
+                headers={
+                    "X-Mirror-Hardware-Id": "mirror-living-room",
+                    "X-Mirror-Hardware-Token": "hardware-secret",
+                },
                 json={"pairing_code": "ABCD1234", "replace_current_session": False},
             )
 
@@ -96,7 +99,10 @@ class AuthPairingExchangeTests(unittest.TestCase):
 
         second = self.client.post(
             "/api/auth/pairings/pair_exchange_1/exchange-token?hardware_id=mirror-living-room",
-            headers={"X-Mirror-Hardware-Id": "mirror-living-room"},
+            headers={
+                "X-Mirror-Hardware-Id": "mirror-living-room",
+                "X-Mirror-Hardware-Token": "hardware-secret",
+            },
             json={"pairing_code": "ABCD1234", "replace_current_session": False},
         )
         self.assertEqual(second.status_code, 409)
@@ -122,7 +128,10 @@ class AuthPairingExchangeTests(unittest.TestCase):
 
         response = self.client.post(
             "/api/auth/pairings/pair_exchange_2/exchange-token?hardware_id=mirror-living-room",
-            headers={"X-Mirror-Hardware-Id": "mirror-living-room"},
+            headers={
+                "X-Mirror-Hardware-Id": "mirror-living-room",
+                "X-Mirror-Hardware-Token": "hardware-secret",
+            },
             json={"pairing_code": "BADCODE", "replace_current_session": False},
         )
         self.assertEqual(response.status_code, 403)

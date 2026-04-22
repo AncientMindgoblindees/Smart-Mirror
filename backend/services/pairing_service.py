@@ -97,6 +97,8 @@ def create_pairing(
     redirect_to: str | None,
     public_base_url: str,
     owner: FirebaseActor | None,
+    target_user_uid: str | None = None,
+    target_user_email: str | None = None,
 ) -> tuple[AuthPairing, str]:
     if provider != "google":
         raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
@@ -125,8 +127,16 @@ def create_pairing(
         if redirect_target:
             oauth_url = f"{oauth_url}&{urlencode({'redirect_to': redirect_target})}"
 
-        initial_paired_uid = owner.uid if owner and (intent or "link_provider") != "create_account" else None
-        initial_paired_email = owner.email if owner and (intent or "link_provider") != "create_account" else None
+        initial_paired_uid = (
+            target_user_uid
+            if (intent or "link_provider") != "create_account"
+            else None
+        ) or (owner.uid if owner and (intent or "link_provider") != "create_account" else None)
+        initial_paired_email = (
+            target_user_email
+            if (intent or "link_provider") != "create_account"
+            else None
+        ) or (owner.email if owner and (intent or "link_provider") != "create_account" else None)
 
         row = AuthPairing(
             pairing_id=pairing_id,
@@ -216,16 +226,17 @@ def store_oauth_callback_result(
         )
         return pairing
 
-    if pairing.owner_user_uid:
+    target_uid = pairing.paired_user_uid or pairing.owner_user_uid
+    if target_uid:
         _upsert_oauth_credential(
             db,
             mirror_id=pairing.mirror_id,
-            user_uid=pairing.owner_user_uid,
+            user_uid=target_uid,
             provider=pairing.provider,
             token=token,
         )
-        pairing.paired_user_uid = pairing.owner_user_uid
-        pairing.paired_user_email = pairing.owner_email or oauth_email
+        pairing.paired_user_uid = target_uid
+        pairing.paired_user_email = pairing.paired_user_email or pairing.owner_email or oauth_email
         pairing.custom_token_ready = True
         pairing.status = "authorized"
         pairing.error_code = None
@@ -272,7 +283,7 @@ def bind_pairing_to_actor(db: Session, pairing: AuthPairing, actor: FirebaseActo
         if not pairing.owner_user_uid:
             pairing.owner_user_uid = target_uid
     else:
-        target_uid = pairing.owner_user_uid or actor.uid
+        target_uid = pairing.paired_user_uid or pairing.owner_user_uid or actor.uid
         if not pairing.owner_user_uid:
             pairing.owner_user_uid = actor.uid
 
