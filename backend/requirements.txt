@@ -9,4 +9,3 @@ pydantic
 cryptography
 
 cloudinary
-python-dotenv
