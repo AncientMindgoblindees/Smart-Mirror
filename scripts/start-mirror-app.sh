@@ -1,9 +1,11 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
+(set -o pipefail) >/dev/null 2>&1 && set -o pipefail || true
 
 LOCKFILE="/tmp/smart_mirror.lock"
 LOCKDIR_FALLBACK="${LOCKFILE}.d"
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+ROOT_DIR="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
 PORT="${MIRROR_PORT:-8002}"
 URL="http://127.0.0.1:${PORT}/ui"
 LOG_DIR="${ROOT_DIR}/data"
@@ -34,18 +36,18 @@ acquire_start_lock() {
     echo "Another Smart Mirror start is already in progress; exiting."
     exit 0
   fi
+
   trap 'rmdir "${LOCKDIR_FALLBACK}" 2>/dev/null || true' EXIT
 }
 
 cleanup_stale_pid_file() {
-  local file="$1"
-  if [[ ! -f "${file}" ]]; then
+  file="$1"
+  if [ ! -f "${file}" ]; then
     return 0
   fi
 
-  local pid
-  pid="$(cat "${file}" || true)"
-  if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+  pid="$(cat "${file}" 2>/dev/null || true)"
+  if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
     return 0
   fi
 
@@ -55,59 +57,59 @@ cleanup_stale_pid_file() {
 port_owner() {
   if command -v ss >/dev/null 2>&1; then
     ss -ltnp "( sport = :${PORT} )" 2>/dev/null | sed -n '2,$p' || true
-    return
+    return 0
   fi
   if command -v lsof >/dev/null 2>&1; then
     lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN 2>/dev/null || true
-    return
+    return 0
   fi
   if command -v fuser >/dev/null 2>&1; then
     fuser -v -n tcp "${PORT}" 2>/dev/null || true
-    return
+    return 0
   fi
-  echo ""
+  return 0
 }
 
 backend_lock_holder_pids() {
-  if [[ ! -f "${BACKEND_INSTANCE_LOCKFILE}" ]]; then
+  if [ ! -f "${BACKEND_INSTANCE_LOCKFILE}" ]; then
     return 0
   fi
   if command -v lsof >/dev/null 2>&1; then
     lsof -t "${BACKEND_INSTANCE_LOCKFILE}" 2>/dev/null | sort -u || true
-    return
+    return 0
   fi
   if command -v fuser >/dev/null 2>&1; then
     fuser "${BACKEND_INSTANCE_LOCKFILE}" 2>/dev/null | tr ' ' '\n' | sed '/^$/d' | sort -u || true
-    return
+    return 0
   fi
+  return 0
 }
 
 start_backend_if_needed() {
   cleanup_stale_pid_file "${PID_FILE}"
 
-  if [[ -f "${PID_FILE}" ]]; then
-    local old_pid
-    old_pid="$(cat "${PID_FILE}" || true)"
-    if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
+  if [ -f "${PID_FILE}" ]; then
+    old_pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
+    if [ -n "${old_pid}" ] && kill -0 "${old_pid}" 2>/dev/null; then
       echo "Smart Mirror backend already running (PID ${old_pid})."
       return 0
     fi
   fi
 
-  mapfile -t BACKEND_LOCK_PIDS < <(backend_lock_holder_pids)
-  if [[ "${#BACKEND_LOCK_PIDS[@]}" -gt 0 ]]; then
+  backend_lock_pids="$(backend_lock_holder_pids)"
+  if [ -n "${backend_lock_pids}" ]; then
     echo "Smart Mirror backend lock is already held; not starting another instance."
-    printf '  %s\n' "${BACKEND_LOCK_PIDS[@]}"
-    echo "Run: bash ${ROOT_DIR}/scripts/stop-mirror-app.sh"
+    printf '%s\n' "${backend_lock_pids}" | sed '/^$/d; s/^/  /'
+    echo "Run: sh ${ROOT_DIR}/scripts/stop-mirror-app.sh"
     return 0
   fi
 
-  local owner_info
   owner_info="$(port_owner)"
-  if [[ -n "${owner_info// /}" ]]; then
+  owner_info_compact="$(printf '%s' "${owner_info}" | tr -d '[:space:]')"
+  if [ -n "${owner_info_compact}" ]; then
     echo "Smart Mirror backend already has a listener on port ${PORT}; not starting another instance."
-    echo "${owner_info}"
-    echo "Run: bash ${ROOT_DIR}/scripts/stop-mirror-app.sh"
+    printf '%s\n' "${owner_info}"
+    echo "Run: sh ${ROOT_DIR}/scripts/stop-mirror-app.sh"
     return 0
   fi
 
@@ -119,76 +121,79 @@ start_backend_if_needed() {
 }
 
 start_tunnel_if_needed() {
-  if [[ "${MIRROR_ENABLE_TUNNEL}" != "1" ]] || ! command -v cloudflared >/dev/null 2>&1; then
+  if [ "${MIRROR_ENABLE_TUNNEL}" != "1" ] || ! command -v cloudflared >/dev/null 2>&1; then
     return 0
   fi
 
   cleanup_stale_pid_file "${TUNNEL_PID_FILE}"
 
-  if [[ -f "${TUNNEL_PID_FILE}" ]]; then
-    local old_tunnel_pid
-    old_tunnel_pid="$(cat "${TUNNEL_PID_FILE}" || true)"
-    if [[ -n "${old_tunnel_pid}" ]] && kill -0 "${old_tunnel_pid}" 2>/dev/null; then
+  if [ -f "${TUNNEL_PID_FILE}" ]; then
+    old_tunnel_pid="$(cat "${TUNNEL_PID_FILE}" 2>/dev/null || true)"
+    if [ -n "${old_tunnel_pid}" ] && kill -0 "${old_tunnel_pid}" 2>/dev/null; then
       echo "Cloudflare tunnel already running (PID ${old_tunnel_pid})."
       return 0
     fi
   fi
 
   (
-    CHILD=""
-    trap '[[ -n "${CHILD}" ]] && kill "${CHILD}" 2>/dev/null; exit 0' TERM INT
-    while true; do
-      echo "$(date -Iseconds 2>/dev/null || date) starting cloudflared tunnel run ${MIRROR_TUNNEL_NAME}" >>"${TUNNEL_LOG_FILE}"
+    child_pid=""
+    trap 'if [ -n "${child_pid}" ]; then kill "${child_pid}" 2>/dev/null || true; fi; exit 0' TERM INT
+    while :; do
+      timestamp="$(date -Iseconds 2>/dev/null || date)"
+      echo "${timestamp} starting cloudflared tunnel run ${MIRROR_TUNNEL_NAME}" >>"${TUNNEL_LOG_FILE}"
       cloudflared tunnel run "${MIRROR_TUNNEL_NAME}" >>"${TUNNEL_LOG_FILE}" 2>&1 &
-      CHILD="$!"
-      wait "${CHILD}" || true
-      CHILD=""
-      echo "$(date -Iseconds 2>/dev/null || date) cloudflared exited; retry in ${MIRROR_TUNNEL_RESTART_DELAY_SEC}s" >>"${TUNNEL_LOG_FILE}"
+      child_pid="$!"
+      wait "${child_pid}" || true
+      child_pid=""
+      timestamp="$(date -Iseconds 2>/dev/null || date)"
+      echo "${timestamp} cloudflared exited; retry in ${MIRROR_TUNNEL_RESTART_DELAY_SEC}s" >>"${TUNNEL_LOG_FILE}"
       sleep "${MIRROR_TUNNEL_RESTART_DELAY_SEC}"
     done
   ) &
   echo "$!" >"${TUNNEL_PID_FILE}"
 }
 
-acquire_start_lock()
+acquire_start_lock
 
 echo "Starting Smart Mirror..."
 
-if [[ "${MIRROR_CAMERA_AUTO_STOP_PIPEWIRE}" == "1" ]] && command -v systemctl >/dev/null 2>&1; then
+if [ "${MIRROR_CAMERA_AUTO_STOP_PIPEWIRE}" = "1" ] && command -v systemctl >/dev/null 2>&1; then
   systemctl --user stop pipewire pipewire-pulse wireplumber >/dev/null 2>&1 || true
 fi
 
-if [[ -x "${ROOT_DIR}/.venv/bin/python" ]]; then
+if [ -x "${ROOT_DIR}/.venv/bin/python" ]; then
   PYTHON="${ROOT_DIR}/.venv/bin/python"
-elif [[ -n "${MIRROR_PYTHON:-}" ]]; then
+elif [ -n "${MIRROR_PYTHON:-}" ]; then
   PYTHON="${MIRROR_PYTHON}"
 else
   PYTHON="python3"
 fi
 
 if ! "${PYTHON}" -c "import uvicorn" 2>/dev/null; then
-  if [[ -f "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" ]]; then
-    bash "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" "${ROOT_DIR}"
+  if [ -f "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" ]; then
+    sh "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" "${ROOT_DIR}"
     PYTHON="${ROOT_DIR}/.venv/bin/python"
   fi
 fi
 
 if ! "${PYTHON}" -c "import uvicorn" 2>/dev/null; then
   echo "Smart Mirror: uvicorn is not installed for ${PYTHON}."
-  echo "Run: bash ${ROOT_DIR}/scripts/ensure-mirror-python-env.sh ${ROOT_DIR}"
+  echo "Run: sh ${ROOT_DIR}/scripts/ensure-mirror-python-env.sh ${ROOT_DIR}"
   exit 1
 fi
 
 start_backend_if_needed
 start_tunnel_if_needed
 
-# Wait for backend readiness.
-for _ in {1..50}; do
+i=0
+while [ "${i}" -lt 50 ]; do
   if curl -fsS "${URL}" >/dev/null 2>&1; then
     break
   fi
+  i=$((i + 1))
   sleep 0.2
 done
+
 if ! curl -fsS "${URL}" >/dev/null 2>&1; then
   echo "Backend failed to start. See ${BACKEND_LOG_FILE}"
   exit 1
@@ -204,7 +209,7 @@ else
 fi
 
 CHROMIUM_WINDOW_FLAG="--start-fullscreen"
-if [[ "${MIRROR_FULLSCREEN:-1}" != "1" ]]; then
+if [ "${MIRROR_FULLSCREEN:-1}" != "1" ]; then
   CHROMIUM_WINDOW_FLAG="--start-maximized"
 fi
 
