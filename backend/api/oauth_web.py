@@ -336,6 +336,7 @@ async def oauth_callback(
             {
                 "pairing_id": pairing.pairing_id,
                 "pairing_code": pairing.pairing_code,
+                "mirror_base_url": pairing.bootstrap_mirror_base_url or _public_base(request),
                 "mirror_hardware_id": pairing.mirror.hardware_id if pairing.mirror else "",
                 "hardware_id": pairing.mirror.hardware_id if pairing.mirror else "",
                 "mirror_user_id": pairing.paired_user_uid or "",

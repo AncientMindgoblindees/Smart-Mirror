@@ -29,6 +29,7 @@ def init_db() -> None:
     _ensure_mirror_claim_columns()
     _ensure_sync_identity_columns()
     _ensure_soft_delete_columns()
+    _ensure_pairing_bootstrap_columns()
 
 
 def _ensure_d1_checkpoint_columns() -> None:
@@ -201,6 +202,22 @@ def _ensure_mirror_claim_columns() -> None:
             conn.execute(text("ALTER TABLE mirrors ADD COLUMN claimed_by_user_uid VARCHAR(128)"))
         if "claimed_at" not in columns:
             conn.execute(text("ALTER TABLE mirrors ADD COLUMN claimed_at DATETIME"))
+
+
+def _ensure_pairing_bootstrap_columns() -> None:
+    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(auth_pairings)")).fetchall()
+        columns = {str(row[1]) for row in rows}
+        if not columns:
+            return
+        if "bootstrap_hardware_id" not in columns:
+            conn.execute(text("ALTER TABLE auth_pairings ADD COLUMN bootstrap_hardware_id VARCHAR(128)"))
+        if "bootstrap_hardware_token_enc" not in columns:
+            conn.execute(text("ALTER TABLE auth_pairings ADD COLUMN bootstrap_hardware_token_enc VARCHAR(512)"))
+        if "bootstrap_mirror_base_url" not in columns:
+            conn.execute(text("ALTER TABLE auth_pairings ADD COLUMN bootstrap_mirror_base_url VARCHAR(1024)"))
 
 
 def get_db():

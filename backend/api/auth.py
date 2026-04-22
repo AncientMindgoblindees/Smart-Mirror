@@ -15,6 +15,7 @@ from backend.services import user_service
 from backend.services.auth_context import (
     AuthContext,
     FirebaseActor,
+    HARDWARE_TOKEN_HEADERS,
     OptionalAuthContext,
     ensure_can_manage_user,
     iso_z,
@@ -25,8 +26,10 @@ from backend.services.auth_context import (
 from backend.services.auth_manager import auth_manager
 from backend.services.firebase_auth import FirebaseAuthError, create_firebase_custom_token
 from backend.services.pairing_service import (
+    bootstrap_payload,
     bind_pairing_to_actor,
     create_pairing,
+    clear_bootstrap_payload,
     detail_payload,
     bind_pairing_to_uid,
     get_pairing_by_code,
@@ -63,6 +66,15 @@ class PairingExchangeRequest(BaseModel):
 class PairingCodeExchangeRequest(BaseModel):
     pairing_code: str = Field(..., min_length=4, max_length=32)
     replace_current_session: bool = False
+
+
+def _request_hardware_token(request: Request) -> str | None:
+    for header_name in HARDWARE_TOKEN_HEADERS:
+        value = (request.headers.get(header_name) or "").strip()
+        if value:
+            return value
+    query_value = (request.query_params.get("hardware_token") or "").strip()
+    return query_value or None
 
 
 def _provider_status_string(row: OAuthCredential | None) -> str:
@@ -189,7 +201,9 @@ def _exchange_token_for_pairing(
     except FirebaseAuthError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    mirror_context = bootstrap_payload(pairing)
     _ensure_pairing_profile_binding(db, pairing, paired_uid, pairing.paired_user_email)
+    clear_bootstrap_payload(pairing)
     pairing.status = "complete"
     pairing.custom_token_ready = False
     db.commit()
@@ -211,6 +225,7 @@ def _exchange_token_for_pairing(
             "email": pairing.paired_user_email,
         },
         "replaced_session": bool(needs_replacement and payload.replace_current_session),
+        "mirror_context": mirror_context,
     }
 
 
@@ -284,7 +299,7 @@ def legacy_start_login(
     provider: str,
     request: Request,
     hardware_id: str = Query(...),
-    user_id: str = Query(...),
+    user_id: str | None = Query(default=None),
     intent: str = Query("pair_profile"),
     context: OptionalAuthContext = Depends(optional_auth_context_no_token),
     db: Session = Depends(get_db),
@@ -293,12 +308,19 @@ def legacy_start_login(
         raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
     if context.mirror.hardware_id != hardware_id:
         raise HTTPException(status_code=403, detail="authenticated but not allowed")
+    normalized_user_id = (user_id or "").strip() or None
+    if intent != "create_account" and not normalized_user_id and context.actor is None:
+        raise HTTPException(status_code=400, detail="user_id is required")
 
-    owner_actor = context.actor or FirebaseActor(
-        uid=user_id,
-        email=None,
-        display_name=None,
-        photo_url=None,
+    owner_actor = context.actor or (
+        FirebaseActor(
+            uid=normalized_user_id or "",
+            email=None,
+            display_name=None,
+            photo_url=None,
+        )
+        if normalized_user_id
+        else None
     )
     base = get_oauth_public_base_url(str(request.base_url)).rstrip("/")
     pairing, oauth_url = create_pairing(
@@ -309,6 +331,9 @@ def legacy_start_login(
         redirect_to=None,
         public_base_url=base,
         owner=owner_actor,
+        bootstrap_hardware_id=context.mirror.hardware_id,
+        bootstrap_hardware_token=_request_hardware_token(request),
+        bootstrap_mirror_base_url=base,
     )
     logger.info(
         "pairing_start pairing_id=%s provider=%s intent=%s mirror_id=%s owner_uid=%s",
@@ -328,8 +353,10 @@ def legacy_start_login(
         "expires_in": expires_in,
         "interval": 5,
         "message": "Scan the QR link and finish Google sign-in",
-        "target_user_id": user_id,
+        "target_user_id": normalized_user_id,
         "intent": intent,
+        "mirror_hardware_id": context.mirror.hardware_id,
+        "mirror_base_url": base,
     }
 
 
@@ -337,7 +364,7 @@ def legacy_start_login(
 def legacy_login_status(
     provider: str,
     hardware_id: str = Query(...),
-    user_id: str = Query(...),
+    user_id: str | None = Query(default=None),
     pairing_id: str | None = Query(default=None),
     context: OptionalAuthContext = Depends(optional_auth_context_no_token),
     db: Session = Depends(get_db),
@@ -347,15 +374,18 @@ def legacy_login_status(
     if context.mirror.hardware_id != hardware_id:
         raise HTTPException(status_code=403, detail="authenticated but not allowed")
 
-    credential = (
-        db.query(OAuthCredential)
-        .filter(
-            OAuthCredential.mirror_id == context.mirror.id,
-            OAuthCredential.user_id == user_id,
-            OAuthCredential.provider == provider,
+    normalized_user_id = (user_id or "").strip() or None
+    credential = None
+    if normalized_user_id:
+        credential = (
+            db.query(OAuthCredential)
+            .filter(
+                OAuthCredential.mirror_id == context.mirror.id,
+                OAuthCredential.user_id == normalized_user_id,
+                OAuthCredential.provider == provider,
+            )
+            .first()
         )
-        .first()
-    )
     if credential and credential.status == "active":
         return {"provider": provider, "status": "active", "message": None, "intent": None}
 
@@ -364,16 +394,24 @@ def legacy_login_status(
         if pairing is not None and (
             pairing.mirror_id != context.mirror.id
             or pairing.provider != provider
-            or (pairing.owner_user_uid and pairing.owner_user_uid != user_id)
+            or (normalized_user_id and pairing.owner_user_uid and pairing.owner_user_uid != normalized_user_id)
         ):
             pairing = None
     else:
+        if not normalized_user_id:
+            return {
+                "provider": provider,
+                "status": "disconnected",
+                "message": None,
+                "intent": None,
+                "pairing_id": pairing_id,
+            }
         pairing = (
             db.query(AuthPairing)
             .filter(
                 AuthPairing.mirror_id == context.mirror.id,
                 AuthPairing.provider == provider,
-                AuthPairing.owner_user_uid == user_id,
+                AuthPairing.owner_user_uid == normalized_user_id,
             )
             .order_by(AuthPairing.updated_at.desc())
             .first()
@@ -411,7 +449,7 @@ def legacy_login_status(
 def legacy_cancel_login(
     provider: str,
     hardware_id: str = Query(...),
-    user_id: str = Query(...),
+    user_id: str | None = Query(default=None),
     pairing_id: str | None = Query(default=None),
     context: OptionalAuthContext = Depends(optional_auth_context_no_token),
     db: Session = Depends(get_db),
@@ -421,21 +459,24 @@ def legacy_cancel_login(
     if context.mirror.hardware_id != hardware_id:
         raise HTTPException(status_code=403, detail="authenticated but not allowed")
 
+    normalized_user_id = (user_id or "").strip() or None
     if pairing_id:
         pairing = get_pairing_by_id(db, pairing_id.strip())
         if pairing is not None and (
             pairing.mirror_id != context.mirror.id
             or pairing.provider != provider
-            or (pairing.owner_user_uid and pairing.owner_user_uid != user_id)
+            or (normalized_user_id and pairing.owner_user_uid and pairing.owner_user_uid != normalized_user_id)
         ):
             pairing = None
     else:
+        if not normalized_user_id:
+            return {"status": "ok", "provider": provider}
         pairing = (
             db.query(AuthPairing)
             .filter(
                 AuthPairing.mirror_id == context.mirror.id,
                 AuthPairing.provider == provider,
-                AuthPairing.owner_user_uid == user_id,
+                AuthPairing.owner_user_uid == normalized_user_id,
                 AuthPairing.status.in_(["pending", "awaiting_app", "awaiting_oauth", "authorized"]),
             )
             .order_by(AuthPairing.updated_at.desc())
@@ -477,6 +518,9 @@ def create_pairing_session(
         owner=context.actor,
         target_user_uid=target_user_uid,
         target_user_email=target_user_email,
+        bootstrap_hardware_id=context.mirror.hardware_id,
+        bootstrap_hardware_token=_request_hardware_token(request),
+        bootstrap_mirror_base_url=base,
     )
     logger.info(
         "pairing_start pairing_id=%s provider=%s intent=%s mirror_id=%s owner_uid=%s",

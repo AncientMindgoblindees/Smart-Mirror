@@ -99,6 +99,9 @@ def create_pairing(
     owner: FirebaseActor | None,
     target_user_uid: str | None = None,
     target_user_email: str | None = None,
+    bootstrap_hardware_id: str | None = None,
+    bootstrap_hardware_token: str | None = None,
+    bootstrap_mirror_base_url: str | None = None,
 ) -> tuple[AuthPairing, str]:
     if provider != "google":
         raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
@@ -153,6 +156,11 @@ def create_pairing(
             owner_email=owner.email if owner else None,
             paired_user_uid=initial_paired_uid,
             paired_user_email=initial_paired_email,
+            bootstrap_hardware_id=(bootstrap_hardware_id or "").strip() or None,
+            bootstrap_hardware_token_enc=encrypt_token(bootstrap_hardware_token)
+            if (bootstrap_hardware_token or "").strip()
+            else None,
+            bootstrap_mirror_base_url=(bootstrap_mirror_base_url or "").strip() or None,
             custom_token_ready=False,
             requires_session_replacement=False,
         )
@@ -410,6 +418,8 @@ def start_payload(pairing: AuthPairing, oauth_url: str) -> dict[str, Any]:
         "oauth_url": oauth_url,
         "owner_user_uid": pairing.owner_user_uid,
         "owner_email": pairing.owner_email,
+        "mirror_hardware_id": pairing.bootstrap_hardware_id,
+        "mirror_base_url": pairing.bootstrap_mirror_base_url,
     }
 
 
@@ -452,6 +462,31 @@ def detail_payload(pairing: AuthPairing, actor: FirebaseActor) -> dict[str, Any]
             "uid": pairing.paired_user_uid,
             "email": pairing.paired_user_email,
         },
+        "mirror_hardware_id": pairing.bootstrap_hardware_id,
+        "mirror_base_url": pairing.bootstrap_mirror_base_url,
         "error_code": pairing.error_code,
         "error_message": pairing.error_message,
     }
+
+
+def bootstrap_payload(pairing: AuthPairing) -> dict[str, Any] | None:
+    if not pairing.bootstrap_hardware_id or not pairing.bootstrap_hardware_token_enc:
+        return None
+    hardware_token = decrypt_token(pairing.bootstrap_hardware_token_enc)
+    mirror_base_url = (pairing.bootstrap_mirror_base_url or "").strip() or None
+    ws_url = None
+    if mirror_base_url:
+        if mirror_base_url.startswith("https://"):
+            ws_url = f"wss://{mirror_base_url[8:].rstrip('/')}/ws/control"
+        elif mirror_base_url.startswith("http://"):
+            ws_url = f"ws://{mirror_base_url[7:].rstrip('/')}/ws/control"
+    return {
+        "hardware_id": pairing.bootstrap_hardware_id,
+        "hardware_token": hardware_token,
+        "mirror_base_url": mirror_base_url,
+        "ws_url": ws_url,
+    }
+
+
+def clear_bootstrap_payload(pairing: AuthPairing) -> None:
+    pairing.bootstrap_hardware_token_enc = None
