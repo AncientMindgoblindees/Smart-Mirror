@@ -17,6 +17,7 @@ from backend.services.auth_context import (
     ensure_can_manage_user,
     iso_z,
     optional_auth_context,
+    optional_auth_context_no_token,
     require_auth_context,
 )
 from backend.services.auth_manager import auth_manager
@@ -85,7 +86,7 @@ def _legacy_provider_payloads(mirror_id: str, target_user_uid: str) -> list[dict
 def list_providers(
     request: Request,
     user_id: str | None = Query(default=None),
-    context: OptionalAuthContext = Depends(optional_auth_context),
+    context: OptionalAuthContext = Depends(optional_auth_context_no_token),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
     if context.actor is None or context.membership is None:
@@ -153,7 +154,7 @@ def legacy_start_login(
     hardware_id: str = Query(...),
     user_id: str = Query(...),
     intent: str = Query("pair_profile"),
-    context: OptionalAuthContext = Depends(optional_auth_context),
+    context: OptionalAuthContext = Depends(optional_auth_context_no_token),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     if provider != "google":
@@ -196,7 +197,7 @@ def legacy_login_status(
     provider: str,
     hardware_id: str = Query(...),
     user_id: str = Query(...),
-    context: OptionalAuthContext = Depends(optional_auth_context),
+    context: OptionalAuthContext = Depends(optional_auth_context_no_token),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     if provider != "google":
@@ -251,7 +252,7 @@ def legacy_cancel_login(
     provider: str,
     hardware_id: str = Query(...),
     user_id: str = Query(...),
-    context: OptionalAuthContext = Depends(optional_auth_context),
+    context: OptionalAuthContext = Depends(optional_auth_context_no_token),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     if provider != "google":
@@ -398,7 +399,7 @@ async def logout(
     owner_user_uid: str | None = Query(default=None),
     hardware_id: str | None = Query(default=None),
     user_id: str | None = Query(default=None),
-    context: OptionalAuthContext = Depends(optional_auth_context),
+    context: OptionalAuthContext = Depends(optional_auth_context_no_token),
     db: Session = Depends(get_db),
 ) -> Any:
     if provider != "google":

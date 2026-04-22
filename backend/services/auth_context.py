@@ -201,6 +201,21 @@ def optional_auth_context(request: Request, db: Session = Depends(get_db)) -> Op
     return _build_auth_context(db, request, required=False)
 
 
+def optional_auth_context_no_token(request: Request, db: Session = Depends(get_db)) -> OptionalAuthContext:
+    hardware_id = _required_hardware_id(request)
+    mirror = _require_mirror(db, hardware_id)
+    token = _parse_bearer_token(request, required=False)
+    if not token:
+        return OptionalAuthContext(actor=None, mirror=mirror, membership=None)
+    try:
+        claims = verify_firebase_id_token(token)
+    except FirebaseAuthError as exc:
+        raise HTTPException(status_code=401, detail="auth required / invalid Firebase token") from exc
+    actor = _actor_from_claims(claims)
+    membership = _ensure_membership(db, mirror, actor)
+    return OptionalAuthContext(actor=actor, mirror=mirror, membership=membership)
+
+
 def ensure_can_manage_user(context: AuthContext, target_user_uid: str) -> None:
     if target_user_uid == context.actor.uid:
         return
