@@ -13,8 +13,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from backend.config import get_oauth_public_base_url
+from backend.database.models import Mirror
 from backend.database.session import get_db
+from backend.services.auth_context import FirebaseActor
 from backend.services.pairing_service import (
+    create_pairing,
+    get_pairing_by_code,
     get_pairing_by_id,
     mark_expired_if_needed,
     store_oauth_callback_result,
@@ -109,7 +113,12 @@ async def _fetch_google_user_profile(access_token: str) -> dict[str, Any]:
 async def oauth_start(
     provider: str,
     request: Request,
-    pairing_id: str = Query(...),
+    pairing_id: str | None = Query(default=None),
+    pairing_id_camel: str | None = Query(default=None, alias="pairingId"),
+    pairing_code: str | None = Query(default=None),
+    hardware_id: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+    intent: str = Query(default="link_provider"),
     redirect_to: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -120,7 +129,39 @@ async def oauth_start(
     if not client_id:
         raise HTTPException(status_code=503, detail="Google web OAuth is not configured")
 
-    pairing = get_pairing_by_id(db, pairing_id)
+    resolved_pairing_id = (pairing_id or pairing_id_camel or "").strip() or None
+    resolved_pairing_code = (pairing_code or "").strip().upper() or None
+    if resolved_pairing_id:
+        pairing = get_pairing_by_id(db, resolved_pairing_id)
+    elif resolved_pairing_code:
+        pairing = get_pairing_by_code(db, resolved_pairing_code)
+    else:
+        legacy_hardware_id = (hardware_id or "").strip()
+        legacy_user_id = (user_id or "").strip()
+        if not legacy_hardware_id or not legacy_user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="pairing_id, pairingId, pairing_code, or hardware_id+user_id is required",
+            )
+        mirror = db.query(Mirror).filter(Mirror.hardware_id == legacy_hardware_id).first()
+        if mirror is None:
+            raise HTTPException(status_code=404, detail="Mirror is not registered")
+        legacy_owner = FirebaseActor(
+            uid=legacy_user_id,
+            email=None,
+            display_name=None,
+            photo_url=None,
+        )
+        pairing, _ = create_pairing(
+            db,
+            mirror_id=mirror.id,
+            provider=provider,
+            intent="create_account" if intent == "create_account" else "link_provider",
+            redirect_to=redirect_to,
+            public_base_url=_public_base(request),
+            owner=legacy_owner,
+        )
+
     if pairing is None:
         raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
     pairing = mark_expired_if_needed(db, pairing)
