@@ -4,12 +4,14 @@ import hashlib
 import hmac
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from backend.database.models import HouseholdMembership, Mirror
 from backend.database.session import get_db
+from backend.services import user_service
 from backend.services.firebase_auth import FirebaseAuthError, verify_firebase_id_token
 
 HARDWARE_ID_HEADERS = ("x-mirror-hardware-id", "x-hardware-id")
@@ -38,6 +40,14 @@ class OptionalAuthContext:
     membership: HouseholdMembership | None
 
 
+@dataclass
+class UserScopeContext:
+    mirror: Mirror
+    user_uid: str
+    actor: FirebaseActor | None
+    membership: HouseholdMembership | None
+
+
 def iso_z(value: datetime | None) -> str | None:
     if value is None:
         return None
@@ -56,6 +66,9 @@ def _required_hardware_id(request: Request) -> str:
         value = (request.headers.get(header_name) or "").strip()
         if value:
             return value
+    query_value = (request.query_params.get("hardware_id") or "").strip()
+    if query_value:
+        return query_value
     raise HTTPException(status_code=400, detail="X-Mirror-Hardware-Id header is required")
 
 
@@ -173,6 +186,10 @@ def _build_auth_context(db: Session, request: Request, *, required: bool) -> Opt
     return OptionalAuthContext(actor=actor, mirror=mirror, membership=membership)
 
 
+def _legacy_auth_enabled() -> bool:
+    return os.getenv("ALLOW_LEGACY_MIRROR_AUTH", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
 def require_auth_context(request: Request, db: Session = Depends(get_db)) -> AuthContext:
     optional_ctx = _build_auth_context(db, request, required=True)
     if optional_ctx.actor is None or optional_ctx.membership is None:
@@ -193,3 +210,50 @@ def ensure_can_manage_user(context: AuthContext, target_user_uid: str) -> None:
         status_code=status.HTTP_403_FORBIDDEN,
         detail="authenticated but not allowed",
     )
+
+
+def _resolve_user_scope(
+    db: Session,
+    request: Request,
+    *,
+    require_legacy_hardware_token: bool,
+) -> UserScopeContext:
+    token = _parse_bearer_token(request, required=False)
+    if token:
+        try:
+            claims = verify_firebase_id_token(token)
+        except FirebaseAuthError as exc:
+            raise HTTPException(status_code=401, detail="auth required / invalid Firebase token") from exc
+        actor = _actor_from_claims(claims)
+        hardware_id = _required_hardware_id(request)
+        mirror = _require_mirror(db, hardware_id)
+        membership = _ensure_membership(db, mirror, actor)
+        return UserScopeContext(
+            mirror=mirror,
+            user_uid=actor.uid,
+            actor=actor,
+            membership=membership,
+        )
+
+    if not _legacy_auth_enabled():
+        raise HTTPException(status_code=401, detail="auth required / invalid Firebase token")
+
+    mirror, profile = user_service.resolve_active_profile_context(
+        db,
+        request,
+        require_token=require_legacy_hardware_token,
+    )
+    return UserScopeContext(
+        mirror=mirror,
+        user_uid=profile.user_id,
+        actor=None,
+        membership=None,
+    )
+
+
+def resolve_user_scope_context(request: Request, db: Session = Depends(get_db)) -> UserScopeContext:
+    return _resolve_user_scope(db, request, require_legacy_hardware_token=False)
+
+
+def resolve_user_scope_context_require_token(request: Request, db: Session = Depends(get_db)) -> UserScopeContext:
+    return _resolve_user_scope(db, request, require_legacy_hardware_token=True)

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import APIRouter, Depends, Query
 from backend.schemas.email import EmailMessageOut, EmailMessagesResponse
-from backend.services.auth_context import AuthContext, require_auth_context
+from backend.services.auth_context import UserScopeContext, resolve_user_scope_context
 from backend.services.auth_manager import auth_manager
 
 logger = logging.getLogger(__name__)
@@ -86,15 +86,15 @@ async def fetch_google_messages(access_token: str, limit: int) -> List[EmailMess
 @router.get("/messages", response_model=EmailMessagesResponse)
 async def get_messages(
     limit: int = Query(20, ge=1, le=50),
-    context: AuthContext = Depends(require_auth_context),
+    context: UserScopeContext = Depends(resolve_user_scope_context),
 ) -> Any:
-    token = await auth_manager.get_valid_token("google", context.mirror.id, context.actor.uid)
+    token = await auth_manager.get_valid_token("google", context.mirror.id, context.user_uid)
     if not token:
         return EmailMessagesResponse(messages=[], providers=["google"])
     try:
         messages = await fetch_google_messages(token, limit)
     except Exception:
-        logger.exception("Email fetch failed for mirror=%s user=%s", context.mirror.hardware_id, context.actor.uid)
+        logger.exception("Email fetch failed for mirror=%s user=%s", context.mirror.hardware_id, context.user_uid)
         messages = []
     messages.sort(key=lambda item: _parse_iso_sort_value(item.received_at), reverse=True)
     return EmailMessagesResponse(messages=messages[:limit], providers=["google"])

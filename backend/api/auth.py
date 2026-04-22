@@ -12,6 +12,8 @@ from backend.database.models import AuthPairing, HouseholdMembership, OAuthCrede
 from backend.database.session import get_db
 from backend.services.auth_context import (
     AuthContext,
+    FirebaseActor,
+    OptionalAuthContext,
     ensure_can_manage_user,
     iso_z,
     optional_auth_context,
@@ -71,29 +73,46 @@ def _authorize_pairing_view(context: AuthContext, pairing: AuthPairing) -> None:
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="authenticated but not allowed")
 
 
+def _legacy_provider_payloads(mirror_id: str, target_user_uid: str) -> list[dict[str, Any]]:
+    rows = auth_manager.get_connected_providers(mirror_id, target_user_uid)
+    for row in rows:
+        if row.get("status") == "active":
+            row["status"] = "connected"
+    return rows
+
+
 @router.get("/providers")
 def list_providers(
-    context: AuthContext = Depends(require_auth_context),
+    request: Request,
+    user_id: str | None = Query(default=None),
+    context: OptionalAuthContext = Depends(optional_auth_context),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
+    if context.actor is None or context.membership is None:
+        target_user_uid = (user_id or request.query_params.get("user_id") or "").strip()
+        if not target_user_uid:
+            raise HTTPException(status_code=400, detail="user_id is required")
+        return _legacy_provider_payloads(context.mirror.id, target_user_uid)
+
+    actor_context = AuthContext(actor=context.actor, mirror=context.mirror, membership=context.membership)
     membership_rows = (
         db.query(HouseholdMembership)
-        .filter(HouseholdMembership.mirror_id == context.mirror.id)
+        .filter(HouseholdMembership.mirror_id == actor_context.mirror.id)
         .all()
     )
     membership_by_uid = {row.user_uid: row for row in membership_rows}
 
-    query = db.query(OAuthCredential).filter(OAuthCredential.mirror_id == context.mirror.id)
-    if context.membership.role != "admin":
-        query = query.filter(OAuthCredential.user_id == context.actor.uid)
+    query = db.query(OAuthCredential).filter(OAuthCredential.mirror_id == actor_context.mirror.id)
+    if actor_context.membership.role != "admin":
+        query = query.filter(OAuthCredential.user_id == actor_context.actor.uid)
     credential_rows = query.order_by(OAuthCredential.created_at.desc()).all()
 
     items: list[dict[str, Any]] = []
     for row in credential_rows:
         owner = membership_by_uid.get(row.user_id)
-        owner_email = (owner.email if owner else None) or (context.actor.email if row.user_id == context.actor.uid else None)
-        is_owner = row.user_id == context.actor.uid
-        can_manage = is_owner or context.membership.role == "admin"
+        owner_email = (owner.email if owner else None) or (actor_context.actor.email if row.user_id == actor_context.actor.uid else None)
+        is_owner = row.user_id == actor_context.actor.uid
+        can_manage = is_owner or actor_context.membership.role == "admin"
         items.append(
             {
                 "provider": row.provider,
@@ -117,14 +136,146 @@ def list_providers(
                 "status": "disconnected",
                 "scopes": None,
                 "connected_at": None,
-                "owner_user_uid": context.actor.uid,
-                "owner_email": context.actor.email,
+                "owner_user_uid": actor_context.actor.uid,
+                "owner_email": actor_context.actor.email,
                 "is_current_user_owner": True,
                 "can_manage": True,
                 "can_disconnect": True,
             }
         )
     return items
+
+
+@router.post("/login/{provider}")
+def legacy_start_login(
+    provider: str,
+    request: Request,
+    hardware_id: str = Query(...),
+    user_id: str = Query(...),
+    intent: str = Query("pair_profile"),
+    context: OptionalAuthContext = Depends(optional_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if provider != "google":
+        raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
+    if context.mirror.hardware_id != hardware_id:
+        raise HTTPException(status_code=403, detail="authenticated but not allowed")
+
+    owner_actor = context.actor or FirebaseActor(
+        uid=user_id,
+        email=None,
+        display_name=None,
+        photo_url=None,
+    )
+    base = get_oauth_public_base_url(str(request.base_url)).rstrip("/")
+    pairing, oauth_url = create_pairing(
+        db,
+        mirror_id=context.mirror.id,
+        provider=provider,
+        intent="create_account" if intent == "create_account" else "link_provider",
+        redirect_to=None,
+        public_base_url=base,
+        owner=owner_actor,
+    )
+    expires_in = max(1, int((pairing.expires_at - datetime.utcnow()).total_seconds()))
+    return {
+        "provider": provider,
+        "verification_uri": oauth_url,
+        "user_code": pairing.pairing_code,
+        "device_code": f"web-{provider}",
+        "expires_in": expires_in,
+        "interval": 5,
+        "message": "Scan the QR link and finish Google sign-in",
+        "target_user_id": user_id,
+        "intent": intent,
+    }
+
+
+@router.get("/login/{provider}/status")
+def legacy_login_status(
+    provider: str,
+    hardware_id: str = Query(...),
+    user_id: str = Query(...),
+    context: OptionalAuthContext = Depends(optional_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if provider != "google":
+        raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
+    if context.mirror.hardware_id != hardware_id:
+        raise HTTPException(status_code=403, detail="authenticated but not allowed")
+
+    credential = (
+        db.query(OAuthCredential)
+        .filter(
+            OAuthCredential.mirror_id == context.mirror.id,
+            OAuthCredential.user_id == user_id,
+            OAuthCredential.provider == provider,
+        )
+        .first()
+    )
+    if credential and credential.status == "active":
+        return {"provider": provider, "status": "active", "message": None, "intent": None}
+
+    pairing = (
+        db.query(AuthPairing)
+        .filter(
+            AuthPairing.mirror_id == context.mirror.id,
+            AuthPairing.provider == provider,
+            AuthPairing.owner_user_uid == user_id,
+        )
+        .order_by(AuthPairing.updated_at.desc())
+        .first()
+    )
+    if pairing is None:
+        return {"provider": provider, "status": "disconnected", "message": None, "intent": None}
+
+    pairing = mark_expired_if_needed(db, pairing)
+    if pairing.status in {"awaiting_oauth", "pending", "awaiting_app"}:
+        status_value = "pending"
+    elif pairing.status in {"authorized", "complete"}:
+        status_value = "active"
+    elif pairing.status == "expired":
+        status_value = "expired"
+    else:
+        status_value = "error"
+    return {
+        "provider": provider,
+        "status": status_value,
+        "message": pairing.error_message,
+        "intent": pairing.intent,
+    }
+
+
+@router.post("/login/{provider}/cancel")
+def legacy_cancel_login(
+    provider: str,
+    hardware_id: str = Query(...),
+    user_id: str = Query(...),
+    context: OptionalAuthContext = Depends(optional_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if provider != "google":
+        raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
+    if context.mirror.hardware_id != hardware_id:
+        raise HTTPException(status_code=403, detail="authenticated but not allowed")
+
+    pairing = (
+        db.query(AuthPairing)
+        .filter(
+            AuthPairing.mirror_id == context.mirror.id,
+            AuthPairing.provider == provider,
+            AuthPairing.owner_user_uid == user_id,
+            AuthPairing.status.in_(["pending", "awaiting_app", "awaiting_oauth", "authorized"]),
+        )
+        .order_by(AuthPairing.updated_at.desc())
+        .first()
+    )
+    if pairing is not None:
+        pairing.status = "expired"
+        pairing.error_code = "CANCELLED"
+        pairing.error_message = "Cancelled by user"
+        db.commit()
+    return {"status": "ok", "provider": provider}
 
 
 @router.post("/pairings")
@@ -245,29 +396,41 @@ def exchange_pairing_token(
 async def logout(
     provider: str,
     owner_user_uid: str | None = Query(default=None),
-    context: AuthContext = Depends(require_auth_context),
+    hardware_id: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+    context: OptionalAuthContext = Depends(optional_auth_context),
     db: Session = Depends(get_db),
 ) -> Any:
     if provider != "google":
         raise HTTPException(status_code=404, detail="endpoint missing or unsupported")
 
-    target_uid = (owner_user_uid or "").strip() or context.actor.uid
-    ensure_can_manage_user(context, target_uid)
-    target_member = (
-        db.query(HouseholdMembership)
-        .filter(
-            HouseholdMembership.mirror_id == context.mirror.id,
-            HouseholdMembership.user_uid == target_uid,
-        )
-        .first()
-    )
-    if target_member is None:
+    if hardware_id and context.mirror.hardware_id != hardware_id:
         raise HTTPException(status_code=403, detail="authenticated but not allowed")
+
+    if context.actor is None or context.membership is None:
+        target_uid = (user_id or owner_user_uid or "").strip()
+        if not target_uid:
+            raise HTTPException(status_code=400, detail="user_id is required")
+    else:
+        auth_context = AuthContext(actor=context.actor, mirror=context.mirror, membership=context.membership)
+        target_uid = (owner_user_uid or "").strip() or auth_context.actor.uid
+        ensure_can_manage_user(auth_context, target_uid)
+        target_member = (
+            db.query(HouseholdMembership)
+            .filter(
+                HouseholdMembership.mirror_id == auth_context.mirror.id,
+                HouseholdMembership.user_uid == target_uid,
+            )
+            .first()
+        )
+        if target_member is None:
+            raise HTTPException(status_code=403, detail="authenticated but not allowed")
 
     await auth_manager.logout(provider, context.mirror.id, target_uid, revoke=True)
     return {
         "status": "ok",
         "provider": provider,
         "owner_user_uid": target_uid,
+        "user_id": target_uid,
         "at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }

@@ -16,7 +16,7 @@ from backend.schemas.calendar import (
     CalendarManualUpdate,
     CalendarTasksResponse,
 )
-from backend.services.auth_context import AuthContext, require_auth_context
+from backend.services.auth_context import UserScopeContext, resolve_user_scope_context
 from backend.services.auth_manager import auth_manager
 
 logger = logging.getLogger(__name__)
@@ -68,21 +68,21 @@ async def _fetch_google_events(mirror_id: str, user_id: str, days: int) -> List[
 @router.get("/events", response_model=CalendarEventsResponse)
 async def get_events(
     days: int = Query(7, ge=1, le=30),
-    context: AuthContext = Depends(require_auth_context),
+    context: UserScopeContext = Depends(resolve_user_scope_context),
     db: Session = Depends(get_db),
 ) -> Any:
     manual_rows = (
         db.query(CalendarEvent)
         .filter(
             CalendarEvent.mirror_id == context.mirror.id,
-            CalendarEvent.user_id == context.actor.uid,
+            CalendarEvent.user_id == context.user_uid,
             CalendarEvent.event_type == "event",
             CalendarEvent.provider == "manual",
         )
         .order_by(CalendarEvent.start_time.asc())
         .all()
     )
-    google_rows = await _fetch_google_events(context.mirror.id, context.actor.uid, days)
+    google_rows = await _fetch_google_events(context.mirror.id, context.user_uid, days)
     return CalendarEventsResponse(
         events=google_rows + [_row_to_out(row) for row in manual_rows],
         providers=["google", "manual"],
@@ -92,14 +92,14 @@ async def get_events(
 
 @router.get("/tasks", response_model=CalendarTasksResponse)
 async def get_tasks(
-    context: AuthContext = Depends(require_auth_context),
+    context: UserScopeContext = Depends(resolve_user_scope_context),
     db: Session = Depends(get_db),
 ) -> Any:
     rows = (
         db.query(CalendarEvent)
         .filter(
             CalendarEvent.mirror_id == context.mirror.id,
-            CalendarEvent.user_id == context.actor.uid,
+            CalendarEvent.user_id == context.user_uid,
             CalendarEvent.event_type.in_(["task", "reminder"]),
             CalendarEvent.completed == False,  # noqa: E712
         )
@@ -116,14 +116,14 @@ async def get_tasks(
 @router.post("/manual", response_model=CalendarEventOut, status_code=201)
 async def create_manual(
     payload: CalendarManualCreate,
-    context: AuthContext = Depends(require_auth_context),
+    context: UserScopeContext = Depends(resolve_user_scope_context),
     db: Session = Depends(get_db),
 ) -> CalendarEventOut:
     if payload.type not in ("event", "task", "reminder"):
         raise HTTPException(status_code=400, detail="Manual entries must be event, task, or reminder")
     row = CalendarEvent(
         mirror_id=context.mirror.id,
-        user_id=context.actor.uid,
+        user_id=context.user_uid,
         provider="manual",
         external_id=f"manual:{int(datetime.utcnow().timestamp() * 1000)}",
         event_type=payload.type,
@@ -144,14 +144,14 @@ async def create_manual(
 
 @router.get("/manual", response_model=CalendarTasksResponse)
 async def list_manual(
-    context: AuthContext = Depends(require_auth_context),
+    context: UserScopeContext = Depends(resolve_user_scope_context),
     db: Session = Depends(get_db),
 ) -> CalendarTasksResponse:
     rows = (
         db.query(CalendarEvent)
         .filter(
             CalendarEvent.mirror_id == context.mirror.id,
-            CalendarEvent.user_id == context.actor.uid,
+            CalendarEvent.user_id == context.user_uid,
             CalendarEvent.provider == "manual",
             CalendarEvent.event_type.in_(["task", "reminder"]),
         )
@@ -165,7 +165,7 @@ async def list_manual(
 async def patch_manual(
     event_id: int,
     payload: CalendarManualUpdate,
-    context: AuthContext = Depends(require_auth_context),
+    context: UserScopeContext = Depends(resolve_user_scope_context),
     db: Session = Depends(get_db),
 ) -> CalendarEventOut:
     row = (
@@ -173,7 +173,7 @@ async def patch_manual(
         .filter(
             CalendarEvent.id == event_id,
             CalendarEvent.mirror_id == context.mirror.id,
-            CalendarEvent.user_id == context.actor.uid,
+            CalendarEvent.user_id == context.user_uid,
         )
         .first()
     )
@@ -199,7 +199,7 @@ async def patch_manual(
 @router.delete("/manual/{event_id}")
 async def delete_manual(
     event_id: int,
-    context: AuthContext = Depends(require_auth_context),
+    context: UserScopeContext = Depends(resolve_user_scope_context),
     db: Session = Depends(get_db),
 ) -> Any:
     row = (
@@ -207,7 +207,7 @@ async def delete_manual(
         .filter(
             CalendarEvent.id == event_id,
             CalendarEvent.mirror_id == context.mirror.id,
-            CalendarEvent.user_id == context.actor.uid,
+            CalendarEvent.user_id == context.user_uid,
         )
         .first()
     )

@@ -199,12 +199,36 @@ if ! curl -fsS "${URL}" >/dev/null 2>&1; then
   exit 1
 fi
 
-if command -v chromium-browser >/dev/null 2>&1; then
-  BROWSER_CMD="chromium-browser"
-elif command -v chromium >/dev/null 2>&1; then
-  BROWSER_CMD="chromium"
-else
-  echo "Chromium not found. Install chromium-browser."
+detect_browser() {
+  # Linux Chromium
+  if command -v chromium-browser >/dev/null 2>&1; then
+    echo "chromium-browser"
+    return
+  fi
+
+  if command -v chromium >/dev/null 2>&1; then
+    echo "chromium"
+    return
+  fi
+
+  # WSL Windows Chrome (your actual case)
+  if [ -f "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe" ]; then
+    echo "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
+    return
+  fi
+
+  if [ -f "/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe" ]; then
+    echo "/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe"
+    return
+  fi
+
+  echo ""
+}
+
+BROWSER_CMD="$(detect_browser)"
+
+if [ -z "${BROWSER_CMD}" ]; then
+  echo "No supported browser found (Chromium or Chrome)."
   exit 1
 fi
 

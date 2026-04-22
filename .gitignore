@@ -10,6 +10,7 @@ build/
 data/
 node_modules/
 .venv/
+venv/
 .env
 graphify-out/*
 graphify-out
