@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   MirrorProfile,
   MirrorRegistrationResponse,
@@ -37,6 +37,7 @@ type RefreshSnapshot = {
   mismatch: boolean;
   mirrorReady: boolean;
   syncError: unknown;
+  terminalAuthFailure: boolean;
 };
 
 function slugifyProfileId(displayName: string, existingUserIds: string[]): string {
@@ -68,9 +69,15 @@ function shouldRegisterMirror(err: unknown): boolean {
   if (!err) return false;
   if (err instanceof Error) {
     const message = err.message.trim();
-    return /401|403|404|not found|unknown hardware|hardware token|mirror.*register|unregistered/i.test(message);
+    return /404|not found|unknown hardware|mirror.*register|unregistered|existing mirror registration requires hardware token|invalid hardware token/i.test(message);
   }
   return false;
+}
+
+function isHardSessionFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const message = err.message.trim();
+  return /(^|\b)(401|403)\b|auth required|not authenticated|invalid firebase|session is not signed in/i.test(message);
 }
 
 function mapSessionProfile(activeProfile: SessionActiveProfile, mirrorId: string): MirrorProfile {
@@ -120,13 +127,19 @@ export function useMirrorSession() {
   const [sessionProfileReady, setSessionProfileReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const mirrorRef = useRef<MirrorSummary | null>(null);
+  const refreshPromiseRef = useRef<Promise<void> | null>(null);
 
   const hardwareId = useMemo(() => readMirrorHardwareId(), []);
+
+  useEffect(() => {
+    mirrorRef.current = mirror;
+  }, [mirror]);
 
   const refreshSessionState = useCallback(
     async (opts?: { includeProfileList?: boolean; registration?: MirrorSummary | null }): Promise<RefreshSnapshot> => {
       const includeProfileList = Boolean(opts?.includeProfileList);
-      const registration = opts?.registration ?? mirror;
+      const registration = opts?.registration ?? mirrorRef.current;
       const fallbackMirrorId = registration?.id ?? hardwareId;
 
       const [sessionResult, syncResult, profileResult] = await Promise.allSettled([
@@ -139,6 +152,33 @@ export function useMirrorSession() {
       const syncPayload = syncResult.status === 'fulfilled' ? syncResult.value : null;
       const syncError = syncResult.status === 'rejected' ? syncResult.reason : null;
       const profileList = profileResult.status === 'fulfilled' ? profileResult.value : [];
+      const terminalAuthFailure = sessionResult.status === 'rejected' && isHardSessionFailure(sessionResult.reason);
+
+      if (terminalAuthFailure) {
+        setSessionMe(null);
+        setMirrorSyncSnapshot(syncPayload);
+        if (syncPayload?.mirror) {
+          setMirror(syncPayload.mirror);
+        } else if (registration) {
+          setMirror(registration);
+        }
+        setProfiles(profileList);
+        setActiveProfile(null);
+        setSessionProfileReady(false);
+        setSessionMismatch(false);
+        setSessionMismatchMessage(null);
+        saveActiveMirrorUserId(null);
+        setError(toErrorMessage(sessionResult.reason, 'Failed to load /session/me.'));
+
+        return {
+          activeProfile: null,
+          session: null,
+          mismatch: false,
+          mirrorReady: Boolean(syncPayload?.mirror ?? registration),
+          syncError,
+          terminalAuthFailure: true,
+        };
+      }
 
       const sessionActive = sessionPayload?.active_profile
         ? mapSessionProfile(sessionPayload.active_profile, syncPayload?.mirror.id ?? fallbackMirrorId)
@@ -187,9 +227,10 @@ export function useMirrorSession() {
         mismatch,
         mirrorReady: Boolean(syncPayload?.mirror ?? registration),
         syncError,
+        terminalAuthFailure: false,
       };
     },
-    [hardwareId, mirror],
+    [hardwareId],
   );
 
   const ensureMirrorRegistration = useCallback(async () => {
@@ -205,16 +246,28 @@ export function useMirrorSession() {
   }, [hardwareId]);
 
   const refresh = useCallback(async () => {
-    saveMirrorHardwareId(hardwareId);
-    const snapshot = await refreshSessionState({ includeProfileList: true });
-    if (snapshot.mirrorReady) return;
+    if (refreshPromiseRef.current) {
+      await refreshPromiseRef.current;
+      return;
+    }
 
-    const hasStoredToken = Boolean(readMirrorHardwareToken());
-    const needsRegistration = !hasStoredToken || shouldRegisterMirror(snapshot.syncError);
-    if (!needsRegistration) return;
+    const run = (async () => {
+      saveMirrorHardwareId(hardwareId);
+      const snapshot = await refreshSessionState({ includeProfileList: true });
+      if (snapshot.mirrorReady || snapshot.terminalAuthFailure) return;
 
-    const registration = await ensureMirrorRegistration();
-    await refreshSessionState({ includeProfileList: true, registration });
+      const hasStoredToken = Boolean(readMirrorHardwareToken());
+      const needsRegistration = !hasStoredToken || shouldRegisterMirror(snapshot.syncError);
+      if (!needsRegistration) return;
+
+      const registration = await ensureMirrorRegistration();
+      await refreshSessionState({ includeProfileList: true, registration });
+    })();
+
+    refreshPromiseRef.current = run.finally(() => {
+      refreshPromiseRef.current = null;
+    });
+    await refreshPromiseRef.current;
   }, [ensureMirrorRegistration, hardwareId, refreshSessionState]);
 
   useEffect(() => {
@@ -245,6 +298,7 @@ export function useMirrorSession() {
       const deadline = Date.now() + timeoutMs;
 
       let latest = await refreshSessionState();
+      if (latest.terminalAuthFailure) return null;
       while (Date.now() < deadline) {
         const activeUid = latest.activeProfile?.user_id ?? null;
         const matches = activeUid && (!expectedUserUid || activeUid === expectedUserUid);
@@ -253,6 +307,7 @@ export function useMirrorSession() {
           window.setTimeout(() => resolve(), intervalMs);
         });
         latest = await refreshSessionState();
+        if (latest.terminalAuthFailure) return null;
       }
       return latest.activeProfile;
     },

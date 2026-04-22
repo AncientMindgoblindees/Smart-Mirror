@@ -347,6 +347,7 @@ function CreateAccountTile({
 type DashboardProps = {
   hardwareId: string;
   activeProfile: MirrorProfile;
+  sessionActive: boolean;
   role: string | null;
   authenticatedEmail: string | null;
   syncWidgets: WidgetConfigOut[] | null;
@@ -370,6 +371,7 @@ type DashboardProps = {
 function MirrorDashboard({
   hardwareId,
   activeProfile,
+  sessionActive,
   role,
   authenticatedEmail,
   syncWidgets,
@@ -390,11 +392,13 @@ function MirrorDashboard({
   performanceMode,
 }: DashboardProps) {
   const reducedMotion = useReducedMotion();
+  const authRefreshTimerRef = useRef<number | null>(null);
   const { widgets, setWidgets } = useWidgetPersistence({
+    enabled: sessionActive,
     refreshKey: `${hardwareId}:${activeProfile.user_id}`,
     initialWidgets: syncWidgets,
     initialUserSettings: syncUserSettings,
-    syncEnabled: !backgroundPaused,
+    syncEnabled: sessionActive && !backgroundPaused,
   });
   const { showCamera, setShowCamera, cameraError, setCameraError } = useOverlayState();
   const captureFlowActiveRef = useRef(false);
@@ -411,6 +415,14 @@ function MirrorDashboard({
     const observer = new ResizeObserver(updateRect);
     observer.observe(element);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (authRefreshTimerRef.current != null) {
+        window.clearTimeout(authRefreshTimerRef.current);
+      }
+    };
   }, []);
 
   const startDevNativePreview = async () => {
@@ -472,8 +484,14 @@ function MirrorDashboard({
     },
     ...deviceHandlers,
     onAuthStateChanged: () => {
-      void refreshAuth();
-      void refreshSession();
+      if (authRefreshTimerRef.current != null) {
+        window.clearTimeout(authRefreshTimerRef.current);
+      }
+      authRefreshTimerRef.current = window.setTimeout(() => {
+        authRefreshTimerRef.current = null;
+        void refreshAuth();
+        void refreshSession();
+      }, 350);
     },
   });
 
@@ -647,7 +665,8 @@ export default function MirrorApp() {
   const previousPendingAuthRef = useRef<ReturnType<typeof useAuthState>['pendingAuth']>(null);
   const { sleepMode, sleepModeRef, toggleDim, toggleSleep } = useMirrorDisplayMode();
   const lightweightUiMode = performanceMode;
-  const motionReducedMode = reducedMotion || menuOpen;
+  const motionReducedMode = reducedMotion || lightweightUiMode || menuOpen;
+  const sessionActive = Boolean(sessionMe?.user?.uid) && !sessionMismatch;
 
   const currentView = viewStack[viewStack.length - 1] ?? 'identity';
   const activeProfileIndex = profiles.findIndex((profile) => profile.user_id === activeProfile?.user_id);
@@ -819,6 +838,10 @@ export default function MirrorApp() {
         const nextSystemIndex = Math.max(0, Math.min(selectionMemory.system, systemMenuItems.length - 1));
         setViewStack(['system']);
         setSelectedIndex(nextSystemIndex);
+        if (hadPending.intent === 'create_account') {
+          setMenuError(null);
+          setMenuOpen(false);
+        }
       }
     }
 
@@ -1195,6 +1218,7 @@ export default function MirrorApp() {
               key={activeProfile.user_id}
               hardwareId={hardwareId}
               activeProfile={activeProfile}
+              sessionActive={sessionActive}
               role={sessionMe?.role ?? null}
               authenticatedEmail={sessionMe?.user?.email ?? null}
               syncWidgets={mirrorSyncSnapshot?.widget_config ?? null}
@@ -1231,21 +1255,25 @@ export default function MirrorApp() {
           <AnimatePresence>
             {menuOpen && (
               <motion.div
-                className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/35 px-4 py-6 backdrop-blur-[8px]"
+                className={`fixed inset-0 z-[1200] flex items-center justify-center px-4 py-6 ${lightweightUiMode ? 'bg-black/78' : 'bg-black/35 backdrop-blur-[8px]'}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.22 }}
+                transition={motionReducedMode ? { duration: 0 } : { duration: lightweightUiMode ? 0.12 : 0.22 }}
               >
                 <motion.div
-                  className="relative flex w-full max-w-[420px] flex-col overflow-hidden rounded-[40px] border border-white/10 bg-[rgba(255,255,255,0.03)] text-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-[24px]"
+                  className={`relative flex w-full max-w-[420px] flex-col overflow-hidden rounded-[40px] text-white ${lightweightUiMode ? 'border border-white/8 bg-[#0a1118] shadow-[0_16px_34px_rgba(0,0,0,0.42)]' : 'border border-white/10 bg-[rgba(255,255,255,0.03)] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-[24px]'}`}
                   initial={{ opacity: 0, y: 20, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 14, scale: 0.98 }}
-                  transition={SPRING_SOFT}
+                  transition={motionReducedMode ? { duration: 0 } : SPRING_SOFT}
                 >
-                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(230,213,184,0.12),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.01))]" />
-                  <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/30" />
+                  {!lightweightUiMode && (
+                    <>
+                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(230,213,184,0.12),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.01))]" />
+                      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/30" />
+                    </>
+                  )}
 
                 <div className="relative flex items-start justify-between gap-4 px-6 pt-6">
                   <div className="min-w-0">
