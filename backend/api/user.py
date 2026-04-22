@@ -12,7 +12,7 @@ from backend.schemas.mirror import (
     ProfileOut,
 )
 from backend.schemas.user import UserSettingsCreate, UserSettingsOut, UserSettingsUpdate
-from backend.services import clothing_service, user_service, widget_service
+from backend.services import user_service, widget_service
 from backend.services.auth_manager import auth_manager
 
 
@@ -139,6 +139,5 @@ def delete_profile(
     profile = user_service.delete_profile(db, mirror, user_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="Profile not enrolled on this mirror")
-    deleted_clothing = clothing_service.delete_user_clothing_cache(db, user_id)
     background_tasks.add_task(auth_manager.cleanup_unenrolled_user, mirror.id, user_id)
-    return {"status": "ok", "removed_user_id": user_id, "deleted_clothing_items": deleted_clothing}
+    return {"status": "ok", "removed_user_id": user_id, "deleted_clothing_items": 0}

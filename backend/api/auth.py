@@ -35,6 +35,7 @@ async def start_login(
     request: Request,
     hardware_id: str = Query(...),
     user_id: str = Query(...),
+    intent: str = Query("pair_profile"),
     db: Session = Depends(get_db),
 ) -> Any:
     if provider != "google":
@@ -48,6 +49,7 @@ async def start_login(
     start_url = (
         f"{base}/api/oauth/google/start?source=qr"
         f"&hardware_id={mirror.hardware_id}&user_id={user_id}"
+        f"&intent={intent}"
     )
     try:
         payload = await auth_manager.start_web_redirect_login(
@@ -55,6 +57,7 @@ async def start_login(
             start_url,
             mirror.id,
             user_id,
+            intent=intent,
         )
     except Exception as exc:
         logger.exception("Failed to start login for Google")

@@ -13,6 +13,8 @@ class DeviceCodeOut(BaseModel):
     expires_in: int
     interval: int
     message: Optional[str] = None
+    target_user_id: Optional[str] = None
+    intent: Optional[str] = None
 
 
 class AuthStatusOut(BaseModel):
@@ -20,6 +22,7 @@ class AuthStatusOut(BaseModel):
     provider: str
     status: str  # "pending" | "complete" | "expired" | "error"
     message: Optional[str] = None
+    intent: Optional[str] = None
 
 
 class ProviderStatusOut(BaseModel):

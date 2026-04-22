@@ -24,7 +24,7 @@ def _credential_key(provider_name: str, mirror_id: str, user_id: str) -> str:
 class AuthManager:
     def __init__(self) -> None:
         self._providers: Dict[str, CalendarProvider] = {"google": GoogleProvider()}
-        self._pending_web_logins: Dict[str, float] = {}
+        self._pending_web_logins: Dict[str, tuple[float, str]] = {}
 
     def get_provider(self, name: str) -> Optional[CalendarProvider]:
         return self._providers.get(name)
@@ -39,12 +39,14 @@ class AuthManager:
         verification_uri: str,
         mirror_id: str,
         user_id: str,
+        *,
+        intent: str = "pair_profile",
         ttl_sec: int = 600,
     ) -> Dict[str, Any]:
         if provider_name not in self._providers:
             raise ValueError(f"Unknown provider: {provider_name}")
         key = _credential_key(provider_name, mirror_id, user_id)
-        self._pending_web_logins[key] = time.monotonic() + ttl_sec
+        self._pending_web_logins[key] = (time.monotonic() + ttl_sec, intent)
         return {
             "provider": provider_name,
             "verification_uri": verification_uri,
@@ -53,6 +55,8 @@ class AuthManager:
             "expires_in": ttl_sec,
             "interval": 5,
             "message": "Open the link to sign in with Google",
+            "target_user_id": user_id,
+            "intent": intent,
         }
 
     def cancel_login(self, provider_name: str, mirror_id: str, user_id: str) -> None:
@@ -60,10 +64,11 @@ class AuthManager:
 
     def get_login_status(self, provider_name: str, mirror_id: str, user_id: str) -> Dict[str, Any]:
         key = _credential_key(provider_name, mirror_id, user_id)
-        expiry = self._pending_web_logins.get(key)
-        if expiry is not None:
+        pending_entry = self._pending_web_logins.get(key)
+        if pending_entry is not None:
+            expiry, intent = pending_entry
             if time.monotonic() <= expiry:
-                return {"provider": provider_name, "status": "pending", "message": None}
+                return {"provider": provider_name, "status": "pending", "message": None, "intent": intent}
             self._pending_web_logins.pop(key, None)
 
         db: Session = SessionLocal()

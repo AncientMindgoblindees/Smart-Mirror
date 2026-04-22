@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from backend.database.models import Mirror, UserProfile, UserSettings
+from backend.database.models import CalendarEvent, Mirror, UserProfile, UserSettings, WidgetConfig
 from backend.schemas.user import UserSettingsUpdate
 
 HARDWARE_ID_HEADERS = ("x-mirror-hardware-id", "x-hardware-id")
@@ -129,6 +129,18 @@ def delete_profile(db: Session, mirror: Mirror, user_id: str) -> Optional[UserPr
     if profile is None:
         return None
     was_active = bool(profile.is_active)
+    db.query(UserSettings).filter(
+        UserSettings.mirror_id == mirror.id,
+        UserSettings.user_id == user_id,
+    ).delete(synchronize_session=False)
+    db.query(WidgetConfig).filter(
+        WidgetConfig.mirror_id == mirror.id,
+        WidgetConfig.user_id == user_id,
+    ).delete(synchronize_session=False)
+    db.query(CalendarEvent).filter(
+        CalendarEvent.mirror_id == mirror.id,
+        CalendarEvent.user_id == user_id,
+    ).delete(synchronize_session=False)
     db.delete(profile)
     db.flush()
     if was_active:

@@ -1,15 +1,18 @@
 import { useCallback, useState } from 'react';
 
 export function useAuthActions(
-  initiateLogin: (provider: string) => Promise<void>,
+  initiateLogin: (
+    provider: string,
+    opts?: { targetUserId?: string; intent?: 'pair_profile' | 'create_account' },
+  ) => Promise<void>,
   disconnectProvider: (provider: string) => Promise<void>,
 ) {
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const signInGoogle = useCallback(async () => {
+  const signInGoogle = useCallback(async (opts?: { targetUserId?: string; intent?: 'pair_profile' | 'create_account' }) => {
     setAuthError(null);
     try {
-      await initiateLogin('google');
+      await initiateLogin('google', opts);
     } catch (e) {
       setAuthError(e instanceof Error ? e.message : 'Google sign-in failed');
     }

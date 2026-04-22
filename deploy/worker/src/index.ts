@@ -30,9 +30,37 @@ type TableSchema = {
 };
 
 const TABLE_SCHEMAS: Record<string, TableSchema> = {
+  mirrors: {
+    columns: [
+      "id",
+      "hardware_id",
+      "hardware_token_hash",
+      "friendly_name",
+      "created_at",
+      "updated_at",
+      "synced_at",
+    ],
+    orderColumn: "updated_at",
+  },
+  user_profiles: {
+    columns: [
+      "id",
+      "user_id",
+      "mirror_id",
+      "display_name",
+      "widget_config",
+      "is_active",
+      "created_at",
+      "updated_at",
+      "synced_at",
+    ],
+    orderColumn: "updated_at",
+  },
   widget_config: {
     columns: [
       "id",
+      "mirror_id",
+      "user_id",
       "widget_id",
       "enabled",
       "position_row",
@@ -49,6 +77,8 @@ const TABLE_SCHEMAS: Record<string, TableSchema> = {
   user_settings: {
     columns: [
       "id",
+      "mirror_id",
+      "user_id",
       "theme",
       "primary_font_size",
       "accent_color",
@@ -58,9 +88,27 @@ const TABLE_SCHEMAS: Record<string, TableSchema> = {
     ],
     orderColumn: "updated_at",
   },
+  oauth_credentials: {
+    columns: [
+      "id",
+      "mirror_id",
+      "user_id",
+      "provider",
+      "access_token_enc",
+      "refresh_token_enc",
+      "token_expiry",
+      "scopes",
+      "status",
+      "created_at",
+      "updated_at",
+      "synced_at",
+    ],
+    orderColumn: "updated_at",
+  },
   clothing_item: {
     columns: [
       "id",
+      "user_id",
       "name",
       "category",
       "color",
@@ -130,6 +178,9 @@ function sanitizeRow(input: unknown, schema: TableSchema): RowRecord {
   if (typeof out.config_json === "object" && out.config_json !== null) {
     out.config_json = JSON.stringify(out.config_json);
   }
+  if (typeof out.widget_config === "object" && out.widget_config !== null) {
+    out.widget_config = JSON.stringify(out.widget_config);
+  }
   out.synced_at = nowIso;
   return out;
 }
@@ -141,6 +192,24 @@ function compareTimestamp(a: unknown, b: unknown): number {
     return Number.NaN;
   }
   return aTs - bTs;
+}
+
+function d1ExceptionResponse(
+  table: string,
+  op: "pull" | "stats",
+  errorCode: string,
+  error: unknown,
+): Response {
+  return json(
+    {
+      error: "d1_query_exception",
+      error_code: errorCode,
+      table,
+      op,
+      detail: String(error),
+    },
+    500,
+  );
 }
 
 async function pullRows(
@@ -163,11 +232,16 @@ async function pullRows(
   const query = full
     ? `SELECT * FROM ${table} ORDER BY ${schema.orderColumn} ASC, id ASC`
     : `SELECT * FROM ${table} WHERE ${schema.orderColumn} > ? OR (${schema.orderColumn} = ? AND id > ?) ORDER BY ${schema.orderColumn} ASC, id ASC`;
-  const result = full
-    ? await env.MIRROR_DB.prepare(query).all<RowRecord>()
-    : await env.MIRROR_DB.prepare(query)
-        .bind(new Date(Date.parse(since)).toISOString(), new Date(Date.parse(since)).toISOString(), sinceId)
-        .all<RowRecord>();
+  let result: { results?: RowRecord[] } & D1ExecOutcome;
+  try {
+    result = full
+      ? await env.MIRROR_DB.prepare(query).all<RowRecord>()
+      : await env.MIRROR_DB.prepare(query)
+          .bind(new Date(Date.parse(since)).toISOString(), new Date(Date.parse(since)).toISOString(), sinceId)
+          .all<RowRecord>();
+  } catch (error) {
+    return d1ExceptionResponse(table, "pull", "D1_PULL_EXCEPTION", error);
+  }
   if (result.success === false) {
     return json(
       {
@@ -192,7 +266,12 @@ async function tableStats(env: Env, table: string): Promise<Response> {
   if (!schema) {
     return json({ error: "invalid table", error_code: "INVALID_TABLE", table, op: "stats" }, 400);
   }
-  const countResult = await env.MIRROR_DB.prepare(`SELECT COUNT(*) as n FROM ${table}`).all<{ n: number }>();
+  let countResult: { results?: { n: number }[] } & D1ExecOutcome;
+  try {
+    countResult = await env.MIRROR_DB.prepare(`SELECT COUNT(*) as n FROM ${table}`).all<{ n: number }>();
+  } catch (error) {
+    return d1ExceptionResponse(table, "stats", "D1_STATS_COUNT_EXCEPTION", error);
+  }
   if (countResult.success === false) {
     return json(
       {
@@ -205,9 +284,14 @@ async function tableStats(env: Env, table: string): Promise<Response> {
       500,
     );
   }
-  const maxResult = await env.MIRROR_DB.prepare(`SELECT MAX(${schema.orderColumn}) as m FROM ${table}`).all<{
-    m: unknown;
-  }>();
+  let maxResult: { results?: { m: unknown }[] } & D1ExecOutcome;
+  try {
+    maxResult = await env.MIRROR_DB.prepare(`SELECT MAX(${schema.orderColumn}) as m FROM ${table}`).all<{
+      m: unknown;
+    }>();
+  } catch (error) {
+    return d1ExceptionResponse(table, "stats", "D1_STATS_MAX_EXCEPTION", error);
+  }
   if (maxResult.success === false) {
     return json(
       {

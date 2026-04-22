@@ -680,8 +680,8 @@ class D1SyncService:
 
     def _apply_incoming_row(self, table_name: str, entity: Any, incoming: Dict[str, Any], synced_at: datetime) -> None:
         if table_name == "widget_config":
-            entity.mirror_id = incoming.get("mirror_id")
-            entity.user_id = incoming.get("user_id")
+            entity.mirror_id = self._incoming_or_existing(entity, incoming, "mirror_id")
+            entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
             entity.widget_id = incoming.get("widget_id")
             entity.enabled = bool(incoming.get("enabled", True))
             entity.position_row = incoming.get("position_row", 1)
@@ -692,8 +692,8 @@ class D1SyncService:
             entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
             entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
         elif table_name == "user_settings":
-            entity.mirror_id = incoming.get("mirror_id")
-            entity.user_id = incoming.get("user_id")
+            entity.mirror_id = self._incoming_or_existing(entity, incoming, "mirror_id")
+            entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
             entity.theme = incoming.get("theme", "dark")
             entity.primary_font_size = incoming.get("primary_font_size", 72)
             entity.accent_color = incoming.get("accent_color", "#4a9eff")
@@ -706,16 +706,16 @@ class D1SyncService:
             entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
             entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
         elif table_name == "user_profiles":
-            entity.mirror_id = incoming.get("mirror_id")
-            entity.user_id = incoming.get("user_id")
+            entity.mirror_id = self._incoming_or_existing(entity, incoming, "mirror_id")
+            entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
             entity.display_name = incoming.get("display_name")
             entity.widget_config = self._json_value(incoming.get("widget_config"))
             entity.is_active = bool(incoming.get("is_active", False))
             entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
             entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
         elif table_name == "oauth_credentials":
-            entity.mirror_id = incoming.get("mirror_id")
-            entity.user_id = incoming.get("user_id")
+            entity.mirror_id = self._incoming_or_existing(entity, incoming, "mirror_id")
+            entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
             entity.provider = incoming.get("provider", "google")
             entity.access_token_enc = incoming.get("access_token_enc")
             entity.refresh_token_enc = incoming.get("refresh_token_enc")
@@ -725,7 +725,7 @@ class D1SyncService:
             entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
             entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
         elif table_name == "clothing_item":
-            entity.user_id = incoming.get("user_id")
+            entity.user_id = self._incoming_or_existing(entity, incoming, "user_id")
             entity.name = incoming.get("name")
             entity.category = incoming.get("category")
             entity.color = incoming.get("color")
@@ -757,6 +757,11 @@ class D1SyncService:
     @staticmethod
     def _parse_datetime(value: Any) -> Optional[datetime]:
         return parse_datetime_utc_naive(value)
+
+    @staticmethod
+    def _incoming_or_existing(entity: Any, incoming: Dict[str, Any], field: str) -> Any:
+        value = incoming.get(field)
+        return value if value is not None else getattr(entity, field, None)
 
     @staticmethod
     def _to_iso(value: Optional[datetime]) -> Optional[str]:
