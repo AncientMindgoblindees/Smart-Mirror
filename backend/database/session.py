@@ -127,13 +127,18 @@ def _ensure_soft_delete_columns() -> None:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN deleted_at DATETIME"))
             if table == "clothing_image":
                 if "updated_at" not in columns:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE clothing_image ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP"
-                        )
-                    )
+                    conn.execute(text("ALTER TABLE clothing_image ADD COLUMN updated_at DATETIME"))
                 if "user_id" not in columns:
                     conn.execute(text("ALTER TABLE clothing_image ADD COLUMN user_id VARCHAR(128)"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE clothing_image
+                        SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP)
+                        WHERE updated_at IS NULL
+                        """
+                    )
+                )
                 conn.execute(
                     text(
                         """
