@@ -12,11 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-<<<<<<< HEAD
 from backend.config import get_oauth_public_base_url
-=======
 from backend.database.models import Mirror, UserProfile
->>>>>>> 4991a018b6bf7e63948cee00e7ba8e063410e54b
 from backend.database.session import get_db
 from backend.services import user_service
 from backend.services.auth_manager import auth_manager
