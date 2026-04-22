@@ -161,8 +161,8 @@ if [ "${MIRROR_CAMERA_AUTO_STOP_PIPEWIRE}" = "1" ] && command -v systemctl >/dev
   systemctl --user stop pipewire pipewire-pulse wireplumber >/dev/null 2>&1 || true
 fi
 
-if [ -x "${ROOT_DIR}/.venv/bin/python" ]; then
-  PYTHON="${ROOT_DIR}/.venv/bin/python"
+if [ -x "${ROOT_DIR}/venv/bin/python" ]; then
+  PYTHON="${ROOT_DIR}/venv/bin/python"
 elif [ -n "${MIRROR_PYTHON:-}" ]; then
   PYTHON="${MIRROR_PYTHON}"
 else
@@ -172,7 +172,7 @@ fi
 if ! "${PYTHON}" -c "import uvicorn" 2>/dev/null; then
   if [ -f "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" ]; then
     sh "${ROOT_DIR}/scripts/ensure-mirror-python-env.sh" "${ROOT_DIR}"
-    PYTHON="${ROOT_DIR}/.venv/bin/python"
+    PYTHON="${ROOT_DIR}/venv/bin/python"
   fi
 fi
 
