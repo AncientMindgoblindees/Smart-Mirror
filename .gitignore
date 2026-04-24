@@ -11,3 +11,5 @@ data/
 node_modules/
 .venv/
 .env
+venv
+graphify-out/
