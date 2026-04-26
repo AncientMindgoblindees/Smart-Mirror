@@ -14,6 +14,11 @@ MIRROR_ENABLE_TUNNEL="${MIRROR_ENABLE_TUNNEL:-1}"
 MIRROR_TUNNEL_NAME="${MIRROR_TUNNEL_NAME:-smart-mirror-ui}"
 MIRROR_CAMERA_AUTO_STOP_PIPEWIRE="${MIRROR_CAMERA_AUTO_STOP_PIPEWIRE:-1}"
 MIRROR_CHROMIUM_PASSWORD_STORE="${MIRROR_CHROMIUM_PASSWORD_STORE:-basic}"
+MIRROR_CHROMIUM_DISABLE_INFOBARS="${MIRROR_CHROMIUM_DISABLE_INFOBARS:-0}"
+MIRROR_CHROMIUM_OZONE_PLATFORM="${MIRROR_CHROMIUM_OZONE_PLATFORM:-}"
+MIRROR_CHROMIUM_USE_OZONE_PLATFORM="${MIRROR_CHROMIUM_USE_OZONE_PLATFORM:-0}"
+MIRROR_CHROMIUM_EXTRA_ARGS="${MIRROR_CHROMIUM_EXTRA_ARGS:-}"
+MIRROR_KIOSK="${MIRROR_KIOSK:-0}"
 MIRROR_TUNNEL_RESTART_DELAY_SEC="${MIRROR_TUNNEL_RESTART_DELAY_SEC:-5}"
 
 mkdir -p "${LOG_DIR}"
@@ -122,16 +127,46 @@ else
   exit 1
 fi
 
-CHROMIUM_WINDOW_FLAG="--start-fullscreen"
-if [[ "${MIRROR_FULLSCREEN:-1}" != "1" ]]; then
-  CHROMIUM_WINDOW_FLAG="--start-maximized"
+CHROMIUM_ARGS=(
+  --password-store="${MIRROR_CHROMIUM_PASSWORD_STORE}"
+  --no-first-run
+  --no-default-browser-check
+)
+
+if [[ "${MIRROR_CHROMIUM_DISABLE_INFOBARS}" == "1" ]]; then
+  CHROMIUM_ARGS+=(--disable-infobars)
 fi
 
-"${BROWSER_CMD}" \
-  "${CHROMIUM_WINDOW_FLAG}" \
-  --password-store="${MIRROR_CHROMIUM_PASSWORD_STORE}" \
-  --no-first-run \
-  --no-default-browser-check \
-  "${URL}" &
+if [[ "${MIRROR_KIOSK}" == "1" ]]; then
+  CHROMIUM_ARGS+=(--kiosk)
+else
+  CHROMIUM_WINDOW_FLAG="--start-fullscreen"
+  if [[ "${MIRROR_FULLSCREEN:-1}" != "1" ]]; then
+    CHROMIUM_WINDOW_FLAG="--start-maximized"
+  fi
+  CHROMIUM_ARGS+=("${CHROMIUM_WINDOW_FLAG}")
+fi
+
+if [[ "${MIRROR_CHROMIUM_USE_OZONE_PLATFORM}" == "1" ]]; then
+  CHROMIUM_ARGS+=(--enable-features=UseOzonePlatform)
+fi
+
+if [[ -n "${MIRROR_CHROMIUM_OZONE_PLATFORM}" ]]; then
+  CHROMIUM_ARGS+=(--ozone-platform="${MIRROR_CHROMIUM_OZONE_PLATFORM}")
+fi
+
+if [[ -n "${MIRROR_CHROMIUM_EXTRA_ARGS}" ]]; then
+  if ! mapfile -d '' -t CHROMIUM_EXTRA_ARGS < <(
+    MIRROR_CHROMIUM_EXTRA_ARGS="${MIRROR_CHROMIUM_EXTRA_ARGS}" "${PYTHON}" -c 'import os, shlex, sys; args = shlex.split(os.environ["MIRROR_CHROMIUM_EXTRA_ARGS"]); sys.stdout.buffer.write(b"\0".join(arg.encode("utf-8") for arg in args)); sys.stdout.buffer.write(b"\0" if args else b"")'
+  ); then
+    echo "Invalid MIRROR_CHROMIUM_EXTRA_ARGS. Use shell-style quoting."
+    exit 1
+  fi
+  CHROMIUM_ARGS+=("${CHROMIUM_EXTRA_ARGS[@]}")
+fi
+
+CHROMIUM_ARGS+=("${URL}")
+
+"${BROWSER_CMD}" "${CHROMIUM_ARGS[@]}" &
 
 echo "Smart Mirror started."

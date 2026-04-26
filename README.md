@@ -40,6 +40,32 @@ bash scripts/start-mirror-app.sh
 bash scripts/stop-mirror-app.sh
 ```
 
+Default launcher behavior is unchanged when no extra environment variables are set: Chromium opens in fullscreen mode (`--start-fullscreen`). Set `MIRROR_KIOSK=1` only if you want Chromium kiosk mode instead of the default fullscreen window behavior.
+
+Common Chromium tuning now has dedicated env vars:
+
+```
+MIRROR_KIOSK=1
+MIRROR_CHROMIUM_DISABLE_INFOBARS=1
+MIRROR_CHROMIUM_USE_OZONE_PLATFORM=1
+MIRROR_CHROMIUM_OZONE_PLATFORM=wayland
+```
+
+Example usage:
+
+```
+MIRROR_KIOSK=1 MIRROR_CHROMIUM_DISABLE_INFOBARS=1 bash scripts/start-mirror-app.sh
+MIRROR_CHROMIUM_USE_OZONE_PLATFORM=1 MIRROR_CHROMIUM_OZONE_PLATFORM=wayland bash scripts/start-mirror-app.sh
+```
+
+Use `MIRROR_CHROMIUM_EXTRA_ARGS` only for less common device-specific tuning:
+
+```
+MIRROR_CHROMIUM_EXTRA_ARGS="--force-device-scale-factor=1.25" bash scripts/start-mirror-app.sh
+```
+
+Wayland/Ozone settings are not enabled by default because they depend on the Pi's session type (`echo $XDG_SESSION_TYPE`) and the installed Debian/Chromium build. Verify any GPU/compositing experiment on the Pi itself with `chrome://gpu`.
+
 ### Raspberry Pi desktop launcher / autostart
 Creates a clickable app launcher and optional login autostart entry.
 
@@ -61,6 +87,8 @@ MIRROR_CHROMIUM_USER_DATA_DIR=/path/to/Smart-Mirror/data/chromium-profile
 ```
 
 These can be overridden in your shell before launching `start-mirror-app.sh` if needed.
+
+Backend runtime/concurrency boundaries are documented in [docs/backend-runtime-boundaries.md](/C:/Cursor_Projects/Smart-Mirror/docs/backend-runtime-boundaries.md).
 
 ### Option 1: Full app (recommended)
 Runs FastAPI backend + serves the **built** React UI at `/ui` (API routes, WebSockets, etc.).

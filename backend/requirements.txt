@@ -10,5 +10,5 @@ cryptography
 
 cloudinary
 python-dotenv
-picamera2
+picamera2; sys_platform == 'linux'
 Pillow
