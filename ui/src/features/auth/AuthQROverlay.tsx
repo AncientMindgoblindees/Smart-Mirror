@@ -34,7 +34,7 @@ export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel }) => {
             </button>
 
             <h2 className="auth-qr-title">
-              Sign in with {pendingAuth.provider === 'google' ? 'Google' : 'Microsoft'}
+              Sign in with {pendingAuth.provider === 'google' ? 'Google' : pendingAuth.provider}
             </h2>
 
             <p className="auth-qr-instructions">

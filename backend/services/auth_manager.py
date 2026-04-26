@@ -22,7 +22,6 @@ from backend.services.providers.base import (
     TokenResponse,
 )
 from backend.services.providers.google_provider import GoogleProvider
-from backend.services.providers.microsoft_provider import MicrosoftProvider
 from backend.services.realtime import control_registry
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,6 @@ class AuthManager:
         self._pending_web_logins: Dict[str, float] = {}
 
         self.register_provider(GoogleProvider())
-        self.register_provider(MicrosoftProvider())
 
     def register_provider(self, provider: CalendarProvider) -> None:
         self._providers[provider.provider_name] = provider
@@ -238,6 +236,8 @@ class AuthManager:
 
     async def get_valid_token(self, provider_name: str) -> Optional[str]:
         """Return a valid access token, refreshing if expired."""
+        if provider_name not in self._providers:
+            return None
         db: Session = SessionLocal()
         try:
             row = db.query(OAuthProvider).filter_by(provider=provider_name).first()
@@ -310,11 +310,14 @@ class AuthManager:
             db.close()
 
     def get_connected_providers(self) -> List[Dict[str, Any]]:
+        supported = set(self._providers.keys())
         db: Session = SessionLocal()
         try:
             rows = db.query(OAuthProvider).all()
             result = []
             for row in rows:
+                if row.provider not in supported:
+                    continue
                 result.append({
                     "provider": row.provider,
                     "connected": True,

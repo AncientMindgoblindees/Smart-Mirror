@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { X } from 'lucide-react';
+import { Camera, Palette, Moon, Power, QrCode, Shuffle, X } from 'lucide-react';
+import { getUserSettings, putUserSettings, triggerCameraCapture } from '@/api/mirrorApi';
+import { applyUserSettings } from '@/userSettings';
 import {
   WidgetFrame,
   useWidgetPersistence,
@@ -15,9 +17,11 @@ import {
 import { AuthQROverlay, useAuthState } from '@/features/auth';
 import { useControlEvents } from '@/hooks/useControlEvents';
 import { useMirrorInput } from '@/hooks/useMirrorInput';
+import { useMenuNavigation } from '@/hooks/useMenuNavigation';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
 import { useParallax } from '@/hooks/useParallax';
 import { TooltipProvider } from '@/components/ui/Tooltip';
+import { MenuOverlay, type MenuItem } from '@/components/MenuOverlay';
 import { useMirrorDisplayMode } from './hooks/useMirrorDisplayMode';
 import { useAuthActions } from './hooks/useAuthActions';
 import { useOverlayState } from './hooks/useOverlayState';
@@ -52,6 +56,17 @@ function summarizeCameraError(message: string): string {
   return 'Camera busy (owned by another process)';
 }
 
+const MENU_ITEMS: MenuItem[] = [
+  { id: 'take_picture', label: 'Take Picture', icon: Camera },
+  { id: 'randomize_widgets', label: 'Randomize Widgets', icon: Shuffle },
+  { id: 'change_theme', label: 'Change Theme', icon: Palette },
+  { id: 'link_google_qr', label: 'Link Google (QR)', icon: QrCode },
+  { id: 'sleep', label: 'Sleep', icon: Moon },
+  { id: 'power_down', label: 'Power Down', icon: Power },
+  { id: 'exit', label: 'Exit', icon: X },
+];
+const MENU_ACTION_IDS = MENU_ITEMS.map((item) => item.id);
+
 export default function MirrorApp() {
   const { widgets, setWidgets } = useWidgetPersistence();
   const {
@@ -67,7 +82,14 @@ export default function MirrorApp() {
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
-  const { sleepMode, sleepModeRef, toggleDim, toggleSleep } = useMirrorDisplayMode();
+  const {
+    displayDimmed,
+    sleepMode,
+    sleepModeRef,
+    toggleDim,
+    toggleSleep,
+    setSleepMode,
+  } = useMirrorDisplayMode();
 
   const {
     connectionState,
@@ -85,14 +107,188 @@ export default function MirrorApp() {
   } = useAuthState();
   const {
     authError,
+    setAuthError,
     signInGoogle,
-    signInMicrosoft,
     disconnectGoogle,
-    disconnectMicrosoft,
   } = useAuthActions(initiateLogin, disconnectProvider);
 
   useTimeOfDay();
   const parallax = useParallax();
+  const logMenu = useCallback(
+    (
+      event: string,
+      details?: Record<string, unknown> | string,
+      level: 'info' | 'warn' | 'error' = 'info',
+    ) => {
+      const payload = {
+        at: new Date().toISOString(),
+        event,
+        ...(typeof details === 'string' ? { message: details } : details ?? {}),
+      };
+      const out = `[mirror-menu] ${payload.event}`;
+      if (level === 'warn') {
+        console.warn(out, payload);
+        return;
+      }
+      if (level === 'error') {
+        console.error(out, payload);
+        return;
+      }
+      console.info(out, payload);
+    },
+    [],
+  );
+  const randomizeWidgets = useCallback(() => {
+    setWidgets((prev) =>
+      prev.map((w, index) => {
+        const width = Math.min(96, Math.max(6, w.freeform.width));
+        const height = Math.min(96, Math.max(6, w.freeform.height));
+        const maxX = Math.max(0, 100 - width);
+        const maxY = Math.max(0, 100 - height);
+        const seed = Math.random() * (index + 1);
+        const x = Number((Math.random() * maxX).toFixed(2));
+        const y = Number((Math.random() * maxY).toFixed(2));
+        return {
+          ...w,
+          freeform: {
+            ...w.freeform,
+            x,
+            y,
+            width,
+            height,
+          },
+          grid: {
+            ...w.grid,
+            row: Math.max(0, Math.floor((y / 100) * 12)),
+            col: Math.max(0, Math.floor((x / 100) * 12 + (seed % 1))),
+          },
+        };
+      }),
+    );
+  }, [setWidgets]);
+  const handleMenuAction = useCallback(
+    (actionId: string) => {
+      logMenu('action_invoked', { actionId });
+      if (actionId === 'exit') {
+        closeMenuRef.current();
+        return;
+      }
+      if (actionId === 'take_picture') {
+        closeMenuRef.current();
+        logMenu('take_picture_started', { source: 'mirror-menu' });
+        setShowCamera(true);
+        setCameraError(null);
+        void triggerCameraCapture({
+          countdown_seconds: 3,
+          source: 'mirror-menu',
+          session_id: `menu-${Date.now()}`,
+        })
+          .then((result) => {
+            logMenu('take_picture_accepted', { result });
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            setCameraError(summarizeCameraError(message));
+            logMenu('take_picture_failed', { message }, 'error');
+          });
+        return;
+      }
+      if (actionId === 'randomize_widgets') {
+        randomizeWidgets();
+        logMenu('widgets_randomized', { count: widgets.length });
+        return;
+      }
+      if (actionId === 'change_theme') {
+        void (async () => {
+          try {
+            const settings = await getUserSettings();
+            const nextTheme = settings.theme === 'light' ? 'dark' : 'light';
+            const updated = await putUserSettings({ theme: nextTheme });
+            applyUserSettings(updated);
+            logMenu('theme_changed', { from: settings.theme, to: updated.theme });
+          } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            logMenu('theme_change_failed', { message }, 'error');
+          }
+        })();
+        return;
+      }
+      if (actionId === 'link_google_qr') {
+        closeMenuRef.current();
+        setAuthError(null);
+        logMenu('google_qr_link_started', { source: 'mirror-menu' });
+        void initiateLogin('google')
+          .then(() => {
+            logMenu('google_qr_link_prompted', { source: 'mirror-menu' });
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            setAuthError(message);
+            logMenu('google_qr_link_failed', { message }, 'error');
+          });
+        return;
+      }
+      if (actionId === 'sleep') {
+        closeMenuRef.current();
+        setSleepMode(true);
+        logMenu('sleep_enabled', { source: 'mirror-menu' });
+        return;
+      }
+      if (actionId === 'power_down') {
+        closeMenuRef.current();
+        if (!displayDimmed) toggleDim();
+        setSleepMode(true);
+        logMenu(
+          'power_down_requested',
+          {
+            mode: 'simulated',
+            behavior: 'display_dimmed_and_sleep_enabled',
+          },
+          'warn',
+        );
+        return;
+      }
+      logMenu('action_unhandled', { actionId }, 'warn');
+    },
+    [
+      displayDimmed,
+      logMenu,
+      randomizeWidgets,
+      initiateLogin,
+      setAuthError,
+      setCameraError,
+      setShowCamera,
+      setSleepMode,
+      toggleDim,
+      widgets.length,
+    ],
+  );
+  const closeMenuRef = useRef<() => void>(() => {});
+  const menuNavigation = useMenuNavigation({
+    actionIds: MENU_ACTION_IDS,
+    onAction: handleMenuAction,
+  });
+  closeMenuRef.current = menuNavigation.close;
+  const prevMenuOpenRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (prevMenuOpenRef.current !== menuNavigation.isOpen) {
+      logMenu(menuNavigation.isOpen ? 'menu_opened' : 'menu_closed', {
+        activeIndex: menuNavigation.activeIndex,
+      });
+      prevMenuOpenRef.current = menuNavigation.isOpen;
+    }
+  }, [logMenu, menuNavigation.activeIndex, menuNavigation.isOpen]);
+  const prevActiveIndexRef = useRef<number>(menuNavigation.activeIndex);
+  useEffect(() => {
+    if (!menuNavigation.isOpen) return;
+    if (prevActiveIndexRef.current !== menuNavigation.activeIndex) {
+      logMenu('cursor_moved', {
+        activeIndex: menuNavigation.activeIndex,
+        actionId: MENU_ACTION_IDS[menuNavigation.activeIndex],
+      });
+      prevActiveIndexRef.current = menuNavigation.activeIndex;
+    }
+  }, [logMenu, menuNavigation.activeIndex, menuNavigation.isOpen]);
 
   useEffect(() => {
     const el = canvasRef.current;
@@ -142,6 +338,7 @@ export default function MirrorApp() {
     toggleDevPanel,
     dismissTryOnOverlay: () => setFullScreenTryOnUrl(null),
     getSleepMode: () => sleepModeRef.current,
+    isInputBlocked: () => menuNavigation.isOpen,
   });
 
   useControlEvents({
@@ -241,9 +438,7 @@ export default function MirrorApp() {
           authPending={Boolean(pendingAuth)}
           authError={authError}
           onSignInGoogle={signInGoogle}
-          onSignInMicrosoft={signInMicrosoft}
           onDisconnectGoogle={disconnectGoogle}
-          onDisconnectMicrosoft={disconnectMicrosoft}
         />
       )}
 
@@ -298,6 +493,12 @@ export default function MirrorApp() {
         onCancel={() => {
           void cancelPendingAuth();
         }}
+      />
+
+      <MenuOverlay
+        isOpen={menuNavigation.isOpen}
+        activeIndex={menuNavigation.activeIndex}
+        items={MENU_ITEMS}
       />
 
       <AnimatePresence>

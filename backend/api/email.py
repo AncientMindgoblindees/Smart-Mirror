@@ -22,7 +22,6 @@ router = APIRouter(prefix="/email", tags=["email"])
 
 GOOGLE_MESSAGES_LIST_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
 GOOGLE_MESSAGE_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}"
-MS_MESSAGES_URL = "https://graph.microsoft.com/v1.0/me/messages"
 
 
 def _parse_iso_sort_value(value: Optional[str]) -> datetime:
@@ -98,37 +97,6 @@ async def _fetch_google_messages(access_token: str, limit: int) -> List[EmailMes
         return results
 
 
-async def _fetch_microsoft_messages(access_token: str, limit: int) -> List[EmailMessageOut]:
-    headers = {"Authorization": f"Bearer {access_token}"}
-    params = {
-        "$select": "subject,from,receivedDateTime,isRead,importance",
-        "$filter": "(isRead eq false) or (importance eq 'high')",
-        "$orderby": "receivedDateTime desc",
-        "$top": str(min(limit, 50)),
-    }
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.get(MS_MESSAGES_URL, headers=headers, params=params)
-        if r.status_code in (401, 403):
-            return []
-        r.raise_for_status()
-        items = r.json().get("value", [])
-        out: List[EmailMessageOut] = []
-        for item in items[:limit]:
-            email_obj = ((item.get("from") or {}).get("emailAddress") or {})
-            sender = email_obj.get("name") or email_obj.get("address") or "Unknown sender"
-            out.append(
-                EmailMessageOut(
-                    source="microsoft",
-                    sender=sender,
-                    subject=item.get("subject") or "(no subject)",
-                    received_at=item.get("receivedDateTime"),
-                    unread=not bool(item.get("isRead", True)),
-                    high_priority=(item.get("importance") == "high"),
-                )
-            )
-        return out
-
-
 @router.get("/messages", response_model=EmailMessagesResponse)
 async def get_messages(
     limit: int = Query(20, ge=1, le=50),
@@ -150,8 +118,6 @@ async def get_messages(
         try:
             if name == "google":
                 return await _fetch_google_messages(token, limit)
-            if name == "microsoft":
-                return await _fetch_microsoft_messages(token, limit)
         except Exception:
             logger.exception("Email fetch failed for provider=%s", name)
         return []

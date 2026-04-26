@@ -1,5 +1,5 @@
 """
-Auth API router — device-code login/logout for Google and Microsoft.
+Auth API router - login/logout for supported providers (Google only in this project).
 """
 
 from __future__ import annotations

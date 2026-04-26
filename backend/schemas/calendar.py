@@ -13,7 +13,7 @@ class CalendarEventOut(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     all_day: bool = False
-    source: str  # "google" | "microsoft"
+    source: str  # "google"
     priority: str = "medium"  # "low" | "medium" | "high"
     completed: bool = False
     metadata: Dict[str, Any] = {}

@@ -1,6 +1,11 @@
-CREATE TABLE IF NOT EXISTS widget_config (
+-- =====================
+-- widget_config
+-- =====================
+DROP TABLE IF EXISTS widget_config;
+
+CREATE TABLE widget_config (
   id INTEGER PRIMARY KEY,
-  widget_id TEXT NOT NULL,
+  widget_id TEXT NOT NULL UNIQUE,
   enabled INTEGER NOT NULL DEFAULT 1,
   position_row INTEGER NOT NULL DEFAULT 1,
   position_col INTEGER NOT NULL DEFAULT 1,
@@ -15,7 +20,12 @@ CREATE TABLE IF NOT EXISTS widget_config (
 CREATE INDEX IF NOT EXISTS idx_widget_config_widget_id ON widget_config(widget_id);
 CREATE INDEX IF NOT EXISTS idx_widget_config_updated_at ON widget_config(updated_at);
 
-CREATE TABLE IF NOT EXISTS user_settings (
+-- =====================
+-- user_settings
+-- =====================
+DROP TABLE IF EXISTS user_settings;
+
+CREATE TABLE user_settings (
   id INTEGER PRIMARY KEY,
   theme TEXT NOT NULL DEFAULT 'dark',
   primary_font_size INTEGER NOT NULL DEFAULT 72,
@@ -27,7 +37,17 @@ CREATE TABLE IF NOT EXISTS user_settings (
 
 CREATE INDEX IF NOT EXISTS idx_user_settings_updated_at ON user_settings(updated_at);
 
-CREATE TABLE IF NOT EXISTS clothing_item (
+-- =====================
+-- clothing_image (drop first due to FK dependency on clothing_item)
+-- =====================
+DROP TABLE IF EXISTS clothing_image;
+
+-- =====================
+-- clothing_item
+-- =====================
+DROP TABLE IF EXISTS clothing_item;
+
+CREATE TABLE clothing_item (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   category TEXT NOT NULL,
@@ -41,7 +61,10 @@ CREATE TABLE IF NOT EXISTS clothing_item (
 
 CREATE INDEX IF NOT EXISTS idx_clothing_item_updated_at ON clothing_item(updated_at);
 
-CREATE TABLE IF NOT EXISTS clothing_image (
+-- =====================
+-- clothing_image
+-- =====================
+CREATE TABLE clothing_image (
   id INTEGER PRIMARY KEY,
   clothing_item_id INTEGER NOT NULL,
   storage_provider TEXT NOT NULL DEFAULT 'cloud',

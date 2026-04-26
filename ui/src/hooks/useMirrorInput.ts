@@ -18,6 +18,7 @@ export type MirrorInputActions = {
   toggleDevPanel: () => void;
   dismissTryOnOverlay: () => void;
   getSleepMode: () => boolean;
+  isInputBlocked?: () => boolean;
 };
 
 export function useMirrorInput(actions: MirrorInputActions) {
@@ -28,6 +29,7 @@ export function useMirrorInput(actions: MirrorInputActions) {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (ref.current.isInputBlocked?.()) return;
 
       if (ref.current.getSleepMode()) {
         e.preventDefault();

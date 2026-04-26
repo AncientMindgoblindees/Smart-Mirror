@@ -1,4 +1,4 @@
-"""Abstract base for calendar/task providers (Google, Microsoft, future)."""
+"""Abstract base for calendar/task providers (Google, future)."""
 
 from __future__ import annotations
 

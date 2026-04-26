@@ -7,12 +7,12 @@ export function useAuthActions(
   const [authError, setAuthError] = useState<string | null>(null);
 
   const signIn = useCallback(
-    async (provider: 'google' | 'microsoft') => {
+    async (provider: 'google') => {
       setAuthError(null);
       try {
         await initiateLogin(provider);
       } catch (e) {
-        const label = provider === 'google' ? 'Google' : 'Microsoft';
+        const label = 'Google';
         setAuthError(e instanceof Error ? e.message : `${label} sign-in failed`);
       }
     },
@@ -20,7 +20,7 @@ export function useAuthActions(
   );
 
   const disconnect = useCallback(
-    async (provider: 'google' | 'microsoft') => {
+    async (provider: 'google') => {
       setAuthError(null);
       await disconnectProvider(provider);
     },
@@ -31,8 +31,6 @@ export function useAuthActions(
     authError,
     setAuthError,
     signInGoogle: () => signIn('google'),
-    signInMicrosoft: () => signIn('microsoft'),
     disconnectGoogle: () => disconnect('google'),
-    disconnectMicrosoft: () => disconnect('microsoft'),
   };
 }

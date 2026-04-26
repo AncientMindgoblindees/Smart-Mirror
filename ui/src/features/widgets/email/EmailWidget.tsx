@@ -36,7 +36,7 @@ export const EmailWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ con
   if (!loading && !hasProviders) {
     return (
       <div className="widget-content email-widget">
-        <div className="email-empty">Connect Google or Microsoft email</div>
+        <div className="email-empty">Connect Google email</div>
       </div>
     );
   }
