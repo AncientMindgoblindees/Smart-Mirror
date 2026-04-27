@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 from backend.database.session import SessionLocal, get_db
 from backend.schemas.mirror_sync_state import SyncStateInbound
-from backend.services import button_service, widget_service
+from backend.services import button_service, user_service, widget_service
 from backend.services.device_connection import device_connection
 from backend.services.realtime import buttons_registry, control_registry
 from hardware.gpio.config import ButtonId
@@ -66,6 +66,57 @@ async def dev_button_event(button_id: str, action: str) -> Any:
 _paired_sockets: Dict[WebSocket, str] = {}
 
 
+def _widget_row_to_dict(row: Any) -> Dict[str, Any]:
+    return {
+        "id": row.id,
+        "widget_id": row.widget_id,
+        "enabled": row.enabled,
+        "position_row": row.position_row,
+        "position_col": row.position_col,
+        "size_rows": row.size_rows,
+        "size_cols": row.size_cols,
+        "config_json": row.config_json or {},
+        "updated_at": row.updated_at.isoformat() if getattr(row, "updated_at", None) else None,
+    }
+
+
+def _build_mirror_state_snapshot(reason: str) -> Dict[str, Any]:
+    db = SessionLocal()
+    try:
+        widgets = widget_service.get_all_widgets(db)
+        settings = user_service.get_or_create_user_settings(db)
+        return {
+            "reason": reason,
+            "layout_revision": widget_service.get_layout_revision(db),
+            "widgets": [_widget_row_to_dict(row) for row in widgets],
+            "settings": {
+                "theme": settings.theme,
+                "primary_font_size": settings.primary_font_size,
+                "accent_color": settings.accent_color,
+            },
+            "device": device_connection.snapshot(),
+        }
+    finally:
+        db.close()
+
+
+async def _send_state_snapshot(
+    websocket: WebSocket,
+    *,
+    reason: str,
+    session_id: str | None = None,
+) -> None:
+    await websocket.send_json(
+        {
+            "type": "MIRROR_STATE_SNAPSHOT",
+            "version": 2,
+            "sessionId": session_id,
+            "timestamp": datetime.utcnow().isoformat(),
+            "payload": _build_mirror_state_snapshot(reason),
+        }
+    )
+
+
 @router.websocket("/ws/control")
 async def ws_control(websocket: WebSocket) -> None:
     """
@@ -77,6 +128,10 @@ async def ws_control(websocket: WebSocket) -> None:
     """
     await websocket.accept()
     control_registry.connect(websocket)
+    try:
+        await _send_state_snapshot(websocket, reason="ws_connected")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ws_control: failed initial MIRROR_STATE_SNAPSHOT: %s", exc)
     try:
         while True:
             try:
@@ -103,6 +158,14 @@ async def ws_control(websocket: WebSocket) -> None:
                         session_id=session_id,
                     )
                 )
+                try:
+                    await _send_state_snapshot(
+                        websocket,
+                        reason="device_pair_received",
+                        session_id=session_id,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("ws_control: failed pair MIRROR_STATE_SNAPSHOT: %s", exc)
                 continue
 
             if raw_type not in {"SYNC_STATE", "WIDGETS_SYNC"}:
@@ -138,6 +201,15 @@ async def ws_control(websocket: WebSocket) -> None:
                 }
                 await websocket.send_json(applied)
                 await control_registry.broadcast(applied)
+                snapshot_event = {
+                    "type": "MIRROR_STATE_SNAPSHOT",
+                    "version": 2,
+                    "sessionId": raw.get("sessionId"),
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "payload": _build_mirror_state_snapshot("widgets_sync_applied"),
+                }
+                await websocket.send_json(snapshot_event)
+                await control_registry.broadcast(snapshot_event)
             except Exception as exc:  # noqa: BLE001
                 logger.exception("ws_control: error processing WIDGETS_SYNC")
                 err = {

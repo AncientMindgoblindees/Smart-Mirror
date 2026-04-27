@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from backend import config
 from backend.services.camera_service import camera_state
+from backend.services.system_power import request_pi_shutdown
 from hardware.gpio.config import ButtonId
 from hardware.gpio.events import ButtonAction, ButtonEvent
 from hardware.gpio import service as gpio_service
@@ -41,6 +42,11 @@ def handle_button_event(event: ButtonEvent, db: Session) -> Dict[str, str]:
         effect = "toggle_dim"
     elif event.button_id == ButtonId.DISPLAY and event.action == ButtonAction.LONG_PRESS:
         effect = "toggle_sleep"
+    elif event.button_id == ButtonId.SLEEP and event.action == ButtonAction.CLICK:
+        effect = "toggle_sleep"
+    elif event.button_id == ButtonId.POWER and event.action == ButtonAction.CLICK:
+        effect = "system_shutdown"
+        request_pi_shutdown(source="gpio-power-button")
     elif event.button_id == ButtonId.DOWN and event.action == ButtonAction.CLICK:
         effect = "dismiss_tryon"
 

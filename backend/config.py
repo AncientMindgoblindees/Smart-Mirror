@@ -80,5 +80,14 @@ CAMERA_NATIVE_COUNTDOWN_OVERLAY = os.getenv("CAMERA_NATIVE_COUNTDOWN_OVERLAY", "
     "yes",
 )
 
+# Allow GPIO power-button interrupt to request host shutdown.
+# Keep disabled by default for safety on non-Pi/dev machines.
+ALLOW_PI_SHUTDOWN_BUTTON = os.getenv("ALLOW_PI_SHUTDOWN_BUTTON", "0").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+PI_SHUTDOWN_COMMAND = os.getenv("PI_SHUTDOWN_COMMAND", "sudo /sbin/shutdown -h now")
+
 TRYON_LOCAL_KEEP_LAST = int(os.getenv("TRYON_LOCAL_KEEP_LAST", "10"))
 

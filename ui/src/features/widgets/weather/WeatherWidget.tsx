@@ -10,21 +10,13 @@ import { asWeatherCondition, tempSuffix } from '@/api/transforms/weather';
 import './weather-widget.css';
 
 const POLL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_PREFIX = 'mirror_weather_cache_v1:';
 
-function tempBarStyle(
-  low: number,
-  high: number,
-  globalMin: number,
-  globalMax: number
-): { marginLeft: string; width: string } {
-  const span = Math.max(1e-6, globalMax - globalMin);
-  const leftPct = ((low - globalMin) / span) * 100;
-  const widthPct = Math.max(2, ((high - low) / span) * 100);
-  return {
-    marginLeft: `${Math.min(100, Math.max(0, leftPct))}%`,
-    width: `${Math.min(100, widthPct)}%`,
-  };
-}
+type CachedWeather = {
+  at: number;
+  snapshot: WeatherSnapshotOut;
+};
 
 const stagger = {
   initial: { opacity: 0, y: 12 },
@@ -45,27 +37,69 @@ function fetchErrorSnapshot(message: string): WeatherSnapshotOut {
   };
 }
 
+function cacheKey(location: string | undefined, unit: 'metric' | 'imperial'): string {
+  const q = (location || '').trim().toLowerCase() || 'auto';
+  return `${CACHE_PREFIX}${unit}:${q}`;
+}
+
+function readWeatherCache(key: string): CachedWeather | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedWeather;
+    if (!parsed || typeof parsed.at !== 'number' || !parsed.snapshot) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeWeatherCache(key: string, snapshot: WeatherSnapshotOut): void {
+  try {
+    const payload: CachedWeather = { at: Date.now(), snapshot };
+    localStorage.setItem(key, JSON.stringify(payload));
+  } catch {
+    // ignore localStorage write failures
+  }
+}
+
 export const WeatherWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
   const preset = config.freeform.sizePreset ?? inferWidgetSizePreset(config.freeform.width, config.freeform.height);
   const isLarge = preset === 'large' && config.freeform.height >= 26;
   const isSmall = preset === 'small';
 
   const [snap, setSnap] = useState<WeatherSnapshotOut | null>(null);
+  const effectiveUnit = config.unit === 'imperial' ? 'imperial' : 'metric';
+  const weatherKey = useMemo(
+    () => cacheKey(config.location?.trim() || undefined, effectiveUnit),
+    [config.location, effectiveUnit],
+  );
 
   const load = useCallback(
-    async (opts?: { showLoading?: boolean }) => {
+    async (opts?: { showLoading?: boolean; force?: boolean }) => {
       if (opts?.showLoading) setSnap(null);
+      const cached = readWeatherCache(weatherKey);
+      const isFresh = Boolean(cached && Date.now() - cached.at < CACHE_TTL_MS);
+      if (!opts?.force && isFresh && cached) {
+        setSnap(cached.snapshot);
+        return;
+      }
       try {
         const w = await getWeather({
           q: config.location?.trim() || undefined,
-          units: config.unit === 'imperial' ? 'imperial' : 'metric',
+          units: effectiveUnit,
         });
         setSnap(w);
+        writeWeatherCache(weatherKey, w);
       } catch {
+        if (cached) {
+          setSnap(cached.snapshot);
+          return;
+        }
         setSnap(fetchErrorSnapshot('Could not reach the weather service.'));
       }
     },
-    [config.location, config.unit]
+    [config.location, effectiveUnit, weatherKey]
   );
 
   useEffect(() => {
@@ -74,15 +108,7 @@ export const WeatherWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ c
     return () => window.clearInterval(id);
   }, [load]);
 
-  const forecast = useMemo(() => snap?.forecast ?? [], [snap?.forecast]);
-  const globalMin = useMemo(
-    () => (forecast.length ? Math.min(...forecast.map((f) => f.low)) : 0),
-    [forecast]
-  );
-  const globalMax = useMemo(
-    () => (forecast.length ? Math.max(...forecast.map((f) => f.high)) : 1),
-    [forecast]
-  );
+  const forecast = useMemo(() => (snap?.forecast ?? []).slice(0, 7), [snap?.forecast]);
 
   const iconSize = isLarge ? 72 : isSmall ? 42 : 52;
 
@@ -93,7 +119,7 @@ export const WeatherWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ c
           isLarge ? 'weather-large' : isSmall ? 'weather-small' : 'weather-medium'
         }`}
       >
-        <p className="weather-widget-state-msg">Loading weather…</p>
+        <p className="weather-widget-state-msg">Loading weather...</p>
       </div>
     );
   }
@@ -123,7 +149,7 @@ export const WeatherWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ c
         }`}
       >
         <p className="weather-widget-state-msg">{detail}</p>
-        <button type="button" className="weather-widget-retry" onClick={() => void load({ showLoading: true })}>
+        <button type="button" className="weather-widget-retry" onClick={() => void load({ showLoading: true, force: true })}>
           Retry
         </button>
       </div>
@@ -205,32 +231,20 @@ export const WeatherWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ c
           transition={{ delay: 0.4, duration: 0.7 }}
         >
           <div className="forecast-divider" />
-          <div className="forecast-list">
+          <div className="forecast-grid-7" aria-label="7 day forecast">
             {forecast.map((f, i) => (
               <motion.div
                 key={`${f.weekday}-${i}`}
-                className="forecast-item-v2"
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 + i * 0.1, type: 'spring', stiffness: 200, damping: 25 }}
+                className="forecast-day-card"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.48 + i * 0.06, type: 'spring', stiffness: 200, damping: 24 }}
               >
                 <span className="forecast-day">{f.weekday}</span>
-                <WeatherIcon condition={asWeatherCondition(f.condition)} size={24} />
-                <div className="forecast-range">
-                  <span className="high">
-                    {Math.round(f.high)}
-                    {deg}
-                  </span>
-                  <div className="temp-bar-bg">
-                    <div
-                      className="temp-bar-fill"
-                      style={tempBarStyle(f.low, f.high, globalMin, globalMax)}
-                    />
-                  </div>
-                  <span className="low">
-                    {Math.round(f.low)}
-                    {deg}
-                  </span>
+                <WeatherIcon condition={asWeatherCondition(f.condition)} size={22} />
+                <div className="forecast-temps">
+                  <span className="high">{Math.round(f.high)}{deg}</span>
+                  <span className="low">{Math.round(f.low)}{deg}</span>
                 </div>
               </motion.div>
             ))}
@@ -242,3 +256,4 @@ export const WeatherWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ c
 });
 
 WeatherWidget.displayName = 'WeatherWidget';
+

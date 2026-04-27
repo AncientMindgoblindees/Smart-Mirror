@@ -10,7 +10,6 @@ import { todayListWidget } from './today-list';
 import { householdWidget } from './household';
 import { minimalTextWidget } from './minimal-text';
 import { newsWidget } from './news';
-import { virtualTryOnWidget } from './virtual-try-on';
 import { systemStatsWidget } from './system-stats';
 
 export const WIDGET_REGISTRY: Record<string, WidgetMetadata> = {
@@ -19,7 +18,6 @@ export const WIDGET_REGISTRY: Record<string, WidgetMetadata> = {
   calendar: calendarWidget,
   email: emailWidget,
   news: newsWidget,
-  virtual_try_on: virtualTryOnWidget,
   reminders: remindersWidget,
   sticky_note: stickyNoteWidget,
   daily_quote: dailyQuoteWidget,

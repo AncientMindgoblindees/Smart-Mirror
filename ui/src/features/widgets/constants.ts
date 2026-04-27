@@ -48,17 +48,6 @@ export const INITIAL_WIDGETS: WidgetConfig[] = [
     grid: { row: 2, col: 3, rowSpan: 1, colSpan: 1 },
     freeform: { x: 56, y: 42, ...WIDGET_SIZE_PRESETS.medium, sizePreset: 'medium' },
   },
-  {
-    id: 'w5',
-    type: 'virtual_try_on',
-    enabled: true,
-    grid: { row: 2, col: 2, rowSpan: 2, colSpan: 1 },
-    freeform: { x: 39, y: 41, ...WIDGET_SIZE_PRESETS.small, sizePreset: 'small' },
-    integration: {
-      feature: 'virtual_try_on',
-      endpoint: '/api/integrations/try-on',
-    },
-  },
 ];
 
 export type LayoutPreset = Record<string, WidgetConfig['freeform']>;
@@ -71,7 +60,6 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     news: { x: 3, y: 70, ...WIDGET_SIZE_PRESETS.large, sizePreset: 'large' },
     calendar: { x: 56, y: 68, ...WIDGET_SIZE_PRESETS.large, sizePreset: 'large' },
     email: { x: 56, y: 42, ...WIDGET_SIZE_PRESETS.medium, sizePreset: 'medium' },
-    virtual_try_on: { x: 39, y: 41, ...WIDGET_SIZE_PRESETS.small, sizePreset: 'small' },
   },
   {
     clock: { x: 4, y: 4, ...WIDGET_SIZE_PRESETS.large, sizePreset: 'large' },
@@ -79,7 +67,6 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     news: { x: 4, y: 66, ...WIDGET_SIZE_PRESETS.medium, sizePreset: 'medium' },
     calendar: { x: 52, y: 66, ...WIDGET_SIZE_PRESETS.medium, sizePreset: 'medium' },
     email: { x: 52, y: 42, ...WIDGET_SIZE_PRESETS.medium, sizePreset: 'medium' },
-    virtual_try_on: { x: 39, y: 38, ...WIDGET_SIZE_PRESETS.small, sizePreset: 'small' },
   },
   {
     clock: { x: 4, y: 4, ...WIDGET_SIZE_PRESETS.small, sizePreset: 'small' },
@@ -87,6 +74,5 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     news: { x: 4, y: 74, ...WIDGET_SIZE_PRESETS.medium, sizePreset: 'medium' },
     calendar: { x: 64, y: 74, ...WIDGET_SIZE_PRESETS.medium, sizePreset: 'medium' },
     email: { x: 64, y: 46, ...WIDGET_SIZE_PRESETS.small, sizePreset: 'small' },
-    virtual_try_on: { x: 28, y: 34, ...WIDGET_SIZE_PRESETS.large, sizePreset: 'large' },
   },
 ];
