@@ -6,7 +6,10 @@
     "ui:dev": "npm --prefix ui run dev",
     "ui:build": "npm --prefix ui run build",
     "ui:preview": "npm --prefix ui run preview",
+    "ui:test": "npm --prefix ui run test",
+    "ui:test:e2e": "npm --prefix ui run test:e2e",
     "backend": "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8002",
+    "backend:test": "python -m pytest",
     "app:pi": "bash scripts/start-mirror-app.sh"
   }
 }
