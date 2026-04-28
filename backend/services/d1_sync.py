@@ -568,6 +568,7 @@ class D1SyncService:
                 "color": row.color,
                 "season": row.season,
                 "notes": row.notes,
+                "favorite": bool(row.favorite),
                 "created_at": self._to_iso(row.created_at),
                 "updated_at": self._to_iso(row.updated_at),
                 "synced_at": self._to_iso(row.synced_at),
@@ -645,6 +646,7 @@ class D1SyncService:
             entity.color = incoming.get("color")
             entity.season = incoming.get("season")
             entity.notes = incoming.get("notes")
+            entity.favorite = bool(incoming.get("favorite", False))
             entity.created_at = self._parse_datetime(incoming.get("created_at")) or entity.created_at
             entity.updated_at = self._parse_datetime(incoming.get("updated_at")) or datetime.utcnow()
         elif table_name == "clothing_image":

@@ -22,6 +22,7 @@ def init_db() -> None:
     """
     Base.metadata.create_all(bind=engine)
     _ensure_sync_columns()
+    _ensure_clothing_favorite_column()
     _ensure_d1_checkpoint_columns()
 
 
@@ -53,6 +54,18 @@ def _ensure_sync_columns() -> None:
             if "synced_at" in columns:
                 continue
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN synced_at DATETIME"))
+
+
+def _ensure_clothing_favorite_column() -> None:
+    """Backfill clothing_item.favorite for existing SQLite databases."""
+    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(clothing_item)")).fetchall()
+        columns = {str(row[1]) for row in rows}
+        if not columns or "favorite" in columns:
+            return
+        conn.execute(text("ALTER TABLE clothing_item ADD COLUMN favorite BOOLEAN NOT NULL DEFAULT 0"))
 
 
 def get_db():

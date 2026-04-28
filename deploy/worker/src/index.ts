@@ -66,6 +66,7 @@ const TABLE_SCHEMAS: Record<string, TableSchema> = {
       "color",
       "season",
       "notes",
+      "favorite",
       "created_at",
       "updated_at",
       "synced_at",

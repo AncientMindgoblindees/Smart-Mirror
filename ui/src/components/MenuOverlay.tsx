@@ -16,6 +16,8 @@ export type MenuOverlayItem = {
   icon?: LucideIcon;
   hint?: string;
   kind?: 'option' | 'back';
+  imageUrl?: string;
+  selected?: boolean;
 };
 
 export type MenuPreviewState = {
@@ -73,10 +75,15 @@ export function MenuOverlay({
                 <div
                   id={`menu-item-${item.id}`}
                   key={item.id}
-                  className={`menu-overlay__tile${tileClass}${isActive ? ' is-active' : ''}`}
+                  className={`menu-overlay__tile${tileClass}${isActive ? ' is-active' : ''}${item.selected ? ' is-selected' : ''}`}
                   role="option"
                   aria-selected={isActive}
                 >
+                  {item.imageUrl ? (
+                    <span className="menu-overlay__tile-thumb" aria-hidden="true">
+                      <img src={item.imageUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+                    </span>
+                  ) : null}
                   {Icon ? (
                     <span className="menu-overlay__tile-icon" aria-hidden="true">
                       <Icon size={18} strokeWidth={2.2} />

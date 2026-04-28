@@ -19,8 +19,13 @@ router = APIRouter(prefix="/clothing", tags=["clothing"])
 def list_clothing(
     db: Session = Depends(get_db),
     include_images: bool = Query(False, description="Include Cloudinary image rows per item"),
+    favorite_only: bool = Query(False, description="Return only items marked favorite"),
 ):
-    items = clothing_service.list_clothing_items(db, include_images=include_images)
+    items = clothing_service.list_clothing_items(
+        db,
+        include_images=include_images,
+        favorite_only=favorite_only,
+    )
     out: List[ClothingItemRead] = []
     for item in items:
         imgs = None
@@ -34,6 +39,7 @@ def list_clothing(
                 color=item.color,
                 season=item.season,
                 notes=item.notes,
+                favorite=item.favorite,
                 created_at=item.created_at,
                 updated_at=item.updated_at,
                 images=imgs,
@@ -69,6 +75,7 @@ def get_clothing_item(
         color=item.color,
         season=item.season,
         notes=item.notes,
+        favorite=item.favorite,
         created_at=item.created_at,
         updated_at=item.updated_at,
         images=imgs,

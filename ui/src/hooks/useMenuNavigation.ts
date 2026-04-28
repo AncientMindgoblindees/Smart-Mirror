@@ -7,7 +7,10 @@ export type MenuNavigationLayer =
   | 'randomize_panel'
   | 'theme_panel'
   | 'theme_widget_list'
-  | 'theme_background_list';
+  | 'theme_background_list'
+  | 'outfit_panel'
+  | 'outfit_selection'
+  | 'outfit_favorites';
 
 type UseMenuNavigationOptions = {
   getActionIds: (layer: MenuNavigationLayer) => string[];
@@ -37,6 +40,9 @@ export function useMenuNavigation(options: UseMenuNavigationOptions): UseMenuNav
     theme_panel: 0,
     theme_widget_list: 0,
     theme_background_list: 0,
+    outfit_panel: 0,
+    outfit_selection: 0,
+    outfit_favorites: 0,
   });
   const activeIndex = activeByLayer[layer] ?? 0;
 

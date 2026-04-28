@@ -69,6 +69,7 @@ class ClothingItem(Base):
     color = Column(String(50), nullable=True)
     season = Column(String(30), nullable=True)
     notes = Column(String(255), nullable=True)
+    favorite = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(

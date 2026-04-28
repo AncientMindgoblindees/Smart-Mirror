@@ -12,6 +12,11 @@ import type {
   WeatherSnapshotOut,
   WidgetConfigOut,
   WidgetConfigUpdate,
+  ClothingItemRead,
+  ClothingItemUpdate,
+  OutfitGenerateRequest,
+  OutfitGenerateResponse,
+  PersonImageRead,
 } from './backendTypes';
 import { withQuery } from './endpoints';
 import { jsonRequest } from './httpClient';
@@ -47,6 +52,36 @@ export function getWeather(opts?: {
   units?: 'metric' | 'imperial';
 }): Promise<WeatherSnapshotOut> {
   return jsonRequest<WeatherSnapshotOut>(withQuery('/weather/', { q: opts?.q, units: opts?.units }));
+}
+
+export function getClothingItems(opts?: {
+  includeImages?: boolean;
+  favoriteOnly?: boolean;
+}): Promise<ClothingItemRead[]> {
+  return jsonRequest<ClothingItemRead[]>(
+    withQuery('/clothing/', {
+      include_images: opts?.includeImages ? 1 : undefined,
+      favorite_only: opts?.favoriteOnly ? 1 : undefined,
+    }),
+  );
+}
+
+export function updateClothingItem(itemId: number, updates: ClothingItemUpdate): Promise<ClothingItemRead> {
+  return jsonRequest<ClothingItemRead>(`/clothing/${itemId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+export function generateOutfitTryOn(payload: OutfitGenerateRequest): Promise<OutfitGenerateResponse> {
+  return jsonRequest<OutfitGenerateResponse>('/tryon/outfit-generate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getPersonImages(): Promise<PersonImageRead[]> {
+  return jsonRequest<PersonImageRead[]>('/tryon/person-image');
 }
 
 export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ status: string }> {

@@ -85,6 +85,7 @@ export interface ClothingItemRead {
   color?: string | null;
   season?: string | null;
   notes?: string | null;
+  favorite: boolean;
   created_at: string;
   updated_at: string;
   images?: ClothingImageRead[] | null;
@@ -97,6 +98,33 @@ export interface ClothingImageRead {
   storage_provider: string;
   storage_key: string;
   image_url: string;
+  created_at: string;
+}
+
+export interface ClothingItemUpdate {
+  name?: string;
+  category?: string;
+  color?: string | null;
+  season?: string | null;
+  notes?: string | null;
+  favorite?: boolean;
+}
+
+export interface OutfitGenerateRequest {
+  clothing_image_ids: number[];
+  prompt?: string;
+}
+
+export interface OutfitGenerateResponse {
+  status: string;
+  generation_id: string;
+  image_url: string;
+}
+
+export interface PersonImageRead {
+  id: number;
+  file_path: string;
+  status: string;
   created_at: string;
 }
 

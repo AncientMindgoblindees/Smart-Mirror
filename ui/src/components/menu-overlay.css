@@ -129,6 +129,28 @@
   color: rgba(255, 255, 255, 0.92);
 }
 
+.menu-overlay__tile-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  flex: 0 0 auto;
+}
+
+.menu-overlay__tile-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.menu-overlay__tile.is-selected {
+  box-shadow: inset 0 0 0 1px rgba(255, 109, 109, 0.28), 0 0 16px rgba(255, 109, 109, 0.18);
+  border-color: rgba(255, 190, 190, 0.32);
+}
+
 .menu-overlay__tile-body {
   display: grid;
   gap: 0.08rem;

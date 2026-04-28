@@ -54,6 +54,7 @@ CREATE TABLE clothing_item (
   color TEXT,
   season TEXT,
   notes TEXT,
+  favorite INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   synced_at DATETIME

@@ -9,6 +9,7 @@ class ClothingItemCreate(BaseModel):
     color: Optional[str] = None
     season: Optional[str] = None
     notes: Optional[str] = None
+    favorite: bool = False
 
 class ClothingItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -16,6 +17,7 @@ class ClothingItemUpdate(BaseModel):
     color: Optional[str] = None
     season: Optional[str] = None
     notes: Optional[str] = None
+    favorite: Optional[bool] = None
 
 class ClothingItemRead(BaseModel):
     id: int
@@ -24,6 +26,7 @@ class ClothingItemRead(BaseModel):
     color: Optional[str] = None
     season: Optional[str] = None
     notes: Optional[str] = None
+    favorite: bool = False
     created_at: datetime
     updated_at: datetime
     images: Optional[List["ClothingImageRead"]] = None

@@ -14,8 +14,14 @@ from backend.services import cloud_storage_service
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
-def list_clothing_items(db: Session, include_images: bool = False) -> List[ClothingItem]:
+def list_clothing_items(
+    db: Session,
+    include_images: bool = False,
+    favorite_only: bool = False,
+) -> List[ClothingItem]:
     q = db.query(ClothingItem)
+    if favorite_only:
+        q = q.filter(ClothingItem.favorite.is_(True))
     if include_images:
         q = q.options(joinedload(ClothingItem.images))
     return q.order_by(ClothingItem.updated_at.desc()).all()
@@ -28,6 +34,7 @@ def create_clothing_item(db: Session, payload: ClothingItemCreate) -> ClothingIt
         color=payload.color,
         season=payload.season,
         notes=payload.notes,
+        favorite=payload.favorite,
     )
     db.add(item)
     db.commit()
