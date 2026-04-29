@@ -7,7 +7,7 @@ const electronCmd = process.platform === "win32" ? "npx.cmd" : "npx";
 
 const vite = spawn(viteCmd, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], {
   cwd: uiRoot,
-  stdio: "inherit",
+  stdio: ["inherit", "pipe", "pipe"],
 });
 
 let electron = null;
@@ -28,13 +28,19 @@ function startElectronOnce() {
 
 vite.stdout?.on("data", (buf) => {
   const line = String(buf);
+  process.stdout.write(line);
   if (line.includes("Local:") || line.includes("ready in")) startElectronOnce();
 });
 
 vite.stderr?.on("data", (buf) => {
   const line = String(buf);
+  process.stderr.write(line);
   if (line.includes("Local:") || line.includes("ready in")) startElectronOnce();
 });
+
+setTimeout(() => {
+  startElectronOnce();
+}, 2500);
 
 vite.on("exit", (code) => shutdown(code ?? 0));
 

@@ -182,7 +182,15 @@ export function VirtualTryOnPage() {
           console.info('[virtual-tryon-camera]', { decision: 'browser_camera_fallback', reason: 'native_bridge_unavailable' });
           return;
         }
-        await bridge.startPreview?.();
+        try {
+          await bridge.startPreview?.();
+        } catch (previewErr: unknown) {
+          console.warn('[virtual-tryon-camera]', {
+            decision: 'native_bridge_camera',
+            preview_start: 'failed_continuing_with_native_capture',
+            reason: previewErr instanceof Error ? previewErr.message : String(previewErr),
+          });
+        }
         if (cancelled) return;
         setCameraSourceMode('bridge');
         setBackendSourceLabel(status.preferredSource ?? 'picamera2');
