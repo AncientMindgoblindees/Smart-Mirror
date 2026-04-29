@@ -15,6 +15,7 @@ let mainWindow = null;
 let previewProc = null;
 let previewServer = null;
 let previewServerPort = 0;
+let previewServerReadyPromise = null;
 const previewClients = new Set();
 let previewBuffer = Buffer.alloc(0);
 let latestPreviewFrame = null;
@@ -48,6 +49,8 @@ function hasPicamera2() {
 }
 
 function preferredSource() {
+  // Preview stream is backed by rpicam-vid; prefer reporting that runtime first.
+  if (findCommand("rpicam-vid")) return "rpicam";
   if (hasPicamera2()) return "picamera2";
   if (findCommand("rpicam-still")) return "rpicam";
   return "none";
@@ -118,7 +121,7 @@ function startPreview() {
 }
 
 function ensurePreviewServer() {
-  if (previewServer) return;
+  if (previewServer) return previewServerReadyPromise ?? Promise.resolve();
   previewServer = http.createServer((req, res) => {
     if (req.url !== "/native-preview.ts") {
       res.writeHead(404);
@@ -136,10 +139,19 @@ function ensurePreviewServer() {
       previewClients.delete(res);
     });
   });
-  previewServer.listen(0, "127.0.0.1", () => {
-    const addr = previewServer.address();
-    previewServerPort = typeof addr === "object" && addr ? addr.port : 0;
+  previewServerReadyPromise = new Promise((resolve, reject) => {
+    previewServer.listen(0, "127.0.0.1", () => {
+      const addr = previewServer.address();
+      previewServerPort = typeof addr === "object" && addr ? addr.port : 0;
+      if (!previewServerPort) {
+        reject(new Error("Preview server failed to bind a port"));
+        return;
+      }
+      resolve();
+    });
+    previewServer.on("error", (err) => reject(err));
   });
+  return previewServerReadyPromise;
 }
 
 function captureViaRpicam(targetPath) {
@@ -184,7 +196,7 @@ ipcMain.handle("smartMirrorCamera:getStatus", async () => {
 });
 
 ipcMain.handle("smartMirrorCamera:startPreview", async () => {
-  ensurePreviewServer();
+  await ensurePreviewServer();
   startPreview();
   return { ok: true };
 });
@@ -206,7 +218,7 @@ ipcMain.handle("smartMirrorCamera:capturePhoto", async () => {
 });
 
 ipcMain.handle("smartMirrorCamera:getPreviewStreamUrl", async () => {
-  ensurePreviewServer();
+  await ensurePreviewServer();
   if (!previewServerPort) throw new Error("Preview server not ready");
   return `http://127.0.0.1:${previewServerPort}/native-preview.ts`;
 });
