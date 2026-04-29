@@ -10,11 +10,18 @@ const DEV_URL = process.env.SMART_MIRROR_UI_URL || "http://127.0.0.1:5173";
 let mainWindow = null;
 
 if (process.platform === "linux") {
-  // Avoid GBM/Ozone GPU crashes on Pi images missing matching Mesa/GBM stack.
-  app.commandLine.appendSwitch("disable-gpu");
-  app.commandLine.appendSwitch("disable-software-rasterizer");
-  app.commandLine.appendSwitch("in-process-gpu");
-  app.commandLine.appendSwitch("use-gl", "swiftshader");
+  const mode = (process.env.MIRROR_ELECTRON_GPU_MODE || "auto").toLowerCase();
+  // Modes:
+  // auto         -> no forced GPU flags (best performance if stack is healthy)
+  // safe-gpu     -> keep GPU on, but avoid problematic Ozone path
+  // software     -> force software GL only (last-resort stability mode)
+  if (mode === "safe-gpu") {
+    app.commandLine.appendSwitch("disable-features", "UseOzonePlatform");
+    app.commandLine.appendSwitch("ozone-platform", "x11");
+  } else if (mode === "software") {
+    app.commandLine.appendSwitch("disable-gpu");
+    app.commandLine.appendSwitch("use-gl", "swiftshader");
+  }
 }
 
 function findCommand(cmd) {
