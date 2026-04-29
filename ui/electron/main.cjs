@@ -6,8 +6,14 @@ const { spawn, spawnSync } = require("child_process");
 
 const isDev = !app.isPackaged;
 const DEV_URL = process.env.SMART_MIRROR_UI_URL || "http://127.0.0.1:5173";
+const PREVIEW_WIDTH = Number(process.env.MIRROR_NATIVE_PREVIEW_WIDTH || 640);
+const PREVIEW_HEIGHT = Number(process.env.MIRROR_NATIVE_PREVIEW_HEIGHT || 360);
+const PREVIEW_QUALITY = Number(process.env.MIRROR_NATIVE_PREVIEW_QUALITY || 65);
 
 let mainWindow = null;
+let previewProc = null;
+let previewBuffer = Buffer.alloc(0);
+let latestPreviewFrame = null;
 
 if (process.platform === "linux") {
   const mode = (process.env.MIRROR_ELECTRON_GPU_MODE || "auto").toLowerCase();
@@ -44,7 +50,59 @@ function preferredSource() {
 }
 
 function stopPreview() {}
-function startPreview() {}
+function stopPreview() {
+  if (previewProc) {
+    try {
+      previewProc.kill("SIGTERM");
+    } catch {}
+    previewProc = null;
+  }
+  previewBuffer = Buffer.alloc(0);
+  latestPreviewFrame = null;
+}
+
+function extractJpegFramesFromBuffer() {
+  while (true) {
+    const soi = previewBuffer.indexOf(Buffer.from([0xff, 0xd8]));
+    if (soi < 0) return;
+    const eoi = previewBuffer.indexOf(Buffer.from([0xff, 0xd9]), soi + 2);
+    if (eoi < 0) {
+      if (soi > 0) previewBuffer = previewBuffer.subarray(soi);
+      return;
+    }
+    latestPreviewFrame = Buffer.from(previewBuffer.subarray(soi, eoi + 2));
+    previewBuffer = previewBuffer.subarray(eoi + 2);
+  }
+}
+
+function startPreview() {
+  if (previewProc) return;
+  if (!findCommand("rpicam-vid")) return;
+  previewProc = spawn("rpicam-vid", [
+    "-n",
+    "-t",
+    "0",
+    "--codec",
+    "mjpeg",
+    "--width",
+    String(PREVIEW_WIDTH),
+    "--height",
+    String(PREVIEW_HEIGHT),
+    "--framerate",
+    "30",
+    "--quality",
+    String(PREVIEW_QUALITY),
+    "-o",
+    "-",
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  previewProc.stdout.on("data", (chunk) => {
+    previewBuffer = Buffer.concat([previewBuffer, chunk]);
+    extractJpegFramesFromBuffer();
+  });
+  previewProc.on("exit", () => {
+    previewProc = null;
+  });
+}
 
 function captureViaRpicam(targetPath) {
   return new Promise((resolve, reject) => {
@@ -84,11 +142,11 @@ function capturePreviewViaRpicam(targetPath) {
       "-n",
       "--immediate",
       "--width",
-      "960",
+      String(PREVIEW_WIDTH),
       "--height",
-      "540",
+      String(PREVIEW_HEIGHT),
       "--quality",
-      "80",
+      String(PREVIEW_QUALITY),
       "-o",
       targetPath,
     ]);
@@ -104,7 +162,7 @@ function capturePreviewViaRpicam(targetPath) {
 function capturePreviewViaPicamera2(targetPath) {
   return new Promise((resolve, reject) => {
     const script = path.join(__dirname, "picamera_preview.py");
-    const py = spawn("python3", [script, targetPath], { stdio: ["ignore", "pipe", "pipe"] });
+    const py = spawn("python3", [script, targetPath, String(PREVIEW_WIDTH), String(PREVIEW_HEIGHT)], { stdio: ["ignore", "pipe", "pipe"] });
     let err = "";
     py.stderr.on("data", (d) => (err += String(d)));
     py.on("exit", (code) => {
@@ -146,6 +204,7 @@ ipcMain.handle("smartMirrorCamera:capturePhoto", async () => {
 ipcMain.handle("smartMirrorCamera:getPreviewFrame", async () => {
   const source = preferredSource();
   if (source === "none") throw new Error("No native Pi camera runtime available");
+  if (previewProc && latestPreviewFrame) return latestPreviewFrame;
   const outPath = path.join(os.tmpdir(), `smart-mirror-preview-${Date.now()}.jpg`);
   if (source === "picamera2") await capturePreviewViaPicamera2(outPath);
   else await capturePreviewViaRpicam(outPath);

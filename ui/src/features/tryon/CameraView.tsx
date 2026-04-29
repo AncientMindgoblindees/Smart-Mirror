@@ -76,10 +76,11 @@ export default function CameraView({ hidden, sourceMode, backendSourceLabel }: C
           setBridgeFrameUrl(url);
           setIsReady(true);
           setError(null);
+          await new Promise((r) => setTimeout(r, 33));
         } catch (err: unknown) {
           setIsReady(false);
           setError(err instanceof Error ? err.message : 'Native camera preview failed');
-          await new Promise((r) => setTimeout(r, 300));
+          await new Promise((r) => setTimeout(r, 66));
         }
       }
       if (lastUrl) URL.revokeObjectURL(lastUrl);
