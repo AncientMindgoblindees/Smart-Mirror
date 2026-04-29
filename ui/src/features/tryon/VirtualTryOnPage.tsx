@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { generateOutfitTryOn, getCameraStatus, getClothingItems, triggerCameraCapture, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
+import { generateOutfitTryOn, getClothingItems, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
 import type { ClothingItemRead } from '@/api/backendTypes';
 import { useControlEvents } from '@/hooks/useControlEvents';
 import CameraView from './CameraView';
@@ -11,10 +11,7 @@ import { toFashionItems } from './constants';
 
 const FAVORITES_KEY = 'mirror:outfit-favorites';
 const TRYON_MAX_GENERATE_ATTEMPTS = 2;
-const CAPTURE_TIMEOUT_MS = 45000;
 const CAPTURE_COUNTDOWN_SECONDS = 3;
-const CAPTURE_STATUS_MAX_CHECKS = 8;
-const CAPTURE_STATUS_CHECK_INTERVAL_MS = 1000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -54,6 +51,17 @@ async function captureLocalWebcamBlob(): Promise<Blob> {
   return blob;
 }
 
+async function bridgeCaptureToBlob(payload: Blob | string | Uint8Array): Promise<Blob> {
+  if (payload instanceof Blob) return payload;
+  if (typeof payload === 'string') {
+    const res = await fetch(payload);
+    if (!res.ok) throw new Error('Native camera returned invalid data URL');
+    const blob = await res.blob();
+    return blob;
+  }
+  return new Blob([payload], { type: 'image/jpeg' });
+}
+
 export function VirtualTryOnPage() {
   const perfZeroRef = useRef<number>(performance.now());
   const logFlow = useCallback((event: string, details?: Record<string, unknown>) => {
@@ -81,16 +89,13 @@ export function VirtualTryOnPage() {
   const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string | null>('Loading catalog...');
   const [cameraPhase, setCameraPhase] = useState<'idle' | 'loading' | 'countdown' | 'captured' | 'generating' | 'error'>('idle');
-  const [cameraSourceMode, setCameraSourceMode] = useState<'backend' | 'browser'>('backend');
+  const [cameraSourceMode, setCameraSourceMode] = useState<'bridge' | 'browser'>('browser');
   const [backendSourceLabel, setBackendSourceLabel] = useState<'picamera2' | 'rpicam' | 'none' | string>('none');
   const [countdownRemaining, setCountdownRemaining] = useState<number>(CAPTURE_COUNTDOWN_SECONDS);
-  const [captureSignal, setCaptureSignal] = useState(0);
-  const captureSignalRef = useRef(0);
   const localCountdownActiveRef = useRef(false);
   const generateInFlightRef = useRef(false);
 
   const fashionItems = useMemo(() => toFashionItems(catalogRows), [catalogRows]);
-  captureSignalRef.current = captureSignal;
 
   useControlEvents({
     onCameraLoadingStarted: () => {
@@ -118,7 +123,6 @@ export function VirtualTryOnPage() {
     },
     onCameraCaptured: () => {
       logFlow('ws_camera_captured');
-      setCaptureSignal((prev) => prev + 1);
       if (localCountdownActiveRef.current) return;
       setCameraPhase('captured');
       setCountdownRemaining(0);
@@ -161,33 +165,46 @@ export function VirtualTryOnPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const detectCameraRuntime = async () => {
+    const bridge = window.smartMirrorCamera;
+    const start = async () => {
+      if (!bridge) {
+        setCameraSourceMode('browser');
+        setBackendSourceLabel('none');
+        console.info('[virtual-tryon-camera]', { decision: 'browser_camera_fallback', reason: 'native_bridge_missing' });
+        return;
+      }
       try {
-        const status = await getCameraStatus();
+        const status = (await bridge.getStatus?.()) ?? { available: true, preferredSource: 'picamera2' };
         if (cancelled) return;
-        const preferred = status.backend_camera_preferred_source || 'none';
-        const backendAvailable = status.backend_camera_available === true && preferred !== 'none';
-        setBackendSourceLabel(preferred);
-        setCameraSourceMode(backendAvailable ? 'backend' : 'browser');
+        if (!status.available) {
+          setCameraSourceMode('browser');
+          setBackendSourceLabel('none');
+          console.info('[virtual-tryon-camera]', { decision: 'browser_camera_fallback', reason: 'native_bridge_unavailable' });
+          return;
+        }
+        await bridge.startPreview?.();
+        if (cancelled) return;
+        setCameraSourceMode('bridge');
+        setBackendSourceLabel(status.preferredSource ?? 'picamera2');
         console.info('[virtual-tryon-camera]', {
-          decision: backendAvailable ? 'backend_camera' : 'browser_camera_fallback',
-          backend_camera_preferred_source: preferred,
-          picamera2_available: status.picamera2_available ?? false,
-          rpicam_available: status.rpicam_available ?? false,
+          decision: 'native_bridge_camera',
+          preferred_source: status.preferredSource ?? 'picamera2',
+          camera_api_route: 'bypassed',
         });
       } catch (error: unknown) {
         if (cancelled) return;
-        setBackendSourceLabel('none');
         setCameraSourceMode('browser');
+        setBackendSourceLabel('none');
         console.warn('[virtual-tryon-camera]', {
           decision: 'browser_camera_fallback',
           reason: error instanceof Error ? error.message : String(error),
         });
       }
     };
-    void detectCameraRuntime();
+    void start();
     return () => {
       cancelled = true;
+      void bridge?.stopPreview?.();
     };
   }, []);
 
@@ -236,20 +253,10 @@ export function VirtualTryOnPage() {
     setCameraPhase('loading');
     setCountdownRemaining(CAPTURE_COUNTDOWN_SECONDS);
     try {
-      const beforeSignal = captureSignalRef.current;
-
-      if (cameraSourceMode === 'backend') {
-        logFlow('backend_camera_capture_mode', { backend_source: backendSourceLabel });
-        logFlow('camera_capture_request_start');
-        await triggerCameraCapture({
-          countdown_seconds: CAPTURE_COUNTDOWN_SECONDS,
-          source: 'virtual-try-on-route',
-          session_id: `virtual-tryon-${Date.now()}`,
-        });
-        logFlow('camera_capture_request_accepted');
-      } else {
-        logFlow('browser_camera_capture_mode');
-      }
+      const preferBridgeCapture = cameraSourceMode === 'bridge' && !!window.smartMirrorCamera?.capturePhoto;
+      logFlow(preferBridgeCapture ? 'native_bridge_capture_mode' : 'browser_camera_capture_mode', {
+        source: preferBridgeCapture ? backendSourceLabel : 'browser',
+      });
       setCameraPhase('countdown');
       localCountdownActiveRef.current = true;
       for (let remaining = CAPTURE_COUNTDOWN_SECONDS; remaining > 0; remaining -= 1) {
@@ -261,54 +268,19 @@ export function VirtualTryOnPage() {
       localCountdownActiveRef.current = false;
       logFlow('local_countdown_complete');
 
-      if (cameraSourceMode === 'browser') {
+      if (!preferBridgeCapture) {
         const blob = await captureLocalWebcamBlob();
         logFlow('local_webcam_snapshot_captured', { bytes: blob.size });
         await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
         logFlow('local_webcam_snapshot_uploaded');
         setStatusText('Photo captured');
       } else {
-        // Prefer camera status over WS/person-image polling; avoids noisy loops and WS race issues.
-        let capturedViaStatus = false;
-        for (let i = 0; i < CAPTURE_STATUS_MAX_CHECKS; i += 1) {
-          const pollStart = performance.now();
-          const status = await getCameraStatus().catch(() => null);
-          logFlow('camera_status_poll', {
-            poll_index: i + 1,
-            poll_latency_ms: Math.round(performance.now() - pollStart),
-            active: status?.active ?? null,
-            booting: status?.booting ?? null,
-            countdown_remaining: status?.countdown_remaining ?? null,
-            last_capture_id: status?.last_capture_id ?? null,
-            last_capture_at: status?.last_capture_at ?? null,
-          });
-          if (status && !status.active && !status.booting && (status.last_capture_id || status.last_capture_at)) {
-            capturedViaStatus = true;
-            logFlow('camera_status_capture_confirmed', { poll_index: i + 1 });
-            break;
-          }
-          await sleep(CAPTURE_STATUS_CHECK_INTERVAL_MS);
-        }
-
-        // Secondary fallback: accept WS captured signal if status endpoint was stale.
-        if (!capturedViaStatus && captureSignalRef.current <= beforeSignal) {
-          logFlow('ws_capture_fallback_start');
-          const wsDeadline = Date.now() + CAPTURE_TIMEOUT_MS;
-          while (Date.now() < wsDeadline) {
-            if (captureSignalRef.current > beforeSignal) break;
-            await sleep(250);
-          }
-          logFlow('ws_capture_fallback_complete', {
-            ws_signal_advanced: captureSignalRef.current > beforeSignal,
-          });
-        }
-        if (!capturedViaStatus && captureSignalRef.current <= beforeSignal) {
-          logFlow('capture_not_confirmed_proceeding_anyway');
-          setStatusText('Photo captured');
-        } else {
-          logFlow('capture_confirmed', { via_status: capturedViaStatus, via_ws: captureSignalRef.current > beforeSignal });
-          setStatusText('Photo captured');
-        }
+        const payload = await window.smartMirrorCamera!.capturePhoto!({ countdownSeconds: CAPTURE_COUNTDOWN_SECONDS });
+        const blob = await bridgeCaptureToBlob(payload);
+        logFlow('native_bridge_snapshot_captured', { bytes: blob.size, source: backendSourceLabel });
+        await uploadPersonImage(blob, `virtual-tryon-native-${Date.now()}.jpg`);
+        logFlow('native_bridge_snapshot_uploaded');
+        setStatusText('Photo captured');
       }
 
       setStatusText('Mapping digital twin...');
@@ -363,7 +335,7 @@ export function VirtualTryOnPage() {
   return (
     <main className="w-full h-screen bg-black relative">
       <div className="absolute inset-0 z-0">
-        <CameraView hidden={showResult} sourceMode={cameraSourceMode} backendSourceLabel={backendSourceLabel} />
+        <CameraView hidden={showResult} sourceMode="browser" backendSourceLabel={backendSourceLabel} />
 
         <AnimatePresence>
           {showResult && resultImage && (
