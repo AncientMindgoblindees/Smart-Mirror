@@ -164,60 +164,13 @@ export function VirtualTryOnPage() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const bridge = window.smartMirrorCamera;
+    setCameraSourceMode('browser');
+    setBackendSourceLabel('none');
     console.info('[virtual-tryon-camera]', {
+      decision: 'browser_camera_forced',
+      reason: 'native_h264_preview_disabled',
       electron_runtime: typeof __SMART_MIRROR_ELECTRON__ !== 'undefined' ? __SMART_MIRROR_ELECTRON__ : false,
-      bridge_present: !!bridge,
     });
-    const start = async () => {
-      if (!bridge) {
-        setCameraSourceMode('browser');
-        setBackendSourceLabel('none');
-        console.info('[virtual-tryon-camera]', { decision: 'browser_camera_fallback', reason: 'native_bridge_missing' });
-        return;
-      }
-      try {
-        const status = (await bridge.getStatus?.()) ?? { available: true, preferredSource: 'picamera2' };
-        if (cancelled) return;
-        if (!status.available) {
-          setCameraSourceMode('browser');
-          setBackendSourceLabel('none');
-          console.info('[virtual-tryon-camera]', { decision: 'browser_camera_fallback', reason: 'native_bridge_unavailable' });
-          return;
-        }
-        try {
-          await bridge.startPreview?.();
-        } catch (previewErr: unknown) {
-          console.warn('[virtual-tryon-camera]', {
-            decision: 'native_bridge_camera',
-            preview_start: 'failed_continuing_with_native_capture',
-            reason: previewErr instanceof Error ? previewErr.message : String(previewErr),
-          });
-        }
-        if (cancelled) return;
-        setCameraSourceMode('bridge');
-        setBackendSourceLabel(status.preferredSource ?? 'picamera2');
-        console.info('[virtual-tryon-camera]', {
-          decision: 'native_bridge_camera',
-          preferred_source: status.preferredSource ?? 'picamera2',
-          camera_api_route: 'bypassed',
-        });
-      } catch (error: unknown) {
-        if (cancelled) return;
-        setCameraSourceMode('browser');
-        setBackendSourceLabel('none');
-        console.warn('[virtual-tryon-camera]', {
-          decision: 'browser_camera_fallback',
-          reason: error instanceof Error ? error.message : String(error),
-        });
-      }
-    };
-    void start();
-    return () => {
-      cancelled = true;
-      void bridge?.stopPreview?.();
-    };
   }, []);
 
   const handleToggleFavoriteOutfit = useCallback(async () => {
