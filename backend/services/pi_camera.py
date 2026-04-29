@@ -6,6 +6,7 @@ import subprocess
 import threading
 import time
 import logging
+import importlib.util
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -122,6 +123,18 @@ class PiCameraAdapter:
             return None
         self._camera = cam
         return cam
+
+    def runtime_status(self) -> dict[str, str | bool]:
+        picamera2_available = importlib.util.find_spec("picamera2") is not None
+        rpicam_available = shutil.which("rpicam-still") is not None
+        backend_available = bool(picamera2_available or rpicam_available)
+        preferred_source = "picamera2" if picamera2_available else ("rpicam" if rpicam_available else "none")
+        return {
+            "backend_camera_available": backend_available,
+            "backend_camera_preferred_source": preferred_source,
+            "picamera2_available": picamera2_available,
+            "rpicam_available": rpicam_available,
+        }
 
     def _capture_with_rpicam_cli(self, target_path: Path, width: int, height: int) -> None:
         bin_name = shutil.which("rpicam-still")

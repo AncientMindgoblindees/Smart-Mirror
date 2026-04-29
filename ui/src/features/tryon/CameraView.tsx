@@ -5,19 +5,20 @@ import { getApiBase, getApiToken } from '@/config/backendOrigin';
 
 interface CameraViewProps {
   hidden?: boolean;
+  sourceMode: 'backend' | 'browser';
+  backendSourceLabel?: 'picamera2' | 'rpicam' | 'none' | string;
 }
 
-export default function CameraView({ hidden }: CameraViewProps) {
+export default function CameraView({ hidden, sourceMode, backendSourceLabel }: CameraViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
   const token = getApiToken();
   const src = `${getApiBase()}/camera/live?t=${Date.now()}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
 
   useEffect(() => {
-    if (!isLocalDev || hidden) {
+    if (sourceMode !== 'browser' || hidden) {
       if (videoRef.current) videoRef.current.srcObject = null;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -54,7 +55,7 @@ export default function CameraView({ hidden }: CameraViewProps) {
         streamRef.current = null;
       }
     };
-  }, [hidden, isLocalDev]);
+  }, [hidden, sourceMode]);
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden z-0">
@@ -85,7 +86,7 @@ export default function CameraView({ hidden }: CameraViewProps) {
         )}
       </AnimatePresence>
 
-      {!hidden && isLocalDev ? (
+      {!hidden && sourceMode === 'browser' ? (
         <video
           id="virtual-tryon-local-feed"
           ref={videoRef}
@@ -97,7 +98,7 @@ export default function CameraView({ hidden }: CameraViewProps) {
         />
       ) : null}
 
-      {!hidden && !isLocalDev ? (
+      {!hidden && sourceMode === 'backend' ? (
         <img
           src={src}
           className={`w-full h-full object-cover transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1]' : 'opacity-0'}`}
@@ -108,7 +109,7 @@ export default function CameraView({ hidden }: CameraViewProps) {
           }}
           onError={() => {
             setIsReady(false);
-            setError('RPICAM MJPEG feed unavailable. Check backend camera runtime.');
+            setError(`Backend camera feed unavailable (${backendSourceLabel || 'backend'}).`);
           }}
         />
       ) : null}

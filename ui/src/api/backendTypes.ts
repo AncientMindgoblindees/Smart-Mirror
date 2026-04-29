@@ -45,6 +45,10 @@ export interface CameraStatusOut {
   countdown_remaining: number;
   last_capture_id?: string | null;
   last_capture_at?: string | null;
+  backend_camera_available?: boolean;
+  backend_camera_preferred_source?: 'picamera2' | 'rpicam' | 'none' | string;
+  picamera2_available?: boolean;
+  rpicam_available?: boolean;
 }
 
 export interface CameraCaptureRequest {

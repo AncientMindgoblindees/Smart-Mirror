@@ -24,3 +24,7 @@ class CameraStatusOut(BaseModel):
     countdown_remaining: int
     last_capture_id: Optional[str] = None
     last_capture_at: Optional[datetime] = None
+    backend_camera_available: bool = False
+    backend_camera_preferred_source: str = "none"
+    picamera2_available: bool = False
+    rpicam_available: bool = False

@@ -38,11 +38,6 @@ function imageIdsFromSelection(selection: Record<string, FashionItem | null>): n
     .map((item) => item.sourceImageId);
 }
 
-function isLocalDevHost(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-}
-
 async function captureLocalWebcamBlob(): Promise<Blob> {
   const video = document.getElementById('virtual-tryon-local-feed') as HTMLVideoElement | null;
   if (!video || video.videoWidth <= 0 || video.videoHeight <= 0) {
@@ -86,6 +81,8 @@ export function VirtualTryOnPage() {
   const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string | null>('Loading catalog...');
   const [cameraPhase, setCameraPhase] = useState<'idle' | 'loading' | 'countdown' | 'captured' | 'generating' | 'error'>('idle');
+  const [cameraSourceMode, setCameraSourceMode] = useState<'backend' | 'browser'>('backend');
+  const [backendSourceLabel, setBackendSourceLabel] = useState<'picamera2' | 'rpicam' | 'none' | string>('none');
   const [countdownRemaining, setCountdownRemaining] = useState<number>(CAPTURE_COUNTDOWN_SECONDS);
   const [captureSignal, setCaptureSignal] = useState(0);
   const captureSignalRef = useRef(0);
@@ -162,6 +159,38 @@ export function VirtualTryOnPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const detectCameraRuntime = async () => {
+      try {
+        const status = await getCameraStatus();
+        if (cancelled) return;
+        const preferred = status.backend_camera_preferred_source || 'none';
+        const backendAvailable = status.backend_camera_available === true && preferred !== 'none';
+        setBackendSourceLabel(preferred);
+        setCameraSourceMode(backendAvailable ? 'backend' : 'browser');
+        console.info('[virtual-tryon-camera]', {
+          decision: backendAvailable ? 'backend_camera' : 'browser_camera_fallback',
+          backend_camera_preferred_source: preferred,
+          picamera2_available: status.picamera2_available ?? false,
+          rpicam_available: status.rpicam_available ?? false,
+        });
+      } catch (error: unknown) {
+        if (cancelled) return;
+        setBackendSourceLabel('none');
+        setCameraSourceMode('browser');
+        console.warn('[virtual-tryon-camera]', {
+          decision: 'browser_camera_fallback',
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+    void detectCameraRuntime();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleToggleFavoriteOutfit = useCallback(async () => {
     const ids = imageIdsFromSelection(selectedItems);
     if (!ids.length) {
@@ -209,8 +238,8 @@ export function VirtualTryOnPage() {
     try {
       const beforeSignal = captureSignalRef.current;
 
-      const localDev = isLocalDevHost();
-      if (!localDev) {
+      if (cameraSourceMode === 'backend') {
+        logFlow('backend_camera_capture_mode', { backend_source: backendSourceLabel });
         logFlow('camera_capture_request_start');
         await triggerCameraCapture({
           countdown_seconds: CAPTURE_COUNTDOWN_SECONDS,
@@ -219,7 +248,7 @@ export function VirtualTryOnPage() {
         });
         logFlow('camera_capture_request_accepted');
       } else {
-        logFlow('local_webcam_capture_mode');
+        logFlow('browser_camera_capture_mode');
       }
       setCameraPhase('countdown');
       localCountdownActiveRef.current = true;
@@ -232,7 +261,7 @@ export function VirtualTryOnPage() {
       localCountdownActiveRef.current = false;
       logFlow('local_countdown_complete');
 
-      if (localDev) {
+      if (cameraSourceMode === 'browser') {
         const blob = await captureLocalWebcamBlob();
         logFlow('local_webcam_snapshot_captured', { bytes: blob.size });
         await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
@@ -326,7 +355,7 @@ export function VirtualTryOnPage() {
       generateInFlightRef.current = false;
       logFlow('flow_finalized');
     }
-  }, [logFlow, selectedItems]);
+  }, [backendSourceLabel, cameraSourceMode, logFlow, selectedItems]);
 
   const fallbackImage = (Object.values(selectedItems).find((item) => item !== null) as FashionItem | undefined)?.image ?? null;
   const resultImage = resultImageUrl ?? fallbackImage;
@@ -334,7 +363,7 @@ export function VirtualTryOnPage() {
   return (
     <main className="w-full h-screen bg-black relative">
       <div className="absolute inset-0 z-0">
-        <CameraView hidden={showResult} />
+        <CameraView hidden={showResult} sourceMode={cameraSourceMode} backendSourceLabel={backendSourceLabel} />
 
         <AnimatePresence>
           {showResult && resultImage && (

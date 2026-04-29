@@ -29,12 +29,17 @@ class CameraCaptureState:
         self._task: Optional[asyncio.Task[None]] = None
 
     def as_dict(self) -> Dict[str, Any]:
+        runtime = pi_camera.runtime_status()
         return {
             "active": self.active,
             "booting": self.booting,
             "countdown_remaining": self.countdown_remaining,
             "last_capture_id": self.last_capture_id,
             "last_capture_at": self.last_capture_at,
+            "backend_camera_available": runtime["backend_camera_available"],
+            "backend_camera_preferred_source": runtime["backend_camera_preferred_source"],
+            "picamera2_available": runtime["picamera2_available"],
+            "rpicam_available": runtime["rpicam_available"],
         }
 
     async def start_capture(
