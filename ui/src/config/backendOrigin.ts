@@ -21,15 +21,24 @@ export function getApiBase(): string {
   return '/api';
 }
 
+export function getApiToken(): string {
+  return (import.meta.env.VITE_API_TOKEN ?? '').trim();
+}
+
 /** @param path - Absolute path, e.g. `/ws/buttons` */
 export function getWebSocketUrl(path: string): string {
   const normalized = path.startsWith('/') ? path : `/${path}`;
+  const token = getApiToken();
   const o = getConfiguredBackendOrigin();
   if (o) {
     const wsProto = o.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${wsProto}//${o.host}${normalized}`;
+    const url = new URL(`${wsProto}//${o.host}${normalized}`);
+    if (token) url.searchParams.set('token', token);
+    return url.toString();
   }
   const wsProto = globalThis.location?.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = globalThis.location?.host ?? 'localhost';
-  return `${wsProto}//${host}${normalized}`;
+  const url = new URL(`${wsProto}//${host}${normalized}`);
+  if (token) url.searchParams.set('token', token);
+  return url.toString();
 }

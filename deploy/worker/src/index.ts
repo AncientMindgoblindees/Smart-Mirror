@@ -110,13 +110,30 @@ function parseBearerToken(authHeader: string | null): string {
   return h.replace(/^Bearer\s+/i, "").trim();
 }
 
+function toBytes(input: string): Uint8Array {
+  return new TextEncoder().encode(input);
+}
+
+function timingSafeEquals(a: string, b: string): boolean {
+  const aBytes = toBytes(a);
+  const bBytes = toBytes(b);
+  if (aBytes.length !== bBytes.length) {
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i += 1) {
+    diff |= aBytes[i] ^ bBytes[i];
+  }
+  return diff === 0;
+}
+
 function isAuthorized(request: Request, env: Env): boolean {
   const token = parseBearerToken(request.headers.get("Authorization"));
   const expected = String(env.MIRROR_SYNC_TOKEN ?? "").trim();
   if (!token || !expected) {
     return false;
   }
-  return token === expected;
+  return timingSafeEquals(token, expected);
 }
 
 function sanitizeRow(input: unknown, schema: TableSchema): RowRecord {
@@ -235,12 +252,20 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
   const payload = (typeof body === "object" && body !== null ? body : {}) as {
     table?: string;
     rows?: unknown[];
+    mode?: string;
   };
   const table = String(payload.table || "");
   const rows = Array.isArray(payload.rows) ? payload.rows : [];
+  const mode = String(payload.mode || "upsert").toLowerCase();
   const schema = TABLE_SCHEMAS[table];
   if (!schema) {
     return json({ error: "invalid table", error_code: "INVALID_TABLE", table, op: "push" }, 400);
+  }
+  if (mode !== "upsert" && mode !== "replace") {
+    return json({ error: "invalid mode", error_code: "INVALID_MODE", table, op: "push" }, 400);
+  }
+  if (mode === "replace" && table !== "widget_config") {
+    return json({ error: "replace mode unsupported for table", error_code: "INVALID_MODE_TABLE", table, op: "push" }, 400);
   }
 
   const updatableColumns = schema.columns.filter((col) => col !== "id");
@@ -332,8 +357,59 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
     );
   }
 
+  if (mode === "replace" && table === "widget_config") {
+    try {
+      if (accepted_ids.length > 0) {
+        const placeholders = accepted_ids.map(() => "?").join(", ");
+        const pruneResult = await env.MIRROR_DB.prepare(
+          `DELETE FROM ${table} WHERE id NOT IN (${placeholders})`,
+        )
+          .bind(...accepted_ids)
+          .run();
+        if (pruneResult.success === false) {
+          return json(
+            {
+              error: "d1_replace_prune_failed",
+              error_code: "D1_REPLACE_PRUNE_FAILED",
+              table,
+              op: "push",
+              detail: pruneResult.error ?? pruneResult.meta ?? pruneResult,
+            },
+            500,
+          );
+        }
+      } else {
+        const wipeResult = await env.MIRROR_DB.prepare(`DELETE FROM ${table}`).run();
+        if (wipeResult.success === false) {
+          return json(
+            {
+              error: "d1_replace_wipe_failed",
+              error_code: "D1_REPLACE_WIPE_FAILED",
+              table,
+              op: "push",
+              detail: wipeResult.error ?? wipeResult.meta ?? wipeResult,
+            },
+            500,
+          );
+        }
+      }
+    } catch (err) {
+      return json(
+        {
+          error: "d1_replace_exception",
+          error_code: "D1_REPLACE_EXCEPTION",
+          table,
+          op: "push",
+          detail: String(err),
+        },
+        500,
+      );
+    }
+  }
+
   return json({
     table,
+    mode,
     accepted: insertedOrUpdated,
     skipped,
     accepted_ids,

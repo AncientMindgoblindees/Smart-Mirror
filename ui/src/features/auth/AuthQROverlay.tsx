@@ -8,10 +8,29 @@ import './auth-overlay.css';
 type Props = {
   pendingAuth: PendingAuth | null;
   onCancel: () => void;
+  autoDismissSeconds?: number;
 };
 
-export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel }) => {
+export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel, autoDismissSeconds = 30 }) => {
   const hasUserCode = Boolean(pendingAuth?.deviceCode.user_code?.trim());
+  const [secondsLeft, setSecondsLeft] = React.useState(autoDismissSeconds);
+
+  React.useEffect(() => {
+    if (!pendingAuth) return;
+    setSecondsLeft(autoDismissSeconds);
+    const intervalId = window.setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(intervalId);
+          void onCancel();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [pendingAuth, autoDismissSeconds, onCancel]);
+
   return (
     <AnimatePresence>
       {pendingAuth && (
@@ -63,7 +82,11 @@ export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel }) => {
               Or visit: <span>{pendingAuth.deviceCode.verification_uri}</span>
             </p>
 
-            <p className="auth-qr-waiting">Waiting for authorization...</p>
+            <p className="auth-qr-waiting">Waiting for authorization... ({secondsLeft}s)</p>
+
+            <button className="auth-qr-dismiss" onClick={onCancel} type="button">
+              Dismiss
+            </button>
           </motion.div>
         </motion.div>
       )}

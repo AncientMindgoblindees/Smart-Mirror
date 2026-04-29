@@ -17,6 +17,7 @@ export type MirrorInputActions = {
   toggleSleep: () => void;
   toggleDevPanel: () => void;
   dismissTryOnOverlay: () => void;
+  dismissAuthOverlay: () => void;
   getSleepMode: () => boolean;
   isInputBlocked?: () => boolean;
 };
@@ -56,6 +57,7 @@ export function useMirrorInput(actions: MirrorInputActions) {
       if (k === 'x' || k === 'X') {
         e.preventDefault();
         ref.current.dismissTryOnOverlay();
+        ref.current.dismissAuthOverlay();
       }
     };
 
@@ -98,6 +100,7 @@ export function useMirrorInput(actions: MirrorInputActions) {
               break;
             case 'dismiss_tryon':
               ref.current.dismissTryOnOverlay();
+              ref.current.dismissAuthOverlay();
               break;
             default:
               break;

@@ -7,9 +7,11 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, List
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 
+from backend import config
 from backend.schemas.auth import AuthStatusOut, DeviceCodeOut, ProviderStatusOut
 from backend.services.auth_manager import auth_manager
 
@@ -31,7 +33,11 @@ async def start_login(provider: str, request: Request) -> Any:
         if provider == "google":
             configured_base = os.getenv("OAUTH_PUBLIC_BASE_URL", "").strip()
             base = configured_base or str(request.base_url).rstrip("/")
-            start_url = f"{base}/api/oauth/google/start?source=qr"
+            token = (os.getenv("MIRROR_API_TOKEN") or config.MIRROR_SYNC_TOKEN or "").strip()
+            query = {"source": "qr"}
+            if token:
+                query["token"] = token
+            start_url = f"{base}/api/oauth/google/start?{urlencode(query)}"
             dc = await auth_manager.start_web_redirect_login("google", start_url)
         else:
             dc = await auth_manager.start_login(provider)

@@ -125,21 +125,27 @@ class D1SyncService:
 
     async def push(self, table_name: str) -> None:
         model = self.TABLE_MODELS[table_name]
+        push_mode = "upsert"
         db: Session = SessionLocal()
         try:
-            if hasattr(model, "updated_at"):
+            if table_name == "widget_config":
+                # Replace mode propagates deletions by sending full current widget set.
+                payload_rows = [self._serialize_row(table_name, row) for row in db.query(model).all()]
+                push_mode = "replace"
+            elif hasattr(model, "updated_at"):
                 dirty_rows = (
                     db.query(model)
                     .filter(or_(model.synced_at.is_(None), model.updated_at > model.synced_at))
                     .all()
                 )
+                payload_rows = [self._serialize_row(table_name, row) for row in dirty_rows]
             else:
                 dirty_rows = (
                     db.query(model)
                     .filter(or_(model.synced_at.is_(None), model.created_at > model.synced_at))
                     .all()
                 )
-            payload_rows = [self._serialize_row(table_name, row) for row in dirty_rows]
+                payload_rows = [self._serialize_row(table_name, row) for row in dirty_rows]
         finally:
             db.close()
 
@@ -150,7 +156,7 @@ class D1SyncService:
             "POST",
             "/sync/push",
             params=None,
-            json_body={"table": table_name, "rows": payload_rows},
+            json_body={"table": table_name, "rows": payload_rows, "mode": push_mode},
         )
         if response is None:
             logger.warning("D1 push failed for %s: no response", table_name)

@@ -11,13 +11,15 @@ import logging
 import os
 import secrets
 import time
+from html import escape
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from backend.api.security import _parse_bearer, _expected_token
 from backend.services.auth_manager import auth_manager
 from backend.services.providers.base import TokenResponse
 from backend.services.providers.google_provider import GOOGLE_WEB_SCOPES
@@ -28,6 +30,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/oauth", tags=["oauth"])
 
 STATE_TTL_SEC = 600.0
+MAX_PENDING_STATES = 2048
 _pending_state: dict[str, tuple[str, float, str]] = {}
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -43,6 +46,12 @@ def _cleanup_state() -> None:
 
 def _new_state(provider: str, source: str = "browser") -> str:
     _cleanup_state()
+    if len(_pending_state) >= MAX_PENDING_STATES:
+        # Drop oldest expirations first to bound memory under abuse.
+        for key, _ in sorted(_pending_state.items(), key=lambda item: item[1][1])[: max(1, len(_pending_state) // 8)]:
+            _pending_state.pop(key, None)
+    if len(_pending_state) >= MAX_PENDING_STATES:
+        raise HTTPException(status_code=429, detail="Too many pending OAuth states")
     tok = secrets.token_urlsafe(32)
     _pending_state[tok] = (provider, time.monotonic() + STATE_TTL_SEC, source)
     return tok
@@ -66,10 +75,12 @@ def _public_base(request: Request) -> str:
 
 
 def _success_html(title: str, body: str) -> HTMLResponse:
+    safe_title = escape(title, quote=True)
+    safe_body = escape(body, quote=True)
     return HTMLResponse(
-        f"""<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width\"/><title>{title}</title>
+        f"""<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width\"/><title>{safe_title}</title>
 <style>body{{font-family:system-ui,sans-serif;background:#111;color:#eee;max-width:28rem;margin:3rem auto;padding:1.5rem;text-align:center;}}</style></head>
-<body><h1>{title}</h1><p>{body}</p></body></html>"""
+<body><h1>{safe_title}</h1><p>{safe_body}</p></body></html>"""
     )
 
 
@@ -86,7 +97,19 @@ def _post_auth_redirect_url() -> str | None:
 
 
 @router.get("/google/start")
-async def oauth_google_start(request: Request, source: str | None = None) -> RedirectResponse:
+async def oauth_google_start(
+    request: Request,
+    source: str | None = None,
+    token: str | None = Query(default=None),
+    authorization: str | None = Header(default=None),
+) -> RedirectResponse:
+    expected = _expected_token()
+    provided = (token or "").strip() or _parse_bearer(authorization)
+    if not expected:
+        raise HTTPException(status_code=503, detail="MIRROR_API_TOKEN is not configured")
+    if not (provided and provided == expected):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     client_id, _ = get_google_web_oauth_credentials()
     if not client_id:
         raise HTTPException(

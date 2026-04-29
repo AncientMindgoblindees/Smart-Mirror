@@ -8,6 +8,14 @@ import subprocess
 from backend import config
 
 logger = logging.getLogger(__name__)
+_DEFAULT_SHUTDOWN_CMD = "sudo /sbin/shutdown -h now"
+
+
+def _allowed_shutdown_commands() -> set[str]:
+    configured = os.getenv("PI_ALLOWED_SHUTDOWN_COMMANDS", "").strip()
+    if configured:
+        return {item.strip() for item in configured.split(",") if item.strip()}
+    return {_DEFAULT_SHUTDOWN_CMD}
 
 
 def request_pi_shutdown(source: str) -> bool:
@@ -26,6 +34,11 @@ def request_pi_shutdown(source: str) -> bool:
     cmd = shlex.split(config.PI_SHUTDOWN_COMMAND.strip())
     if not cmd:
         logger.error("pi_shutdown_blocked: PI_SHUTDOWN_COMMAND is empty (source=%s)", source)
+        return False
+
+    command_text = " ".join(cmd)
+    if command_text not in _allowed_shutdown_commands():
+        logger.error("pi_shutdown_blocked: command not in PI_ALLOWED_SHUTDOWN_COMMANDS (source=%s)", source)
         return False
 
     try:
