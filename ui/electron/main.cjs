@@ -174,41 +174,6 @@ function captureViaPicamera2(targetPath) {
   });
 }
 
-function capturePreviewViaRpicam(targetPath) {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("rpicam-still", [
-      "-n",
-      "--immediate",
-      "--width",
-      String(PREVIEW_WIDTH),
-      "--height",
-      String(PREVIEW_HEIGHT),
-      "--quality",
-      String(PREVIEW_QUALITY),
-      "-o",
-      targetPath,
-    ]);
-    let err = "";
-    proc.stderr.on("data", (d) => (err += String(d)));
-    proc.on("exit", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(err || `rpicam preview failed (${code})`));
-    });
-  });
-}
-
-function capturePreviewViaPicamera2(targetPath) {
-  return new Promise((resolve, reject) => {
-    const script = path.join(__dirname, "picamera_preview.py");
-    const py = spawn("python3", [script, targetPath, String(PREVIEW_WIDTH), String(PREVIEW_HEIGHT)], { stdio: ["ignore", "pipe", "pipe"] });
-    let err = "";
-    py.stderr.on("data", (d) => (err += String(d)));
-    py.on("exit", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(err || `picamera2 preview failed (${code})`));
-    });
-  });
-}
 
 ipcMain.handle("smartMirrorCamera:getStatus", async () => {
   const source = preferredSource();
@@ -235,18 +200,6 @@ ipcMain.handle("smartMirrorCamera:capturePhoto", async () => {
   const outPath = path.join(os.tmpdir(), `smart-mirror-capture-${Date.now()}.jpg`);
   if (source === "picamera2") await captureViaPicamera2(outPath);
   else await captureViaRpicam(outPath);
-  const file = fs.readFileSync(outPath);
-  fs.rmSync(outPath, { force: true });
-  return file;
-});
-
-ipcMain.handle("smartMirrorCamera:getPreviewFrame", async () => {
-  const source = preferredSource();
-  if (source === "none") throw new Error("No native Pi camera runtime available");
-  if (previewProc && latestPreviewFrame) return latestPreviewFrame;
-  const outPath = path.join(os.tmpdir(), `smart-mirror-preview-${Date.now()}.jpg`);
-  if (source === "picamera2") await capturePreviewViaPicamera2(outPath);
-  else await capturePreviewViaRpicam(outPath);
   const file = fs.readFileSync(outPath);
   fs.rmSync(outPath, { force: true });
   return file;

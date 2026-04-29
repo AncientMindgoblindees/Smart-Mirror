@@ -7,6 +7,5 @@ contextBridge.exposeInMainWorld("smartMirrorCamera", {
   startPreview: async () => ipcRenderer.invoke("smartMirrorCamera:startPreview"),
   stopPreview: async () => ipcRenderer.invoke("smartMirrorCamera:stopPreview"),
   capturePhoto: async (opts) => ipcRenderer.invoke("smartMirrorCamera:capturePhoto", opts),
-  getPreviewFrame: async () => ipcRenderer.invoke("smartMirrorCamera:getPreviewFrame"),
   getPreviewStreamUrl: async () => ipcRenderer.invoke("smartMirrorCamera:getPreviewStreamUrl"),
 });
