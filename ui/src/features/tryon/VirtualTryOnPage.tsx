@@ -76,6 +76,7 @@ export function VirtualTryOnPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
+  const [capturedImageUrl, setCapturedImageUrl] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string | null>('Loading catalog...');
   const [cameraPhase, setCameraPhase] = useState<'idle' | 'loading' | 'countdown' | 'captured' | 'generating' | 'error'>('idle');
   const [countdownRemaining, setCountdownRemaining] = useState<number>(CAPTURE_COUNTDOWN_SECONDS);
@@ -149,6 +150,12 @@ export function VirtualTryOnPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (capturedImageUrl?.startsWith('blob:')) URL.revokeObjectURL(capturedImageUrl);
+    };
+  }, [capturedImageUrl]);
 
   useEffect(() => {
     console.info('[virtual-tryon-camera]', {
@@ -266,6 +273,46 @@ export function VirtualTryOnPage() {
     }
   }, [logFlow, selectedItems]);
 
+  const handleTakePicture = useCallback(async () => {
+    if (generateInFlightRef.current) return;
+    generateInFlightRef.current = true;
+    setIsGenerating(true);
+    setCameraPhase('loading');
+    setCountdownRemaining(CAPTURE_COUNTDOWN_SECONDS);
+    setStatusText('Capturing image...');
+    try {
+      for (let remaining = CAPTURE_COUNTDOWN_SECONDS; remaining > 0; remaining -= 1) {
+        setCameraPhase('countdown');
+        setCountdownRemaining(remaining);
+        setStatusText(`Taking photo in ${remaining}...`);
+        await sleep(1000);
+      }
+      const blob = await captureLocalWebcamBlob();
+      await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
+      if (capturedImageUrl?.startsWith('blob:')) URL.revokeObjectURL(capturedImageUrl);
+      setCapturedImageUrl(URL.createObjectURL(blob));
+      setStatusText('Picture captured');
+      setCameraPhase('captured');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Take picture failed';
+      setStatusText(message);
+      setCameraPhase('error');
+    } finally {
+      setIsGenerating(false);
+      generateInFlightRef.current = false;
+    }
+  }, [capturedImageUrl]);
+
+  const handleViewPicture = useCallback(() => {
+    if (!capturedImageUrl) {
+      setStatusText('No captured picture yet');
+      return;
+    }
+    setResultImageUrl(capturedImageUrl);
+    setShowResult(true);
+    setStatusText('Viewing captured picture');
+  }, [capturedImageUrl]);
+
   const fallbackImage = (Object.values(selectedItems).find((item) => item !== null) as FashionItem | undefined)?.image ?? null;
   const resultImage = resultImageUrl ?? fallbackImage;
 
@@ -329,6 +376,9 @@ export function VirtualTryOnPage() {
         favoriteOutfits={favoriteOutfits}
         onToggleFavorite={handleToggleFavoriteOutfit}
         onLoadFavorite={handleLoadFavorite}
+        onTakePicture={handleTakePicture}
+        onViewPicture={handleViewPicture}
+        canViewPicture={!!capturedImageUrl}
         onGenerate={handleGenerate}
         onExit={() => navigate('/')}
         statusText={statusText}

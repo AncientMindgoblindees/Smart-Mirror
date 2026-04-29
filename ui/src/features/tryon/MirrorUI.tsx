@@ -11,6 +11,9 @@ interface MirrorUIProps {
   favoriteOutfits: Record<string, FashionItem | null>[];
   onToggleFavorite: () => void;
   onLoadFavorite: (outfit: Record<string, FashionItem | null>) => void;
+  onTakePicture: () => void;
+  onViewPicture: () => void;
+  canViewPicture: boolean;
   onGenerate: () => void;
   onExit: () => void;
   statusText?: string | null;
@@ -30,6 +33,9 @@ export default function MirrorUI({
   favoriteOutfits,
   onToggleFavorite,
   onLoadFavorite,
+  onTakePicture,
+  onViewPicture,
+  canViewPicture,
   onGenerate,
   onExit,
   statusText,
@@ -60,7 +66,7 @@ export default function MirrorUI({
 
       let listSize = 0;
       if (view === 'CATEGORIES') {
-        listSize = CATEGORIES.length + 4; // save + wardrobe + generate + exit
+        listSize = CATEGORIES.length + 6; // save + wardrobe + take picture + view picture + generate + exit
       } else if (view === 'ITEMS') {
         listSize = filteredItems.length + 1;
       } else {
@@ -86,8 +92,12 @@ export default function MirrorUI({
               setView('WARDROBE');
               setActiveIndex(0);
             } else if (activeIndex === CATEGORIES.length + 2) {
-              onGenerate();
+              onTakePicture();
             } else if (activeIndex === CATEGORIES.length + 3) {
+              onViewPicture();
+            } else if (activeIndex === CATEGORIES.length + 4) {
+              onGenerate();
+            } else if (activeIndex === CATEGORIES.length + 5) {
               onExit();
             }
           } else if (view === 'ITEMS') {
@@ -125,6 +135,8 @@ export default function MirrorUI({
     onExit,
     onGenerate,
     onLoadFavorite,
+    onTakePicture,
+    onViewPicture,
     onSelectItem,
     onToggleFavorite,
     selectedCategory,
@@ -212,14 +224,28 @@ export default function MirrorUI({
                   <motion.div
                     animate={{ opacity: activeIndex === CATEGORIES.length + 2 ? 1 : 0.3, x: activeIndex === CATEGORIES.length + 2 ? -10 : 0 }}
                     transition={{ duration: 0.15 }}
-                    className={`px-8 py-4 rounded-xl border-2 transition-all font-mono text-xs tracking-[0.4em] uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 2 ? 'border-blue-500 bg-blue-500/20 text-white shadow-2xl' : 'border-white/5 text-white/30'}`}
+                    className={`px-8 py-3 rounded-xl border-2 transition-all font-mono text-[10px] tracking-widest uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 2 ? 'border-white text-white' : 'border-white/5 text-white/30'}`}
                   >
-                    GENERATE TRY-ON
+                    TAKE PICTURE
                   </motion.div>
                   <motion.div
                     animate={{ opacity: activeIndex === CATEGORIES.length + 3 ? 1 : 0.3, x: activeIndex === CATEGORIES.length + 3 ? -10 : 0 }}
                     transition={{ duration: 0.15 }}
-                    className={`px-8 py-3 rounded-xl border-2 transition-all font-mono text-[10px] tracking-[0.2em] uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 3 ? 'border-white text-white' : 'border-white/5 text-white/30'}`}
+                    className={`px-8 py-3 rounded-xl border-2 transition-all font-mono text-[10px] tracking-widest uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 3 ? 'border-white text-white' : 'border-white/5 text-white/30'}`}
+                  >
+                    {canViewPicture ? 'VIEW PICTURE' : 'VIEW PICTURE (LOCKED)'}
+                  </motion.div>
+                  <motion.div
+                    animate={{ opacity: activeIndex === CATEGORIES.length + 4 ? 1 : 0.3, x: activeIndex === CATEGORIES.length + 4 ? -10 : 0 }}
+                    transition={{ duration: 0.15 }}
+                    className={`px-8 py-4 rounded-xl border-2 transition-all font-mono text-xs tracking-[0.4em] uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 4 ? 'border-blue-500 bg-blue-500/20 text-white shadow-2xl' : 'border-white/5 text-white/30'}`}
+                  >
+                    GENERATE TRY-ON
+                  </motion.div>
+                  <motion.div
+                    animate={{ opacity: activeIndex === CATEGORIES.length + 5 ? 1 : 0.3, x: activeIndex === CATEGORIES.length + 5 ? -10 : 0 }}
+                    transition={{ duration: 0.15 }}
+                    className={`px-8 py-3 rounded-xl border-2 transition-all font-mono text-[10px] tracking-[0.2em] uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 5 ? 'border-white text-white' : 'border-white/5 text-white/30'}`}
                   >
                     EXIT TO MIRROR
                   </motion.div>
@@ -298,4 +324,3 @@ export default function MirrorUI({
     </div>
   );
 }
-
