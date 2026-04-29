@@ -18,6 +18,7 @@ import type {
   OutfitGenerateResponse,
   PersonImageRead,
 } from './backendTypes';
+import { getApiBase, getApiToken } from '@/config/backendOrigin';
 import { withQuery } from './endpoints';
 import { jsonRequest } from './httpClient';
 
@@ -82,6 +83,23 @@ export function generateOutfitTryOn(payload: OutfitGenerateRequest): Promise<Out
 
 export function getPersonImages(): Promise<PersonImageRead[]> {
   return jsonRequest<PersonImageRead[]>('/tryon/person-image');
+}
+
+export async function uploadPersonImage(file: Blob, filename = 'webcam-capture.jpg'): Promise<PersonImageRead> {
+  const form = new FormData();
+  form.append('file', file, filename);
+  const token = getApiToken();
+  const res = await fetch(`${getApiBase()}/tryon/person-image`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: form,
+  });
+  if (!res.ok) {
+    throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<PersonImageRead>;
 }
 
 export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ status: string }> {

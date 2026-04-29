@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Camera, ChevronDown, ChevronUp, Heart, Moon, Palette, Power, QrCode, Shirt, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import {
   generateOutfitTryOn,
   getClothingItems,
@@ -155,6 +156,7 @@ function mockClothingItems(): ClothingItemRead[] {
 }
 
 const OUTFIT_FAVORITES_STORAGE_KEY = 'mirror:outfit-favorites';
+const THEME_CACHE_SESSION_KEY = 'mirror:theme-selection:session';
 const TRYON_MAX_GENERATE_ATTEMPTS = 2; // initial attempt + 1 retry
 
 function readDevPanelInitial(): boolean {
@@ -183,6 +185,26 @@ function summarizeCameraError(message: string): string {
   const details = [mediaText, backendText].filter(Boolean).join(' | ');
   if (details) return `Camera busy (${details})`;
   return 'Camera busy (owned by another process)';
+}
+
+function readThemeSessionCache(): { widgetTheme: string; backgroundTheme: string } | null {
+  try {
+    const raw = sessionStorage.getItem(THEME_CACHE_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { widgetTheme?: string; backgroundTheme?: string };
+    if (!parsed.widgetTheme || !parsed.backgroundTheme) return null;
+    return { widgetTheme: parsed.widgetTheme, backgroundTheme: parsed.backgroundTheme };
+  } catch {
+    return null;
+  }
+}
+
+function writeThemeSessionCache(widgetTheme: string, backgroundTheme: string): void {
+  try {
+    sessionStorage.setItem(THEME_CACHE_SESSION_KEY, JSON.stringify({ widgetTheme, backgroundTheme }));
+  } catch {
+    /* ignore */
+  }
 }
 
 function readOutfitFavoritesInitial(): OutfitFavoriteSnapshot[] {
@@ -313,6 +335,7 @@ const OUTFIT_FAVORITES_BACK_ID = 'outfit_favorites:back';
 const OUTFIT_FAVORITES_EXIT_ID = 'outfit_favorites:exit';
 
 export default function MirrorApp() {
+  const navigate = useNavigate();
   const { widgets, setWidgets } = useWidgetPersistence();
   const {
     showCamera,
@@ -403,15 +426,23 @@ export default function MirrorApp() {
     [],
   );
   useEffect(() => {
+    const cachedTheme = readThemeSessionCache();
+    if (cachedTheme) {
+      setSelectedWidgetThemeId(cachedTheme.widgetTheme);
+      setSelectedBackgroundThemeId(cachedTheme.backgroundTheme);
+    }
     void getUserSettings()
       .then((settings) => {
         const parsed = parseThemeSelection(settings.theme);
         setSelectedWidgetThemeId(parsed.widgetTheme);
         setSelectedBackgroundThemeId(parsed.backgroundTheme);
+        writeThemeSessionCache(parsed.widgetTheme, parsed.backgroundTheme);
       })
       .catch(() => {
-        setSelectedWidgetThemeId('glass-cyan');
-        setSelectedBackgroundThemeId('noir');
+        if (!cachedTheme) {
+          setSelectedWidgetThemeId('glass-cyan');
+          setSelectedBackgroundThemeId('noir');
+        }
       });
   }, []);
   useEffect(() => {
@@ -1116,6 +1147,7 @@ export default function MirrorApp() {
               const parsed = parseThemeSelection(updated.theme);
               setSelectedWidgetThemeId(parsed.widgetTheme);
               setSelectedBackgroundThemeId(parsed.backgroundTheme);
+              writeThemeSessionCache(parsed.widgetTheme, parsed.backgroundTheme);
               logMenu('theme_widget_selected', { widgetTheme: parsed.widgetTheme });
             } catch (error: unknown) {
               const message = error instanceof Error ? error.message : 'Unknown error';
@@ -1151,6 +1183,7 @@ export default function MirrorApp() {
               const parsed = parseThemeSelection(updated.theme);
               setSelectedWidgetThemeId(parsed.widgetTheme);
               setSelectedBackgroundThemeId(parsed.backgroundTheme);
+              writeThemeSessionCache(parsed.widgetTheme, parsed.backgroundTheme);
               logMenu('theme_background_selected', { backgroundTheme: parsed.backgroundTheme });
             } catch (error: unknown) {
               const message = error instanceof Error ? error.message : 'Unknown error';
@@ -1297,12 +1330,7 @@ export default function MirrorApp() {
         return;
       }
       if (actionId === 'outfit_try_on') {
-        if (!clothingItems.length && !clothingLoading) {
-          void loadClothingCatalog();
-        }
-        void refreshLatestPersonImage();
-        setLayerRef.current('outfit_panel', { resetIndex: true });
-        setTryOnStatus((prev) => prev ?? 'Select clothing, then generate virtual try-on');
+        navigate('/virtual-try-on');
         return;
       }
       if (actionId === 'randomize_widgets') {
@@ -1397,6 +1425,7 @@ export default function MirrorApp() {
       runSelectedOutfitTryOn,
       saveSelectedOutfitAsFavorite,
       shuffleOutfitSelection,
+      navigate,
       initiateLogin,
       disconnectGoogle,
       setWidgets,

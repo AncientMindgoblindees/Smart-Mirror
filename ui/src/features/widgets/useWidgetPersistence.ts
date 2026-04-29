@@ -18,7 +18,7 @@ export function useWidgetPersistence(): {
   ready: boolean;
   serverConnected: boolean;
 } {
-  const [widgets, setWidgets] = useState<WidgetConfig[]>(INITIAL_WIDGETS);
+  const [widgets, setWidgets] = useState<WidgetConfig[]>(() => loadWidgetCache() ?? INITIAL_WIDGETS);
   const [ready, setReady] = useState(false);
   const [serverConnected, setServerConnected] = useState(false);
   const lastPutSig = useRef('');
@@ -54,6 +54,7 @@ export function useWidgetPersistence(): {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Instant hydration already happened from local cache via initial state.
       try {
         const [settings, list] = await Promise.all([getUserSettings(), getWidgets()]);
         if (cancelled) return;
@@ -64,7 +65,6 @@ export function useWidgetPersistence(): {
         setServerConnected(false);
         const cached = loadWidgetCache();
         if (cached) {
-          setWidgets(cached);
           lastPutSig.current = signatureFromWidgets(cached);
           lastServerFingerprintRef.current = '';
         }

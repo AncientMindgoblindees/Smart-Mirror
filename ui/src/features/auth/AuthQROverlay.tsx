@@ -13,23 +13,45 @@ type Props = {
 
 export const AuthQROverlay: React.FC<Props> = ({ pendingAuth, onCancel, autoDismissSeconds = 30 }) => {
   const hasUserCode = Boolean(pendingAuth?.deviceCode.user_code?.trim());
+  const onCancelRef = React.useRef(onCancel);
+  onCancelRef.current = onCancel;
   const [secondsLeft, setSecondsLeft] = React.useState(autoDismissSeconds);
 
   React.useEffect(() => {
     if (!pendingAuth) return;
-    setSecondsLeft(autoDismissSeconds);
+    const initial = Math.max(
+      1,
+      Math.min(
+        Number.isFinite(pendingAuth.deviceCode.expires_in) ? pendingAuth.deviceCode.expires_in : autoDismissSeconds,
+        autoDismissSeconds,
+      ),
+    );
+    setSecondsLeft(initial);
     const intervalId = window.setInterval(() => {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           window.clearInterval(intervalId);
-          void onCancel();
+          void onCancelRef.current();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => window.clearInterval(intervalId);
-  }, [pendingAuth, autoDismissSeconds, onCancel]);
+  }, [pendingAuth, autoDismissSeconds]);
+
+  React.useEffect(() => {
+    if (!pendingAuth) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === 'Escape' || event.key === 'x' || event.key === 'X') {
+        event.preventDefault();
+        event.stopPropagation();
+        void onCancelRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [pendingAuth]);
 
   return (
     <AnimatePresence>
