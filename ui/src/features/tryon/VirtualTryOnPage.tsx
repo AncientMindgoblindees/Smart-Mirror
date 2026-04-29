@@ -166,6 +166,10 @@ export function VirtualTryOnPage() {
   useEffect(() => {
     let cancelled = false;
     const bridge = window.smartMirrorCamera;
+    console.info('[virtual-tryon-camera]', {
+      electron_runtime: typeof __SMART_MIRROR_ELECTRON__ !== 'undefined' ? __SMART_MIRROR_ELECTRON__ : false,
+      bridge_present: !!bridge,
+    });
     const start = async () => {
       if (!bridge) {
         setCameraSourceMode('browser');

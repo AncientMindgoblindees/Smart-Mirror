@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+contextBridge.exposeInMainWorld("__SMART_MIRROR_ELECTRON__", true);
+
 contextBridge.exposeInMainWorld("smartMirrorCamera", {
   getStatus: async () => ipcRenderer.invoke("smartMirrorCamera:getStatus"),
   startPreview: async () => ipcRenderer.invoke("smartMirrorCamera:startPreview"),

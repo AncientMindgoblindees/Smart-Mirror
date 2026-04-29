@@ -9,6 +9,14 @@ const DEV_URL = process.env.SMART_MIRROR_UI_URL || "http://127.0.0.1:5173";
 
 let mainWindow = null;
 
+if (process.platform === "linux") {
+  // Avoid GBM/Ozone GPU crashes on Pi images missing matching Mesa/GBM stack.
+  app.commandLine.appendSwitch("disable-gpu");
+  app.commandLine.appendSwitch("disable-software-rasterizer");
+  app.commandLine.appendSwitch("in-process-gpu");
+  app.commandLine.appendSwitch("use-gl", "swiftshader");
+}
+
 function findCommand(cmd) {
   const probe = process.platform === "win32" ? "where" : "which";
   const result = spawnSync(probe, [cmd], { encoding: "utf8" });

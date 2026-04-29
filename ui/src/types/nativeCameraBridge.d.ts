@@ -1,6 +1,8 @@
 export {};
 
 declare global {
+  const __SMART_MIRROR_ELECTRON__: boolean | undefined;
+
   interface SmartMirrorCameraBridge {
     getStatus?: () => Promise<{
       available: boolean;
