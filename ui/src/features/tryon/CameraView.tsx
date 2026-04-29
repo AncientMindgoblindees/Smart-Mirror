@@ -29,11 +29,24 @@ export default function CameraView({ hidden, sourceMode, backendSourceLabel }: C
     const start = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } },
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1440 },
+            height: { ideal: 2560 },
+            aspectRatio: { ideal: 9 / 16 },
+          } as MediaTrackConstraints,
         });
         if (cancelled) {
           stream.getTracks().forEach((track) => track.stop());
           return;
+        }
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          const caps = track.getCapabilities?.() as MediaTrackCapabilities & { zoom?: { min?: number; max?: number } };
+          if (caps?.zoom) {
+            const minZoom = typeof caps.zoom.min === 'number' ? caps.zoom.min : 1;
+            await track.applyConstraints({ advanced: [{ zoom: Math.max(1, minZoom) } as MediaTrackConstraintSet] }).catch(() => {});
+          }
         }
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
@@ -111,7 +124,7 @@ export default function CameraView({ hidden, sourceMode, backendSourceLabel }: C
           autoPlay
           playsInline
           muted
-          className={`w-full h-full object-cover transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1]' : 'opacity-0'}`}
+          className={`w-full h-full object-contain bg-black transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1]' : 'opacity-0'}`}
           aria-label="Local webcam feed"
         />
       ) : null}
