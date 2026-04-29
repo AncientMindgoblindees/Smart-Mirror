@@ -5,9 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:electron": "node ./electron/dev-runner.cjs",
     "build": "tsc && vite build",
-    "build:electron": "npm run build && node ./electron/package-note.cjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run"
@@ -33,7 +31,6 @@
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^6.0.1",
-    "electron": "^36.3.2",
     "eslint": "^9.18.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "globals": "^15.14.0",

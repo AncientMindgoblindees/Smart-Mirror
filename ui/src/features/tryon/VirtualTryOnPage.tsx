@@ -51,17 +51,6 @@ async function captureLocalWebcamBlob(): Promise<Blob> {
   return blob;
 }
 
-async function bridgeCaptureToBlob(payload: Blob | string | Uint8Array): Promise<Blob> {
-  if (payload instanceof Blob) return payload;
-  if (typeof payload === 'string') {
-    const res = await fetch(payload);
-    if (!res.ok) throw new Error('Native camera returned invalid data URL');
-    const blob = await res.blob();
-    return blob;
-  }
-  return new Blob([payload], { type: 'image/jpeg' });
-}
-
 export function VirtualTryOnPage() {
   const perfZeroRef = useRef<number>(performance.now());
   const logFlow = useCallback((event: string, details?: Record<string, unknown>) => {
@@ -89,8 +78,6 @@ export function VirtualTryOnPage() {
   const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string | null>('Loading catalog...');
   const [cameraPhase, setCameraPhase] = useState<'idle' | 'loading' | 'countdown' | 'captured' | 'generating' | 'error'>('idle');
-  const [cameraSourceMode, setCameraSourceMode] = useState<'bridge' | 'browser'>('browser');
-  const [backendSourceLabel, setBackendSourceLabel] = useState<'picamera2' | 'rpicam' | 'none' | string>('none');
   const [countdownRemaining, setCountdownRemaining] = useState<number>(CAPTURE_COUNTDOWN_SECONDS);
   const localCountdownActiveRef = useRef(false);
   const generateInFlightRef = useRef(false);
@@ -164,12 +151,9 @@ export function VirtualTryOnPage() {
   }, []);
 
   useEffect(() => {
-    setCameraSourceMode('browser');
-    setBackendSourceLabel('none');
     console.info('[virtual-tryon-camera]', {
       decision: 'browser_camera_forced',
-      reason: 'native_h264_preview_disabled',
-      electron_runtime: typeof __SMART_MIRROR_ELECTRON__ !== 'undefined' ? __SMART_MIRROR_ELECTRON__ : false,
+      reason: 'chromium_mode',
     });
   }, []);
 
@@ -218,10 +202,7 @@ export function VirtualTryOnPage() {
     setCameraPhase('loading');
     setCountdownRemaining(CAPTURE_COUNTDOWN_SECONDS);
     try {
-      const preferBridgeCapture = cameraSourceMode === 'bridge' && !!window.smartMirrorCamera?.capturePhoto;
-      logFlow(preferBridgeCapture ? 'native_bridge_capture_mode' : 'browser_camera_capture_mode', {
-        source: preferBridgeCapture ? backendSourceLabel : 'browser',
-      });
+      logFlow('browser_camera_capture_mode');
       setCameraPhase('countdown');
       localCountdownActiveRef.current = true;
       for (let remaining = CAPTURE_COUNTDOWN_SECONDS; remaining > 0; remaining -= 1) {
@@ -233,20 +214,11 @@ export function VirtualTryOnPage() {
       localCountdownActiveRef.current = false;
       logFlow('local_countdown_complete');
 
-      if (!preferBridgeCapture) {
-        const blob = await captureLocalWebcamBlob();
-        logFlow('local_webcam_snapshot_captured', { bytes: blob.size });
-        await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
-        logFlow('local_webcam_snapshot_uploaded');
-        setStatusText('Photo captured');
-      } else {
-        const payload = await window.smartMirrorCamera!.capturePhoto!({ countdownSeconds: CAPTURE_COUNTDOWN_SECONDS });
-        const blob = await bridgeCaptureToBlob(payload);
-        logFlow('native_bridge_snapshot_captured', { bytes: blob.size, source: backendSourceLabel });
-        await uploadPersonImage(blob, `virtual-tryon-native-${Date.now()}.jpg`);
-        logFlow('native_bridge_snapshot_uploaded');
-        setStatusText('Photo captured');
-      }
+      const blob = await captureLocalWebcamBlob();
+      logFlow('local_webcam_snapshot_captured', { bytes: blob.size });
+      await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
+      logFlow('local_webcam_snapshot_uploaded');
+      setStatusText('Photo captured');
 
       setStatusText('Mapping digital twin...');
       setCameraPhase('generating');
@@ -292,7 +264,7 @@ export function VirtualTryOnPage() {
       generateInFlightRef.current = false;
       logFlow('flow_finalized');
     }
-  }, [backendSourceLabel, cameraSourceMode, logFlow, selectedItems]);
+  }, [logFlow, selectedItems]);
 
   const fallbackImage = (Object.values(selectedItems).find((item) => item !== null) as FashionItem | undefined)?.image ?? null;
   const resultImage = resultImageUrl ?? fallbackImage;
@@ -300,7 +272,7 @@ export function VirtualTryOnPage() {
   return (
     <main className="w-full h-screen bg-black relative">
       <div className="absolute inset-0 z-0">
-        <CameraView hidden={showResult} sourceMode={cameraSourceMode} backendSourceLabel={backendSourceLabel} />
+        <CameraView hidden={showResult} />
 
         <AnimatePresence>
           {showResult && resultImage && (

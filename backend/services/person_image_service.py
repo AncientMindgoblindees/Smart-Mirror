@@ -86,7 +86,8 @@ async def save_person_image(db: Session, file: UploadFile) -> PersonImage:
             detail="Unsupported file type. Use jpg, jpeg, png, or webp.",
         )
 
-    tmp_name = f"{uuid.uuid4()}{ext}"
+    canonical_ext = ".jpg" if ext in {".jpg", ".jpeg"} else ext
+    tmp_name = f"{uuid.uuid4()}{canonical_ext}"
     tmp_path = PERSON_IMAGE_DIR / tmp_name
 
     contents = await file.read()

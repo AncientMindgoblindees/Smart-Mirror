@@ -4,20 +4,16 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface CameraViewProps {
   hidden?: boolean;
-  sourceMode: 'bridge' | 'browser';
-  backendSourceLabel?: 'picamera2' | 'rpicam' | 'none' | string;
 }
 
-export default function CameraView({ hidden, sourceMode, backendSourceLabel }: CameraViewProps) {
+export default function CameraView({ hidden }: CameraViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const bridgeVideoRef = useRef<HTMLVideoElement | null>(null);
-  const [bridgeStreamUrl, setBridgeStreamUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    if (sourceMode !== 'browser' || hidden) {
+    if (hidden) {
       if (videoRef.current) videoRef.current.srcObject = null;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -67,26 +63,7 @@ export default function CameraView({ hidden, sourceMode, backendSourceLabel }: C
         streamRef.current = null;
       }
     };
-  }, [hidden, sourceMode]);
-
-  useEffect(() => {
-    if (sourceMode !== 'bridge' || hidden) return;
-    let cancelled = false;
-    const start = async () => {
-      try {
-        const url = await window.smartMirrorCamera?.getPreviewStreamUrl?.();
-        if (cancelled || !url) return;
-        setBridgeStreamUrl(url);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Native camera preview failed');
-      }
-    };
-    void start();
-    return () => {
-      cancelled = true;
-      setBridgeStreamUrl(null);
-    };
-  }, [hidden, sourceMode]);
+  }, [hidden]);
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden z-0">
@@ -117,7 +94,7 @@ export default function CameraView({ hidden, sourceMode, backendSourceLabel }: C
         )}
       </AnimatePresence>
 
-      {!hidden && sourceMode === 'browser' ? (
+      {!hidden ? (
         <video
           id="virtual-tryon-local-feed"
           ref={videoRef}
@@ -126,25 +103,6 @@ export default function CameraView({ hidden, sourceMode, backendSourceLabel }: C
           muted
           className={`w-full h-full object-contain bg-black transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1]' : 'opacity-0'}`}
           aria-label="Local webcam feed"
-        />
-      ) : null}
-
-      {!hidden && sourceMode === 'bridge' && bridgeStreamUrl ? (
-        <video
-          ref={bridgeVideoRef}
-          src={bridgeStreamUrl}
-          autoPlay
-          playsInline
-          muted
-          className={`w-full h-full object-cover transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1]' : 'opacity-0'}`}
-          onLoadedData={() => {
-            setIsReady(true);
-            setError(null);
-          }}
-          onError={() => {
-            setIsReady(false);
-            setError(`Native H264 stream unavailable (${backendSourceLabel || 'bridge'}).`);
-          }}
         />
       ) : null}
     </div>
