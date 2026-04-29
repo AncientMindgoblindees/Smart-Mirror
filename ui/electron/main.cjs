@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain } = require("electron");
+const http = require("http");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -12,6 +13,9 @@ const PREVIEW_QUALITY = Number(process.env.MIRROR_NATIVE_PREVIEW_QUALITY || 65);
 
 let mainWindow = null;
 let previewProc = null;
+let previewServer = null;
+let previewServerPort = 0;
+const previewClients = new Set();
 let previewBuffer = Buffer.alloc(0);
 let latestPreviewFrame = null;
 
@@ -59,6 +63,12 @@ function stopPreview() {
   }
   previewBuffer = Buffer.alloc(0);
   latestPreviewFrame = null;
+  for (const res of previewClients) {
+    try {
+      res.end();
+    } catch {}
+  }
+  previewClients.clear();
 }
 
 function extractJpegFramesFromBuffer() {
@@ -83,24 +93,52 @@ function startPreview() {
     "-t",
     "0",
     "--codec",
-    "mjpeg",
+    "libav",
+    "--libav-format",
+    "mpegts",
     "--width",
     String(PREVIEW_WIDTH),
     "--height",
     String(PREVIEW_HEIGHT),
     "--framerate",
     "30",
-    "--quality",
-    String(PREVIEW_QUALITY),
     "-o",
     "-",
   ], { stdio: ["ignore", "pipe", "pipe"] });
   previewProc.stdout.on("data", (chunk) => {
-    previewBuffer = Buffer.concat([previewBuffer, chunk]);
-    extractJpegFramesFromBuffer();
+    for (const res of previewClients) {
+      try {
+        res.write(chunk);
+      } catch {}
+    }
   });
   previewProc.on("exit", () => {
     previewProc = null;
+  });
+}
+
+function ensurePreviewServer() {
+  if (previewServer) return;
+  previewServer = http.createServer((req, res) => {
+    if (req.url !== "/native-preview.ts") {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+    startPreview();
+    res.writeHead(200, {
+      "Content-Type": "video/mp2t",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      Connection: "keep-alive",
+    });
+    previewClients.add(res);
+    req.on("close", () => {
+      previewClients.delete(res);
+    });
+  });
+  previewServer.listen(0, "127.0.0.1", () => {
+    const addr = previewServer.address();
+    previewServerPort = typeof addr === "object" && addr ? addr.port : 0;
   });
 }
 
@@ -181,6 +219,7 @@ ipcMain.handle("smartMirrorCamera:getStatus", async () => {
 });
 
 ipcMain.handle("smartMirrorCamera:startPreview", async () => {
+  ensurePreviewServer();
   startPreview();
   return { ok: true };
 });
@@ -213,6 +252,12 @@ ipcMain.handle("smartMirrorCamera:getPreviewFrame", async () => {
   return file;
 });
 
+ipcMain.handle("smartMirrorCamera:getPreviewStreamUrl", async () => {
+  ensurePreviewServer();
+  if (!previewServerPort) throw new Error("Preview server not ready");
+  return `http://127.0.0.1:${previewServerPort}/native-preview.ts`;
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -231,5 +276,12 @@ function createWindow() {
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
+  stopPreview();
+  if (previewServer) {
+    try {
+      previewServer.close();
+    } catch {}
+    previewServer = null;
+  }
   if (process.platform !== "darwin") app.quit();
 });

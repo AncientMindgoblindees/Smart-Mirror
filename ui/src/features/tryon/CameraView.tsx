@@ -11,7 +11,8 @@ interface CameraViewProps {
 export default function CameraView({ hidden, sourceMode, backendSourceLabel }: CameraViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [bridgeFrameUrl, setBridgeFrameUrl] = useState<string | null>(null);
+  const bridgeVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [bridgeStreamUrl, setBridgeStreamUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
 
@@ -58,38 +59,19 @@ export default function CameraView({ hidden, sourceMode, backendSourceLabel }: C
   useEffect(() => {
     if (sourceMode !== 'bridge' || hidden) return;
     let cancelled = false;
-    let lastUrl: string | null = null;
-    const pull = async () => {
-      while (!cancelled) {
-        try {
-          const payload = await window.smartMirrorCamera?.getPreviewFrame?.();
-          if (cancelled || !payload) break;
-          const blob =
-            payload instanceof Blob
-              ? payload
-              : typeof payload === 'string'
-                ? await (await fetch(payload)).blob()
-                : new Blob([payload], { type: 'image/jpeg' });
-          const url = URL.createObjectURL(blob);
-          if (lastUrl) URL.revokeObjectURL(lastUrl);
-          lastUrl = url;
-          setBridgeFrameUrl(url);
-          setIsReady(true);
-          setError(null);
-          await new Promise((r) => setTimeout(r, 33));
-        } catch (err: unknown) {
-          setIsReady(false);
-          setError(err instanceof Error ? err.message : 'Native camera preview failed');
-          await new Promise((r) => setTimeout(r, 66));
-        }
+    const start = async () => {
+      try {
+        const url = await window.smartMirrorCamera?.getPreviewStreamUrl?.();
+        if (cancelled || !url) return;
+        setBridgeStreamUrl(url);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Native camera preview failed');
       }
-      if (lastUrl) URL.revokeObjectURL(lastUrl);
     };
-    void pull();
+    void start();
     return () => {
       cancelled = true;
-      if (lastUrl) URL.revokeObjectURL(lastUrl);
-      setBridgeFrameUrl(null);
+      setBridgeStreamUrl(null);
     };
   }, [hidden, sourceMode]);
 
@@ -134,11 +116,22 @@ export default function CameraView({ hidden, sourceMode, backendSourceLabel }: C
         />
       ) : null}
 
-      {!hidden && sourceMode === 'bridge' && bridgeFrameUrl ? (
-        <img
-          src={bridgeFrameUrl}
+      {!hidden && sourceMode === 'bridge' && bridgeStreamUrl ? (
+        <video
+          ref={bridgeVideoRef}
+          src={bridgeStreamUrl}
+          autoPlay
+          playsInline
+          muted
           className={`w-full h-full object-cover transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1]' : 'opacity-0'}`}
-          alt="Native Pi camera feed"
+          onLoadedData={() => {
+            setIsReady(true);
+            setError(null);
+          }}
+          onError={() => {
+            setIsReady(false);
+            setError(`Native H264 stream unavailable (${backendSourceLabel || 'bridge'}).`);
+          }}
         />
       ) : null}
     </div>
