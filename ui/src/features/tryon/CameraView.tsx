@@ -1,21 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { CameraOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { getApiBase, getApiToken } from '@/config/backendOrigin';
 
 interface CameraViewProps {
   hidden?: boolean;
-  sourceMode: 'backend' | 'browser';
+  sourceMode: 'bridge' | 'browser';
   backendSourceLabel?: 'picamera2' | 'rpicam' | 'none' | string;
 }
 
 export default function CameraView({ hidden, sourceMode, backendSourceLabel }: CameraViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [bridgeFrameUrl, setBridgeFrameUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const token = getApiToken();
-  const src = `${getApiBase()}/camera/live?t=${Date.now()}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
 
   useEffect(() => {
     if (sourceMode !== 'browser' || hidden) {
@@ -54,6 +52,43 @@ export default function CameraView({ hidden, sourceMode, backendSourceLabel }: C
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
+    };
+  }, [hidden, sourceMode]);
+
+  useEffect(() => {
+    if (sourceMode !== 'bridge' || hidden) return;
+    let cancelled = false;
+    let lastUrl: string | null = null;
+    const pull = async () => {
+      while (!cancelled) {
+        try {
+          const payload = await window.smartMirrorCamera?.getPreviewFrame?.();
+          if (cancelled || !payload) break;
+          const blob =
+            payload instanceof Blob
+              ? payload
+              : typeof payload === 'string'
+                ? await (await fetch(payload)).blob()
+                : new Blob([payload], { type: 'image/jpeg' });
+          const url = URL.createObjectURL(blob);
+          if (lastUrl) URL.revokeObjectURL(lastUrl);
+          lastUrl = url;
+          setBridgeFrameUrl(url);
+          setIsReady(true);
+          setError(null);
+        } catch (err: unknown) {
+          setIsReady(false);
+          setError(err instanceof Error ? err.message : 'Native camera preview failed');
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      }
+      if (lastUrl) URL.revokeObjectURL(lastUrl);
+    };
+    void pull();
+    return () => {
+      cancelled = true;
+      if (lastUrl) URL.revokeObjectURL(lastUrl);
+      setBridgeFrameUrl(null);
     };
   }, [hidden, sourceMode]);
 
@@ -98,19 +133,11 @@ export default function CameraView({ hidden, sourceMode, backendSourceLabel }: C
         />
       ) : null}
 
-      {!hidden && sourceMode === 'backend' ? (
+      {!hidden && sourceMode === 'bridge' && bridgeFrameUrl ? (
         <img
-          src={src}
+          src={bridgeFrameUrl}
           className={`w-full h-full object-cover transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1]' : 'opacity-0'}`}
-          alt="RPICAM feed"
-          onLoad={() => {
-            setIsReady(true);
-            setError(null);
-          }}
-          onError={() => {
-            setIsReady(false);
-            setError(`Backend camera feed unavailable (${backendSourceLabel || 'backend'}).`);
-          }}
+          alt="Native Pi camera feed"
         />
       ) : null}
     </div>

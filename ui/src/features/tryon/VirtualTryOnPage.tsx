@@ -343,7 +343,7 @@ export function VirtualTryOnPage() {
   return (
     <main className="w-full h-screen bg-black relative">
       <div className="absolute inset-0 z-0">
-        <CameraView hidden={showResult} sourceMode="browser" backendSourceLabel={backendSourceLabel} />
+        <CameraView hidden={showResult} sourceMode={cameraSourceMode} backendSourceLabel={backendSourceLabel} />
 
         <AnimatePresence>
           {showResult && resultImage && (

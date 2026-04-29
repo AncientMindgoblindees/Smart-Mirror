@@ -8,7 +8,6 @@ const isDev = !app.isPackaged;
 const DEV_URL = process.env.SMART_MIRROR_UI_URL || "http://127.0.0.1:5173";
 
 let mainWindow = null;
-let previewProc = null;
 
 function findCommand(cmd) {
   const probe = process.platform === "win32" ? "where" : "which";
@@ -29,21 +28,8 @@ function preferredSource() {
   return "none";
 }
 
-function stopPreview() {
-  if (!previewProc) return;
-  try {
-    previewProc.kill("SIGTERM");
-  } catch {}
-  previewProc = null;
-}
-
-function startPreview() {
-  stopPreview();
-  if (!findCommand("rpicam-hello")) return;
-  previewProc = spawn("rpicam-hello", ["-t", "0", "--fullscreen"], {
-    stdio: "ignore",
-  });
-}
+function stopPreview() {}
+function startPreview() {}
 
 function captureViaRpicam(targetPath) {
   return new Promise((resolve, reject) => {
@@ -77,6 +63,42 @@ function captureViaPicamera2(targetPath) {
   });
 }
 
+function capturePreviewViaRpicam(targetPath) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("rpicam-still", [
+      "-n",
+      "--immediate",
+      "--width",
+      "960",
+      "--height",
+      "540",
+      "--quality",
+      "80",
+      "-o",
+      targetPath,
+    ]);
+    let err = "";
+    proc.stderr.on("data", (d) => (err += String(d)));
+    proc.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(err || `rpicam preview failed (${code})`));
+    });
+  });
+}
+
+function capturePreviewViaPicamera2(targetPath) {
+  return new Promise((resolve, reject) => {
+    const script = path.join(__dirname, "picamera_preview.py");
+    const py = spawn("python3", [script, targetPath], { stdio: ["ignore", "pipe", "pipe"] });
+    let err = "";
+    py.stderr.on("data", (d) => (err += String(d)));
+    py.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(err || `picamera2 preview failed (${code})`));
+    });
+  });
+}
+
 ipcMain.handle("smartMirrorCamera:getStatus", async () => {
   const source = preferredSource();
   return {
@@ -106,6 +128,17 @@ ipcMain.handle("smartMirrorCamera:capturePhoto", async () => {
   return file;
 });
 
+ipcMain.handle("smartMirrorCamera:getPreviewFrame", async () => {
+  const source = preferredSource();
+  if (source === "none") throw new Error("No native Pi camera runtime available");
+  const outPath = path.join(os.tmpdir(), `smart-mirror-preview-${Date.now()}.jpg`);
+  if (source === "picamera2") await capturePreviewViaPicamera2(outPath);
+  else await capturePreviewViaRpicam(outPath);
+  const file = fs.readFileSync(outPath);
+  fs.rmSync(outPath, { force: true });
+  return file;
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -124,6 +157,5 @@ function createWindow() {
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
-  stopPreview();
   if (process.platform !== "darwin") app.quit();
 });
