@@ -23,7 +23,7 @@ export function useWidgetPersistence(): {
   const [serverConnected, setServerConnected] = useState(false);
   const lastPutSig = useRef('');
   const lastServerFingerprintRef = useRef('');
-  const pendingPushTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const pendingPushTimerRef = useRef<number | undefined>(undefined);
   const putInFlightRef = useRef(false);
 
   const mergeServerRows = useCallback((list: WidgetConfigOut[], opts?: { force?: boolean }) => {
