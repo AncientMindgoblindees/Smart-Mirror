@@ -77,8 +77,11 @@ export function VirtualTryOnPage() {
   const [showResult, setShowResult] = useState(false);
   const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
   const [capturedImageUrl, setCapturedImageUrl] = useState<string | null>(null);
+  const [tryOnHistory, setTryOnHistory] = useState<string[]>([]);
+  const [tryOnHistoryIndex, setTryOnHistoryIndex] = useState<number>(-1);
   const [statusText, setStatusText] = useState<string | null>('Loading catalog...');
   const [cameraPhase, setCameraPhase] = useState<'idle' | 'loading' | 'countdown' | 'captured' | 'generating' | 'error'>('idle');
+  const [remoteCaptureActive, setRemoteCaptureActive] = useState(false);
   const [countdownRemaining, setCountdownRemaining] = useState<number>(CAPTURE_COUNTDOWN_SECONDS);
   const localCountdownActiveRef = useRef(false);
   const generateInFlightRef = useRef(false);
@@ -88,16 +91,19 @@ export function VirtualTryOnPage() {
   useControlEvents({
     onCameraLoadingStarted: () => {
       logFlow('ws_camera_loading_started');
+      setRemoteCaptureActive(true);
       setCameraPhase('loading');
       setStatusText('Starting camera...');
     },
     onCameraLoadingReady: () => {
       logFlow('ws_camera_loading_ready');
+      setRemoteCaptureActive(true);
       setCameraPhase('loading');
       setStatusText('Camera ready');
     },
     onCameraCountdownStarted: (seconds) => {
       logFlow('ws_camera_countdown_started', { seconds });
+      setRemoteCaptureActive(true);
       if (localCountdownActiveRef.current) return;
       setCameraPhase('countdown');
       setCountdownRemaining(seconds);
@@ -105,12 +111,14 @@ export function VirtualTryOnPage() {
     },
     onCameraCountdownTick: (remaining) => {
       logFlow('ws_camera_countdown_tick', { remaining });
+      setRemoteCaptureActive(true);
       if (localCountdownActiveRef.current) return;
       setCameraPhase('countdown');
       setCountdownRemaining(remaining);
     },
     onCameraCaptured: () => {
       logFlow('ws_camera_captured');
+      setRemoteCaptureActive(false);
       if (localCountdownActiveRef.current) return;
       setCameraPhase('captured');
       setCountdownRemaining(0);
@@ -118,6 +126,7 @@ export function VirtualTryOnPage() {
     },
     onCameraError: (message) => {
       logFlow('ws_camera_error', { message });
+      setRemoteCaptureActive(false);
       setCameraPhase('error');
       setStatusText(message || 'Camera error');
     },
@@ -257,6 +266,8 @@ export function VirtualTryOnPage() {
       }
 
       setResultImageUrl(result.image_url);
+      setTryOnHistory((prev) => [result.image_url, ...prev.filter((url) => url !== result.image_url)].slice(0, 40));
+      setTryOnHistoryIndex(0);
       setShowResult(true);
       setStatusText('Synthesized environment ready');
       logFlow('flow_complete_success');
@@ -313,6 +324,29 @@ export function VirtualTryOnPage() {
     setStatusText('Viewing captured picture');
   }, [capturedImageUrl]);
 
+  const handleViewTryOn = useCallback(() => {
+    if (!tryOnHistory.length) {
+      setStatusText('No generated try-ons yet');
+      return;
+    }
+    setTryOnHistoryIndex(0);
+    setResultImageUrl(tryOnHistory[0]);
+    setShowResult(true);
+    setStatusText(`Viewing try-on 1/${tryOnHistory.length}`);
+  }, [tryOnHistory]);
+
+  const handleNextTryOn = useCallback(() => {
+    if (!tryOnHistory.length) {
+      setStatusText('No generated try-ons yet');
+      return;
+    }
+    const next = (tryOnHistoryIndex + 1 + tryOnHistory.length) % tryOnHistory.length;
+    setTryOnHistoryIndex(next);
+    setResultImageUrl(tryOnHistory[next]);
+    setShowResult(true);
+    setStatusText(`Viewing try-on ${next + 1}/${tryOnHistory.length}`);
+  }, [tryOnHistory, tryOnHistoryIndex]);
+
   const fallbackImage = (Object.values(selectedItems).find((item) => item !== null) as FashionItem | undefined)?.image ?? null;
   const resultImage = resultImageUrl ?? fallbackImage;
 
@@ -334,7 +368,7 @@ export function VirtualTryOnPage() {
         </AnimatePresence>
       </div>
 
-      {isGenerating && (cameraPhase === 'loading' || cameraPhase === 'countdown') && (
+      {(isGenerating || remoteCaptureActive) && (cameraPhase === 'loading' || cameraPhase === 'countdown') && (
         <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center font-mono">
           <div className="space-y-4 text-center">
             {cameraPhase === 'loading' ? (
@@ -379,6 +413,10 @@ export function VirtualTryOnPage() {
         onTakePicture={handleTakePicture}
         onViewPicture={handleViewPicture}
         canViewPicture={!!capturedImageUrl}
+        onViewTryOn={handleViewTryOn}
+        onNextTryOn={handleNextTryOn}
+        canViewTryOn={tryOnHistory.length > 0}
+        tryOnCount={tryOnHistory.length}
         onGenerate={handleGenerate}
         onExit={() => navigate('/')}
         statusText={statusText}

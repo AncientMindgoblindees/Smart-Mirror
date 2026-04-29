@@ -289,7 +289,7 @@ function withPreviewMockData(widget: WidgetConfig): WidgetConfig {
 }
 
 const MENU_ITEMS: MenuMainItem[] = [
-  { id: 'outfit_try_on', label: 'Virtual Try-On', icon: Shirt },
+  { id: 'outfit_try_on', label: 'Virtual Try-On / Camera', icon: Shirt },
   { id: 'randomize_widgets', label: 'Randomize Widgets', icon: Shuffle },
   { id: 'widget_settings', label: 'Widget Settings', icon: SlidersHorizontal },
   { id: 'change_theme', label: 'Theme Styles', icon: Palette },
@@ -1652,22 +1652,23 @@ export default function MirrorApp() {
 
   useControlEvents({
     onCameraLoadingStarted: () => {
-      captureFlowActiveRef.current = true;
-      setShowCamera(true);
+      captureFlowActiveRef.current = false;
+      setShowCamera(false);
       setCameraError(null);
+      navigate('/virtual-try-on');
     },
     onCameraLoadingReady: () => {
-      setShowCamera(true);
+      setShowCamera(false);
       setCameraError(null);
     },
     onCameraCountdownStarted: () => {
-      captureFlowActiveRef.current = true;
-      setShowCamera(true);
+      captureFlowActiveRef.current = false;
+      setShowCamera(false);
       setCameraError(null);
     },
     onCameraCountdownTick: () => {
-      captureFlowActiveRef.current = true;
-      setShowCamera(true);
+      captureFlowActiveRef.current = false;
+      setShowCamera(false);
     },
     onCameraCaptured: () => {
       captureFlowActiveRef.current = false;
@@ -1675,15 +1676,9 @@ export default function MirrorApp() {
       setShowCamera(false);
     },
     onCameraError: (message) => {
-      const hadCaptureFlow = captureFlowActiveRef.current;
       captureFlowActiveRef.current = false;
       setCameraError(summarizeCameraError(message));
-      // If this error happened during an active capture flow, return to UI instead of leaving camera overlay stuck.
-      if (hadCaptureFlow) {
-        setShowCamera(false);
-        return;
-      }
-      setShowCamera(true);
+      setShowCamera(false);
     },
     onTryOnResult: (payload) => {
       if (payload.image_url) setFullScreenTryOnUrl(payload.image_url);
