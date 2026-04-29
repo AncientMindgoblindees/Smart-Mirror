@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Camera, ChevronDown, ChevronUp, Heart, Moon, Palette, Power, QrCode, Shirt, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Heart, Moon, Palette, Power, QrCode, Shirt, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   generateOutfitTryOn,
@@ -289,7 +289,6 @@ function withPreviewMockData(widget: WidgetConfig): WidgetConfig {
 }
 
 const MENU_ITEMS: MenuMainItem[] = [
-  { id: 'take_picture', label: 'Take Picture', icon: Camera },
   { id: 'outfit_try_on', label: 'Virtual Try-On', icon: Shirt },
   { id: 'randomize_widgets', label: 'Randomize Widgets', icon: Shuffle },
   { id: 'widget_settings', label: 'Widget Settings', icon: SlidersHorizontal },
@@ -325,6 +324,8 @@ const OUTFIT_PANEL_ACCESSORIES_DOWN_ID = 'outfit_panel:accessories_down';
 const OUTFIT_PANEL_FAVORITE_NEXT_ID = 'outfit_panel:favorite_next';
 const OUTFIT_PANEL_LOAD_FAVORITE_ID = 'outfit_panel:favorite_load';
 const OUTFIT_PANEL_SHUFFLE_ID = 'outfit_panel:shuffle';
+const OUTFIT_PANEL_TAKE_PICTURE_ID = 'outfit_panel:take_picture';
+const OUTFIT_PANEL_VIEW_PICTURE_ID = 'outfit_panel:view_picture';
 const OUTFIT_PANEL_GENERATE_ID = 'outfit_panel:generate';
 const OUTFIT_PANEL_SAVE_FAVORITE_ID = 'outfit_panel:save_favorite';
 const OUTFIT_PANEL_BACK_ID = 'outfit_panel:back';
@@ -858,6 +859,12 @@ export default function MirrorApp() {
         hint: selectedFavorite ? `${selectedFavorite.clothingImageIds.length} items` : 'Save first',
       },
       { id: OUTFIT_PANEL_SHUFFLE_ID, label: 'Randomize', icon: Shuffle, hint: 'Random by slot' },
+      { id: OUTFIT_PANEL_TAKE_PICTURE_ID, label: 'Take Picture', hint: 'Capture person image only' },
+      {
+        id: OUTFIT_PANEL_VIEW_PICTURE_ID,
+        label: 'View Picture',
+        hint: latestPersonImageUrl ? 'Show captured picture overlay' : 'Take picture first',
+      },
       {
         id: OUTFIT_PANEL_GENERATE_ID,
         label: tryOnBusy ? 'Generating...' : 'Generate',
@@ -873,6 +880,7 @@ export default function MirrorApp() {
       clothingLoading,
       clothingOptions.length,
       outfitFavorites.length,
+      latestPersonImageUrl,
       selectedFavorite,
       selectedClothingCount,
       selectedSlotItems.accessories,
@@ -1224,6 +1232,43 @@ export default function MirrorApp() {
           shuffleOutfitSelection();
           return;
         }
+        if (actionId === OUTFIT_PANEL_TAKE_PICTURE_ID) {
+          setTryOnBusy(true);
+          setTryOnStatus('Capturing image...');
+          captureFlowActiveRef.current = true;
+          setShowCamera(true);
+          setCameraError(null);
+          void triggerCameraCapture({
+            countdown_seconds: 3,
+            source: 'virtual-try-on-menu',
+            session_id: `virtual-tryon-${Date.now()}`,
+          })
+            .then(async () => {
+              const rows = await getPersonImages().catch(() => []);
+              const latestId = rows[0]?.id ?? null;
+              if (latestId !== null) {
+                setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${latestId}?t=${Date.now()}`);
+              }
+              setTryOnStatus('Picture captured');
+              setTryOnBusy(false);
+            })
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : 'Take picture failed';
+              setTryOnStatus(message);
+              setTryOnBusy(false);
+              logMenu('outfit_take_picture_failed', { message }, 'error');
+            });
+          return;
+        }
+        if (actionId === OUTFIT_PANEL_VIEW_PICTURE_ID) {
+          if (!latestPersonImageUrl) {
+            setTryOnStatus('No captured picture yet');
+            return;
+          }
+          setFullScreenTryOnUrl(latestPersonImageUrl);
+          setTryOnStatus('Viewing captured picture');
+          return;
+        }
         if (actionId === OUTFIT_PANEL_GENERATE_ID) {
           void runSelectedOutfitTryOn();
           return;
@@ -1307,26 +1352,6 @@ export default function MirrorApp() {
         setEditingWidgetId(null);
         setPendingWidgetDraft(null);
         closeMenuRef.current();
-        return;
-      }
-      if (actionId === 'take_picture') {
-        closeMenuRef.current();
-        logMenu('take_picture_started', { source: 'mirror-menu' });
-        setShowCamera(true);
-        setCameraError(null);
-        void triggerCameraCapture({
-          countdown_seconds: 3,
-          source: 'mirror-menu',
-          session_id: `menu-${Date.now()}`,
-        })
-          .then((result) => {
-            logMenu('take_picture_accepted', { result });
-          })
-          .catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : 'Unknown error';
-            setCameraError(summarizeCameraError(message));
-            logMenu('take_picture_failed', { message }, 'error');
-          });
         return;
       }
       if (actionId === 'outfit_try_on') {
@@ -1419,6 +1444,7 @@ export default function MirrorApp() {
       pendingWidgetDraft,
       logMenu,
       outfitFavorites,
+      latestPersonImageUrl,
       selectedFavorite,
       loadFavoriteSnapshot,
       randomizeWidgets,
@@ -1792,6 +1818,8 @@ export default function MirrorApp() {
                 <div className="virtual-tryon-actions">
                   <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_SAVE_FAVORITE_ID ? ' is-active' : ''}`}>Favorite</button>
                   <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_SHUFFLE_ID ? ' is-active' : ''}`}>Randomize</button>
+                  <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_TAKE_PICTURE_ID ? ' is-active' : ''}`}>Take Picture</button>
+                  <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_VIEW_PICTURE_ID ? ' is-active' : ''}`}>View Picture</button>
                   <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_GENERATE_ID ? ' is-active' : ''}`}>Generate</button>
                 </div>
                 <div className="virtual-tryon-favorite-picker">
