@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from backend.database.models import PersonImage
 from backend.database.session import SessionLocal, get_db
 from backend.schemas.person_image import PersonImageRead
-from backend.schemas.tryon import TryOnGenerationRead, TryOnRequest
+from backend.schemas.tryon import TryOnCacheRequest, TryOnCacheResponse, TryOnGenerationRead, TryOnRequest
+from backend.services.realtime import control_registry
 from backend.services import person_image_service, tryon_service
 
 router = APIRouter(prefix="/tryon", tags=["tryon"])
@@ -76,10 +77,34 @@ def get_generation(
     return generation
 
 
+@router.get("/generations/{generation_id}/image")
+def get_generation_image_file(generation_id: int):
+    path = tryon_service.get_generation_local_image_path(generation_id)
+    return FileResponse(path)
+
+
+@router.post("/cache-clothing", response_model=TryOnCacheResponse)
+async def cache_clothing(
+    payload: TryOnCacheRequest,
+    db: Session = Depends(get_db),
+):
+    cached_ids = await tryon_service.cache_clothing_images(db, payload.image_ids)
+    return TryOnCacheResponse(cached_image_ids=cached_ids)
+
+
 async def _process_tryon_generation(generation_id: int) -> None:
     db = SessionLocal()
     try:
-        await tryon_service.process_generation(db, generation_id)
+        generation = await tryon_service.process_generation(db, generation_id)
+        await control_registry.broadcast(
+            {
+                "type": "TRYON_RESULT",
+                "payload": {
+                    "generation_id": str(generation.id),
+                    "image_url": generation.result_image_url,
+                },
+            }
+        )
     except Exception:
         # Errors are persisted on the generation row by process_generation.
         pass

@@ -2,7 +2,9 @@ import os
 import traceback
 import uuid
 import asyncio
+import shutil
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -20,8 +22,23 @@ DEFAULT_SHIRT_IMAGE = TRYON_DEFAULTS_DIR / "shirt_blank.jpg"
 DEFAULT_SHOES_IMAGE = TRYON_DEFAULTS_DIR / "shoes_blank.jpg"
 DEFAULT_HAT_IMAGE = TRYON_DEFAULTS_DIR / "hat_blank.jpg"
 MAX_STORED_GENERATIONS = 10
+TRYON_OUTPUT_DIR = BASE_DIR / "data" / "tryon"
+WARDROBE_RUNTIME_CACHE_DIR = BASE_DIR / "data" / "wardrobe_runtime_cache"
 
 _DEFAULT_IMAGE_CACHE: dict[str, str] = {}
+_RUNTIME_CLOTHING_FILE_CACHE: dict[int, str] = {}
+
+TRYON_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+WARDROBE_RUNTIME_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _clear_runtime_wardrobe_cache() -> None:
+    for child in WARDROBE_RUNTIME_CACHE_DIR.glob("*"):
+        if child.is_file():
+            child.unlink(missing_ok=True)
+
+
+_clear_runtime_wardrobe_cache()
 
 
 def create_generation(db: Session, payload: TryOnRequest) -> TryOnGeneration:
@@ -136,9 +153,8 @@ async def process_generation(db: Session, generation_id: int) -> TryOnGeneration
         db.commit()
         db.refresh(generation)
 
-        output_url = await leonardo_service.get_generated_image_url(
-            leonardo_generation_id
-        )
+        output_url = await leonardo_service.get_generated_image_url(leonardo_generation_id)
+        local_result_path = await _persist_generated_image_local(output_url, generation.id)
 
         upload_result = cloud_storage_service.upload_generated_image(
             output_url,
@@ -148,7 +164,7 @@ async def process_generation(db: Session, generation_id: int) -> TryOnGeneration
         generation.status = "completed"
         generation.result_storage_provider = upload_result["storage_provider"]
         generation.result_storage_key = upload_result["storage_key"]
-        generation.result_image_url = upload_result["image_url"]
+        generation.result_image_url = f"/api/tryon/generations/{generation.id}/image"
         generation.error_message = None
 
         db.commit()
@@ -183,6 +199,9 @@ async def _resolve_slot_image_url(
     label: str,
 ) -> str:
     if provided_image is not None:
+        runtime_cached_file = _RUNTIME_CLOTHING_FILE_CACHE.get(provided_image.id)
+        if runtime_cached_file and os.path.exists(runtime_cached_file):
+            return await leonardo_service.upload_init_image(runtime_cached_file)
         if provided_image.leonardo_init_url:
             return provided_image.leonardo_init_url
         leonardo_url = await leonardo_service.upload_remote_image(provided_image.image_url)
@@ -227,6 +246,56 @@ def get_generation_by_id(db: Session, generation_id: int) -> TryOnGeneration | N
     )
 
 
+def get_generation_local_image_path(generation_id: int) -> Path:
+    base = TRYON_OUTPUT_DIR.resolve()
+    pattern = f"generation-{generation_id}-*"
+    files = sorted(TRYON_OUTPUT_DIR.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not files:
+        raise HTTPException(status_code=404, detail="Generated image not found on disk")
+    image_path = files[0].resolve()
+    try:
+        image_path.relative_to(base)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid generated image path") from exc
+    return image_path
+
+
+async def cache_clothing_images(db: Session, image_ids: list[int]) -> list[int]:
+    cached: list[int] = []
+    seen: set[int] = set()
+    for image_id in image_ids:
+        if image_id in seen:
+            continue
+        seen.add(image_id)
+        row = db.query(ClothingImage).filter(ClothingImage.id == image_id).first()
+        if row is None:
+            continue
+        cached_path = _RUNTIME_CLOTHING_FILE_CACHE.get(row.id)
+        if cached_path and os.path.exists(cached_path):
+            cached.append(row.id)
+            continue
+        local_path = await _download_clothing_to_runtime_cache(row.id, row.image_url)
+        _RUNTIME_CLOTHING_FILE_CACHE[row.id] = str(local_path)
+        cached.append(row.id)
+    return cached
+
+
+async def _download_clothing_to_runtime_cache(image_id: int, image_url: str) -> Path:
+    suffix = Path(urlparse(image_url).path).suffix or ".jpg"
+    temp_path = await leonardo_service.download_remote_image_to_tempfile(image_url)
+    target_path = WARDROBE_RUNTIME_CACHE_DIR / f"clothing-{image_id}{suffix}"
+    shutil.move(temp_path, target_path)
+    return target_path
+
+
+async def _persist_generated_image_local(image_url: str, generation_id: int) -> Path:
+    suffix = Path(urlparse(image_url).path).suffix or ".png"
+    temp_path = await leonardo_service.download_image(image_url)
+    target_path = TRYON_OUTPUT_DIR / f"generation-{generation_id}-{uuid.uuid4()}{suffix}"
+    shutil.move(temp_path, target_path)
+    return target_path
+
+
 def _enforce_generation_retention(db: Session, keep_latest: int) -> None:
     completed = (
         db.query(TryOnGeneration)
@@ -240,6 +309,11 @@ def _enforce_generation_retention(db: Session, keep_latest: int) -> None:
     )
     stale = completed[keep_latest:]
     for row in stale:
+        try:
+            local_path = get_generation_local_image_path(row.id)
+            local_path.unlink(missing_ok=True)
+        except HTTPException:
+            pass
         if row.result_storage_key:
             try:
                 cloud_storage_service.delete_image(row.result_storage_key)

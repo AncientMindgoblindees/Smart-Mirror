@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TryOnRequest(BaseModel):
@@ -33,3 +33,11 @@ class TryOnGenerationRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TryOnCacheRequest(BaseModel):
+    image_ids: list[int] = Field(default_factory=list)
+
+
+class TryOnCacheResponse(BaseModel):
+    cached_image_ids: list[int]

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { generateTryOn, getClothingItems, getTryOnGeneration, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
+import { cacheTryOnClothing, generateTryOn, getClothingItems, getTryOnGeneration, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
 import type { ClothingItemRead } from '@/api/backendTypes';
 import { useControlEvents } from '@/hooks/useControlEvents';
 import CameraView from './CameraView';
@@ -104,6 +104,7 @@ export function VirtualTryOnPage() {
   const [cameraPhase, setCameraPhase] = useState<'idle' | 'loading' | 'countdown' | 'captured' | 'generating' | 'error'>('idle');
   const [remoteCaptureActive, setRemoteCaptureActive] = useState(false);
   const [countdownRemaining, setCountdownRemaining] = useState<number>(CAPTURE_COUNTDOWN_SECONDS);
+  const [globalNotice, setGlobalNotice] = useState<string | null>(null);
   const localCountdownActiveRef = useRef(false);
   const generateInFlightRef = useRef(false);
 
@@ -194,6 +195,21 @@ export function VirtualTryOnPage() {
     });
   }, []);
 
+  useEffect(() => {
+    const selectedIds = imageIdsFromSelection(selectedItems);
+    if (!selectedIds.length) return;
+    void cacheTryOnClothing(selectedIds).catch(() => {});
+  }, [selectedItems]);
+
+  useEffect(() => {
+    const onReady = () => {
+      setGlobalNotice('Try-on is ready. Open Virtual Try-On to view.');
+      window.setTimeout(() => setGlobalNotice(null), 6000);
+    };
+    window.addEventListener('mirror:tryon_result', onReady);
+    return () => window.removeEventListener('mirror:tryon_result', onReady);
+  }, []);
+
   const handleToggleFavoriteOutfit = useCallback(async () => {
     const ids = imageIdsFromSelection(selectedItems);
     if (!ids.length) {
@@ -259,6 +275,7 @@ export function VirtualTryOnPage() {
 
       setStatusText('Mapping digital twin...');
       setCameraPhase('generating');
+      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_started'));
       logFlow('tryon_generate_start');
       let result: Awaited<ReturnType<typeof generateTryOn>> | null = null;
       let lastError: unknown = null;
@@ -310,11 +327,13 @@ export function VirtualTryOnPage() {
       setTryOnHistoryIndex(0);
       setShowResult(true);
       setStatusText('Synthesized environment ready');
+      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_completed'));
       logFlow('flow_complete_success');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Try-on generation failed';
       setStatusText(message);
       setCameraPhase('error');
+      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_completed'));
       logFlow('flow_failed', { message });
     } finally {
       localCountdownActiveRef.current = false;
@@ -427,18 +446,22 @@ export function VirtualTryOnPage() {
       )}
 
       {isGenerating && cameraPhase === 'generating' && (
-        <div className="absolute inset-0 z-50 bg-black/45 flex flex-col items-center justify-center font-mono">
-          <div className="space-y-4 text-center">
-            <div className="w-64 h-1 bg-white/10 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ x: '-100%' }}
-                animate={{ x: '100%' }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-                className="w-1/2 h-full bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,1)]"
-              />
-            </div>
-            <p className="text-[10px] tracking-[1em] text-white/40 uppercase">Mapping Digital Twin</p>
+        <div className="absolute top-5 right-5 z-50 bg-black/70 border border-blue-500/40 rounded-xl px-4 py-3 font-mono pointer-events-none">
+          <div className="w-44 h-1 bg-white/15 rounded-full overflow-hidden mb-2">
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: '100%' }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+              className="w-1/2 h-full bg-blue-500"
+            />
           </div>
+          <p className="text-[9px] tracking-[0.35em] text-white/70 uppercase">Generating</p>
+        </div>
+      )}
+
+      {globalNotice && (
+        <div className="absolute top-20 right-5 z-50 bg-emerald-500/20 border border-emerald-400/50 text-emerald-100 px-4 py-2 rounded-lg text-xs font-mono">
+          {globalNotice}
         </div>
       )}
 

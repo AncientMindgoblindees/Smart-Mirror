@@ -3,9 +3,11 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, ChevronUp, Heart, Moon, Palette, Power, QrCode, Shirt, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
+  cacheTryOnClothing,
   generateTryOn,
   getClothingItems,
   getPersonImages,
+  getTryOnGeneration,
   getUserSettings,
   putUserSettings,
   triggerCameraCapture,
@@ -158,6 +160,8 @@ function mockClothingItems(): ClothingItemRead[] {
 const OUTFIT_FAVORITES_STORAGE_KEY = 'mirror:outfit-favorites';
 const THEME_CACHE_SESSION_KEY = 'mirror:theme-selection:session';
 const TRYON_MAX_GENERATE_ATTEMPTS = 2; // initial attempt + 1 retry
+const TRYON_POLL_INTERVAL_MS = 1500;
+const TRYON_POLL_TIMEOUT_MS = 8 * 60 * 1000;
 
 function readDevPanelInitial(): boolean {
   try {
@@ -381,6 +385,7 @@ export default function MirrorApp() {
   const [latestPersonImageUrl, setLatestPersonImageUrl] = useState<string | null>(null);
   const [tryOnBusy, setTryOnBusy] = useState(false);
   const [tryOnStatus, setTryOnStatus] = useState<string | null>(null);
+  const [tryOnReadyNotice, setTryOnReadyNotice] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
@@ -532,6 +537,18 @@ export default function MirrorApp() {
       .map((item) => item.imageId);
     setSelectedClothingImageIds(ids);
   }, [selectedSlotItems]);
+  useEffect(() => {
+    if (!selectedClothingImageIds.length) return;
+    void cacheTryOnClothing(selectedClothingImageIds).catch(() => {});
+  }, [selectedClothingImageIds]);
+  useEffect(() => {
+    const onReady = () => {
+      setTryOnReadyNotice('Try-on is ready. Open Virtual Try-On to view.');
+      window.setTimeout(() => setTryOnReadyNotice(null), 6000);
+    };
+    window.addEventListener('mirror:tryon_result', onReady);
+    return () => window.removeEventListener('mirror:tryon_result', onReady);
+  }, []);
   const selectedClothingCount = selectedClothingImageIds.length;
   const selectedFavorite = outfitFavorites[selectedFavoriteIndex] ?? null;
   const refreshLatestPersonImage = useCallback(async () => {
@@ -699,6 +716,7 @@ export default function MirrorApp() {
         setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${capturedLatestId}?t=${Date.now()}`);
       }
       setTryOnStatus('Generating virtual try-on...');
+      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_started'));
       let lastError: unknown = null;
       let result: Awaited<ReturnType<typeof generateTryOn>> | null = null;
       for (let attempt = 1; attempt <= TRYON_MAX_GENERATE_ATTEMPTS; attempt += 1) {
@@ -719,7 +737,16 @@ export default function MirrorApp() {
             const key = categoryToTryOnPayloadKey(option.category, option.itemName);
             if (key) payload[key] = imageId;
           }
-          result = await generateTryOn(payload);
+          const queued = await generateTryOn(payload);
+          const pollStartedAt = Date.now();
+          while (true) {
+            if (Date.now() - pollStartedAt > TRYON_POLL_TIMEOUT_MS) {
+              throw new Error('Try-on generation timed out');
+            }
+            result = await getTryOnGeneration(queued.id);
+            if (result.status === 'completed' || result.status === 'failed') break;
+            await sleep(TRYON_POLL_INTERVAL_MS);
+          }
           break;
         } catch (error: unknown) {
           lastError = error;
@@ -737,6 +764,9 @@ export default function MirrorApp() {
             : `Virtual try-on failed after ${TRYON_MAX_GENERATE_ATTEMPTS} attempts`;
         throw new Error(message);
       }
+      if (result.status !== 'completed') {
+        throw new Error(result.error_message ?? 'Try-on generation failed');
+      }
       if (!result.result_image_url) {
         throw new Error(result.error_message ?? 'Try-on generation did not return an image');
       }
@@ -747,6 +777,7 @@ export default function MirrorApp() {
         }),
       );
       setTryOnStatus('Virtual try-on ready');
+      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_completed'));
       logMenu('outfit_tryon_generated', {
         generationId: result.id,
         selectedCount: selectedClothingImageIds.length,
@@ -754,6 +785,7 @@ export default function MirrorApp() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Try-on generation failed';
       setTryOnStatus(message);
+      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_completed'));
       logMenu('outfit_tryon_failed', { message }, 'error');
     } finally {
       setTryOnBusy(false);
@@ -1794,6 +1826,34 @@ export default function MirrorApp() {
       )}
 
       <AnimatePresence>
+        {tryOnBusy && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="fixed top-5 right-5 z-[110] bg-black/70 border border-cyan-400/45 rounded-xl px-4 py-3 pointer-events-none"
+          >
+            <div className="w-44 h-1 bg-white/15 rounded-full overflow-hidden mb-2">
+              <motion.div
+                initial={{ x: '-100%' }}
+                animate={{ x: '100%' }}
+                transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
+                className="w-1/2 h-full bg-cyan-400"
+              />
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-100">Try-On Running</div>
+          </motion.div>
+        )}
+        {tryOnReadyNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="fixed top-20 right-5 z-[110] bg-emerald-500/20 border border-emerald-400/50 rounded-lg px-4 py-2 text-emerald-100 text-xs"
+          >
+            {tryOnReadyNotice}
+          </motion.div>
+        )}
         {fullScreenTryOnUrl && (
           <motion.div
             className="camera-overlay"
