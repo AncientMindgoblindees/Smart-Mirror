@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import type { MenuNavigationLayer } from '@/hooks/useMenuNavigation';
 import { WidgetFrame, type WidgetConfig } from '@/features/widgets';
+import { shouldShowMenuPreviewInLiteMode } from '@/app/performanceMode';
 
 import './menu-overlay.css';
 
@@ -36,6 +37,7 @@ type MenuOverlayProps = {
   previewWidgetThemeId?: string;
   previewBackgroundThemeId?: string;
   compactTopRight?: boolean;
+  performanceLiteMode?: boolean;
 };
 
 export function MenuOverlay({
@@ -48,15 +50,16 @@ export function MenuOverlay({
   previewWidgetThemeId,
   previewBackgroundThemeId,
   compactTopRight = false,
+  performanceLiteMode = false,
 }: MenuOverlayProps) {
   if (!isOpen) return null;
 
-  const showPreview = layer !== 'main' && Boolean(preview);
+  const showPreview = layer !== 'main' && Boolean(preview) && (!performanceLiteMode || shouldShowMenuPreviewInLiteMode(layer));
   const previewRect = new DOMRect(0, 0, 360, 252);
 
   return (
     <div
-      className={`menu-overlay${compactTopRight ? ' is-compact-top-right' : ''}`}
+      className={`menu-overlay${compactTopRight ? ' is-compact-top-right' : ''}${performanceLiteMode ? ' performance-lite' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label="Mirror menu"
@@ -111,7 +114,7 @@ export function MenuOverlay({
             <div className="menu-overlay__preview-widget">
               {preview?.widget ? (
                 <div className="menu-overlay__preview-canvas">
-                  <WidgetFrame config={preview.widget} canvasRect={previewRect} />
+                  <WidgetFrame config={preview.widget} canvasRect={previewRect} disableAnimations={performanceLiteMode} />
                 </div>
               ) : (
                 <div className="menu-overlay__preview-empty">No widget selected.</div>

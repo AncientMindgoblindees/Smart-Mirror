@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldUsePerformanceLiteMode } from './performanceMode';
+import { shouldShowMenuPreviewInLiteMode, shouldUsePerformanceLiteMode } from './performanceMode';
 
 describe('shouldUsePerformanceLiteMode', () => {
   it('enables lite mode on low core-count devices', () => {
@@ -16,5 +16,16 @@ describe('shouldUsePerformanceLiteMode', () => {
 
   it('defaults to non-lite mode when hints are unavailable', () => {
     expect(shouldUsePerformanceLiteMode({})).toBe(false);
+  });
+});
+
+describe('shouldShowMenuPreviewInLiteMode', () => {
+  it('hides preview for non-main layers in lite mode', () => {
+    expect(shouldShowMenuPreviewInLiteMode('widget_list')).toBe(false);
+    expect(shouldShowMenuPreviewInLiteMode('parameter_editor')).toBe(false);
+  });
+
+  it('allows main layer in lite mode', () => {
+    expect(shouldShowMenuPreviewInLiteMode('main')).toBe(true);
   });
 });

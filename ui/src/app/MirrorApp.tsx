@@ -2005,6 +2005,7 @@ export default function MirrorApp() {
             menuNavigation.layer === 'theme_widget_list' ||
             menuNavigation.layer === 'theme_background_list'
           }
+          performanceLiteMode={performanceLiteMode}
         />
       )}
 
