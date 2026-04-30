@@ -70,16 +70,6 @@
   letter-spacing: 0.02em;
 }
 
-.clock-meridiem {
-  align-self: flex-start;
-  margin-left: 0.18em;
-  font-family: var(--font-mono);
-  font-size: 0.28em;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  color: var(--color-text-secondary);
-}
-
 .digit-slot {
   display: inline-flex;
   position: relative;

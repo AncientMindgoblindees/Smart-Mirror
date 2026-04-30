@@ -41,8 +41,6 @@ def start_button_service() -> None:
 
 def stop_button_service() -> None:
     global _buttons, _task
-    if _buttons is not None:
-        _buttons.close()
     _buttons = None
     if _task is not None:
         _task.cancel()

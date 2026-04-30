@@ -16,10 +16,7 @@ export type MirrorInputActions = {
   toggleDim: () => void;
   toggleSleep: () => void;
   toggleDevPanel: () => void;
-  dismissTryOnOverlay: () => void;
-  dismissAuthOverlay: () => void;
   getSleepMode: () => boolean;
-  isInputBlocked?: () => boolean;
 };
 
 export function useMirrorInput(actions: MirrorInputActions) {
@@ -30,7 +27,6 @@ export function useMirrorInput(actions: MirrorInputActions) {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      if (ref.current.isInputBlocked?.()) return;
 
       if (ref.current.getSleepMode()) {
         e.preventDefault();
@@ -53,11 +49,6 @@ export function useMirrorInput(actions: MirrorInputActions) {
         e.preventDefault();
         ref.current.toggleSleep();
         return;
-      }
-      if (k === 'x' || k === 'X') {
-        e.preventDefault();
-        ref.current.dismissTryOnOverlay();
-        ref.current.dismissAuthOverlay();
       }
     };
 
@@ -97,10 +88,6 @@ export function useMirrorInput(actions: MirrorInputActions) {
               break;
             case 'toggle_sleep':
               ref.current.toggleSleep();
-              break;
-            case 'dismiss_tryon':
-              ref.current.dismissTryOnOverlay();
-              ref.current.dismissAuthOverlay();
               break;
             default:
               break;

@@ -10,6 +10,7 @@ const DEFAULTS_BY_TYPE: Record<string, WidgetConfig['freeform']> = {
   weather: { x: 67, y: 4, width: 32, height: 20, sizePreset: 'medium' },
   news: { x: 3, y: 70, width: 44, height: 28, sizePreset: 'large' },
   calendar: { x: 56, y: 68, width: 44, height: 28, sizePreset: 'large' },
+  virtual_try_on: { x: 39, y: 41, width: 22, height: 14, sizePreset: 'small' },
 };
 
 /** Legacy layouts stored pixel coords against this reference before percent migration. */
@@ -39,16 +40,6 @@ function clampFreeform(f: WidgetConfig['freeform']): WidgetConfig['freeform'] {
   const sizePreset =
     f.sizePreset ?? inferWidgetSizePreset(width, height);
   return { x, y, width, height, sizePreset };
-}
-
-function finiteNumber(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
-  return value;
-}
-
-function positiveInt(value: unknown, fallback: number): number {
-  const n = Math.round(finiteNumber(value, fallback));
-  return n >= 1 ? n : fallback;
 }
 
 function legacyPixelsToPercent(f: WidgetConfig['freeform']): WidgetConfig['freeform'] {
@@ -135,9 +126,6 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
   const location = typeof cj.location === 'string' ? cj.location : undefined;
   const unit =
     cj.unit === 'imperial' || cj.unit === 'metric' ? (cj.unit as 'metric' | 'imperial') : undefined;
-  const format = cj.format === '12h' || cj.format === '24h' ? (cj.format as '12h' | '24h') : undefined;
-  const timeFormat =
-    cj.timeFormat === '12h' || cj.timeFormat === '24h' ? (cj.timeFormat as '12h' | '24h') : undefined;
   const normalizedType = normalizeWidgetTypeId(w.widget_id);
   return {
     id: `w-${w.id}`,
@@ -145,10 +133,10 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
     type: normalizedType,
     enabled: w.enabled,
     grid: {
-      row: Math.max(1, Math.round(w.position_row)),
-      col: Math.max(1, Math.round(w.position_col)),
-      rowSpan: Math.max(1, Math.round(w.size_rows)),
-      colSpan: Math.max(1, Math.round(w.size_cols)),
+      row: w.position_row,
+      col: w.position_col,
+      rowSpan: w.size_rows,
+      colSpan: w.size_cols,
     },
     freeform: readFreeform(w.config_json, normalizedType),
     ...(title !== undefined ? { title } : {}),
@@ -157,25 +145,11 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
     ...(integration !== undefined ? { integration } : {}),
     ...(location !== undefined ? { location } : {}),
     ...(unit !== undefined ? { unit } : {}),
-    ...(format !== undefined ? { format } : {}),
-    ...(timeFormat !== undefined ? { timeFormat } : {}),
   };
 }
 
 export function widgetToBackend(w: WidgetConfig): WidgetConfigUpdate {
-  const safeFreeform = {
-    ...w.freeform,
-    x: finiteNumber(w.freeform.x, 0),
-    y: finiteNumber(w.freeform.y, 0),
-    width: finiteNumber(w.freeform.width, 32),
-    height: finiteNumber(w.freeform.height, 20),
-  };
-  const clamped = clampFreeform(safeFreeform);
-  const row = positiveInt(w.grid?.row, 1);
-  const col = positiveInt(w.grid?.col, 1);
-  const rowSpan = positiveInt(w.grid?.rowSpan, 1);
-  const colSpan = positiveInt(w.grid?.colSpan, 1);
-  const widgetId = normalizeWidgetTypeId(w.type || 'custom');
+  const clamped = clampFreeform(w.freeform);
   const config_json: Record<string, unknown> = {
     freeform: clamped,
   };
@@ -185,16 +159,14 @@ export function widgetToBackend(w: WidgetConfig): WidgetConfigUpdate {
   if (w.integration !== undefined) config_json.integration = w.integration;
   if (w.location !== undefined) config_json.location = w.location;
   if (w.unit !== undefined) config_json.unit = w.unit;
-  if (w.format !== undefined) config_json.format = w.format;
-  if (w.timeFormat !== undefined) config_json.timeFormat = w.timeFormat;
   return {
     id: w.backendId ?? undefined,
-    widget_id: widgetId,
+    widget_id: normalizeWidgetTypeId(w.type),
     enabled: w.enabled,
-    position_row: row,
-    position_col: col,
-    size_rows: rowSpan,
-    size_cols: colSpan,
+    position_row: w.grid.row,
+    position_col: w.grid.col,
+    size_rows: w.grid.rowSpan,
+    size_cols: w.grid.colSpan,
     config_json,
   };
 }

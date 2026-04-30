@@ -9,6 +9,3 @@ pydantic
 cryptography
 
 cloudinary
-python-dotenv
-picamera2; sys_platform == 'linux'
-Pillow

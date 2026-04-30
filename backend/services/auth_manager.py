@@ -7,13 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from backend.database.models import CalendarEvent, OAuthProvider
+from backend.database.models import OAuthProvider
 from backend.database.session import SessionLocal
 from backend.services.crypto import decrypt_token, encrypt_token
 from backend.services.providers.base import (
@@ -22,6 +21,7 @@ from backend.services.providers.base import (
     TokenResponse,
 )
 from backend.services.providers.google_provider import GoogleProvider
+from backend.services.providers.microsoft_provider import MicrosoftProvider
 from backend.services.realtime import control_registry
 
 logger = logging.getLogger(__name__)
@@ -32,9 +32,9 @@ class AuthManager:
         self._providers: Dict[str, CalendarProvider] = {}
         self._pending_polls: Dict[str, asyncio.Task[Any]] = {}
         self._pending_device_codes: Dict[str, DeviceCodeResponse] = {}
-        self._pending_web_logins: Dict[str, float] = {}
 
         self.register_provider(GoogleProvider())
+        self.register_provider(MicrosoftProvider())
 
     def register_provider(self, provider: CalendarProvider) -> None:
         self._providers[provider.provider_name] = provider
@@ -77,36 +77,6 @@ class AuthManager:
         self._pending_polls[provider_name] = task
         return device_code_resp
 
-    async def start_web_redirect_login(
-        self, provider_name: str, verification_uri: str, ttl_sec: int = 600
-    ) -> DeviceCodeResponse:
-        if provider_name not in self._providers:
-            raise ValueError(f"Unknown provider: {provider_name}")
-        # Keep pending status alive while user completes browser OAuth flow.
-        self.cancel_login(provider_name)
-        self._pending_web_logins[provider_name] = time.monotonic() + ttl_sec
-        dc = DeviceCodeResponse(
-            verification_uri=verification_uri,
-            user_code="",
-            device_code=f"web-{provider_name}",
-            expires_in=ttl_sec,
-            interval=5,
-            message="Scan QR to open sign-in page",
-        )
-        self._pending_device_codes[provider_name] = dc
-        await control_registry.broadcast({
-            "type": "OAUTH_DEVICE_CODE",
-            "payload": {
-                "provider": provider_name,
-                "verification_uri": dc.verification_uri,
-                "user_code": dc.user_code,
-                "expires_in": dc.expires_in,
-                "interval": dc.interval,
-                "message": dc.message,
-            },
-        })
-        return dc
-
     async def _poll_and_store(
         self, provider_name: str, dc: DeviceCodeResponse
     ) -> None:
@@ -128,10 +98,7 @@ class AuthManager:
 
             # Import here to avoid circular import at module level
             from backend.services.sync_service import sync_manager
-            # Run one sync right away so widgets populate immediately after linking.
-            await sync_manager.force_sync(provider_name)
-            # Then keep background periodic sync running on the normal interval.
-            await sync_manager.start_provider_sync(provider_name, run_immediately=False)
+            await sync_manager.start_provider_sync(provider_name)
 
         except (TimeoutError, RuntimeError) as exc:
             logger.warning("OAuth flow failed for %s: %s", provider_name, exc)
@@ -177,7 +144,6 @@ class AuthManager:
 
     async def store_tokens_from_web(self, provider_name: str, token: TokenResponse) -> None:
         """Persist tokens from authorization-code (browser) flow and start sync."""
-        self.cancel_login(provider_name)
         self._store_tokens(provider_name, token)
         await control_registry.broadcast({
             "type": "AUTH_STATE_CHANGED",
@@ -185,10 +151,7 @@ class AuthManager:
         })
         from backend.services.sync_service import sync_manager
 
-        # Run one sync right away so widgets populate immediately after linking.
-        await sync_manager.force_sync(provider_name)
-        # Then keep background periodic sync running on the normal interval.
-        await sync_manager.start_provider_sync(provider_name, run_immediately=False)
+        await sync_manager.start_provider_sync(provider_name)
 
     # ── Cancel / Logout ─────────────────────────────────────────────────
 
@@ -197,7 +160,6 @@ class AuthManager:
         if task:
             task.cancel()
         self._pending_device_codes.pop(provider_name, None)
-        self._pending_web_logins.pop(provider_name, None)
 
     async def logout(self, provider_name: str) -> None:
         self.cancel_login(provider_name)
@@ -210,11 +172,7 @@ class AuthManager:
             row = db.query(OAuthProvider).filter_by(provider=provider_name).first()
             if row:
                 db.delete(row)
-            # Remove provider-synced calendar/task rows so widgets clear immediately on disconnect.
-            db.query(CalendarEvent).filter_by(provider=provider_name).delete(
-                synchronize_session=False
-            )
-            db.commit()
+                db.commit()
         finally:
             db.close()
 
@@ -222,22 +180,11 @@ class AuthManager:
             "type": "AUTH_STATE_CHANGED",
             "payload": {"provider": provider_name, "status": "disconnected"},
         })
-        await control_registry.broadcast({
-            "type": "CALENDAR_UPDATED",
-            "payload": {
-                "provider": provider_name,
-                "events_count": 0,
-                "tasks_count": 0,
-                "synced_at": datetime.now(timezone.utc).isoformat(),
-            },
-        })
 
     # ── Token Access ────────────────────────────────────────────────────
 
     async def get_valid_token(self, provider_name: str) -> Optional[str]:
         """Return a valid access token, refreshing if expired."""
-        if provider_name not in self._providers:
-            return None
         db: Session = SessionLocal()
         try:
             row = db.query(OAuthProvider).filter_by(provider=provider_name).first()
@@ -282,17 +229,6 @@ class AuthManager:
     # ── Status Queries ──────────────────────────────────────────────────
 
     def get_login_status(self, provider_name: str) -> Dict[str, Any]:
-        web_exp = self._pending_web_logins.get(provider_name)
-        if web_exp is not None:
-            if time.monotonic() <= web_exp:
-                dc = self._pending_device_codes.get(provider_name)
-                return {
-                    "provider": provider_name,
-                    "status": "pending",
-                    "message": dc.message if dc else None,
-                }
-            self._pending_web_logins.pop(provider_name, None)
-            self._pending_device_codes.pop(provider_name, None)
         if provider_name in self._pending_polls and not self._pending_polls[provider_name].done():
             dc = self._pending_device_codes.get(provider_name)
             return {
@@ -310,14 +246,11 @@ class AuthManager:
             db.close()
 
     def get_connected_providers(self) -> List[Dict[str, Any]]:
-        supported = set(self._providers.keys())
         db: Session = SessionLocal()
         try:
             rows = db.query(OAuthProvider).all()
             result = []
             for row in rows:
-                if row.provider not in supported:
-                    continue
                 result.append({
                     "provider": row.provider,
                     "connected": True,

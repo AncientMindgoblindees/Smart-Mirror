@@ -29,6 +29,7 @@ class DeviceConnectionManager:
         self.active_device_id: Optional[str] = None
         self.active_device_name: Optional[str] = None
         self.last_error: Optional[str] = None
+        self._search_task: Optional[asyncio.Task[None]] = None
 
     def snapshot(self) -> Dict[str, Any]:
         return {

@@ -26,21 +26,7 @@ function AnimatedDigit({ value, className }: { value: string; className?: string
   );
 }
 
-type ClockFormat = '12h' | '24h';
-
-export function getClockDisplayParts(time: Date, format: ClockFormat = '24h') {
-  const is12Hour = format === '12h';
-  const rawHours = time.getHours();
-  const hours = is12Hour
-    ? String(rawHours % 12 || 12).padStart(2, '0')
-    : String(rawHours).padStart(2, '0');
-  const minutes = String(time.getMinutes()).padStart(2, '0');
-  const seconds = String(time.getSeconds()).padStart(2, '0');
-  const meridiem = is12Hour ? (rawHours >= 12 ? 'PM' : 'AM') : '';
-  return { hours, minutes, seconds, meridiem, is12Hour };
-}
-
-export const ClockWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
+export const ClockWidget: React.FC<{ config: WidgetConfig }> = React.memo(() => {
   const [time, setTime] = useState(new Date());
   const rafRef = useRef<number>(0);
 
@@ -58,8 +44,9 @@ export const ClockWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ con
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
-  const format: ClockFormat = config.format === '12h' ? '12h' : '24h';
-  const { hours, minutes, seconds, meridiem, is12Hour } = getClockDisplayParts(time, format);
+  const hours = time.toLocaleTimeString([], { hour: '2-digit', hour12: false }).padStart(2, '0').slice(0, 2);
+  const minutes = time.toLocaleTimeString([], { minute: '2-digit' }).padStart(2, '0').slice(-2);
+  const seconds = time.getSeconds().toString().padStart(2, '0');
 
   const dateStr = time.toLocaleDateString([], {
     weekday: 'long',
@@ -69,14 +56,13 @@ export const ClockWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ con
 
   return (
     <div className="widget-content clock-widget">
-      <div className="clock-time" aria-label={time.toLocaleTimeString([], { hour12: is12Hour })}>
+      <div className="clock-time" aria-label={time.toLocaleTimeString()}>
         <div className="clock-hhmm">
           <AnimatedDigit value={hours[0]} />
           <AnimatedDigit value={hours[1]} />
           <span className="clock-colon">:</span>
           <AnimatedDigit value={minutes[0]} />
           <AnimatedDigit value={minutes[1]} />
-          {is12Hour ? <span className="clock-meridiem">{meridiem}</span> : null}
         </div>
         <div className="clock-seconds">
           <AnimatedDigit value={seconds[0]} className="sec" />

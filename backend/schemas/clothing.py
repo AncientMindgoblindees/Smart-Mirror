@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -9,7 +9,6 @@ class ClothingItemCreate(BaseModel):
     color: Optional[str] = None
     season: Optional[str] = None
     notes: Optional[str] = None
-    favorite: bool = False
 
 class ClothingItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -17,7 +16,6 @@ class ClothingItemUpdate(BaseModel):
     color: Optional[str] = None
     season: Optional[str] = None
     notes: Optional[str] = None
-    favorite: Optional[bool] = None
 
 class ClothingItemRead(BaseModel):
     id: int
@@ -26,10 +24,8 @@ class ClothingItemRead(BaseModel):
     color: Optional[str] = None
     season: Optional[str] = None
     notes: Optional[str] = None
-    favorite: bool = False
     created_at: datetime
     updated_at: datetime
-    images: Optional[List["ClothingImageRead"]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -42,6 +38,3 @@ class ClothingImageRead(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
-
-
-ClothingItemRead.model_rebuild()

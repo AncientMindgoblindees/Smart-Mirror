@@ -22,23 +22,6 @@ def init_db() -> None:
     """
     Base.metadata.create_all(bind=engine)
     _ensure_sync_columns()
-    _ensure_clothing_favorite_column()
-    _ensure_d1_checkpoint_columns()
-
-
-def _ensure_d1_checkpoint_columns() -> None:
-    """Add D1 cursor columns to d1_sync_checkpoint for existing SQLite DBs."""
-    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
-        return
-    with engine.begin() as conn:
-        rows = conn.execute(text("PRAGMA table_info(d1_sync_checkpoint)")).fetchall()
-        columns = {str(row[1]) for row in rows}
-        if not columns:
-            return
-        if "last_remote_cursor" not in columns:
-            conn.execute(text("ALTER TABLE d1_sync_checkpoint ADD COLUMN last_remote_cursor VARCHAR(128)"))
-        if "last_remote_cursor_id" not in columns:
-            conn.execute(text("ALTER TABLE d1_sync_checkpoint ADD COLUMN last_remote_cursor_id INTEGER"))
 
 
 def _ensure_sync_columns() -> None:
@@ -54,18 +37,6 @@ def _ensure_sync_columns() -> None:
             if "synced_at" in columns:
                 continue
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN synced_at DATETIME"))
-
-
-def _ensure_clothing_favorite_column() -> None:
-    """Backfill clothing_item.favorite for existing SQLite databases."""
-    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
-        return
-    with engine.begin() as conn:
-        rows = conn.execute(text("PRAGMA table_info(clothing_item)")).fetchall()
-        columns = {str(row[1]) for row in rows}
-        if not columns or "favorite" in columns:
-            return
-        conn.execute(text("ALTER TABLE clothing_item ADD COLUMN favorite BOOLEAN NOT NULL DEFAULT 0"))
 
 
 def get_db():

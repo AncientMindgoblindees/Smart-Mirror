@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { WidgetConfig } from '../types';
 import { getNewsHeadlinesPreview, type NewsHeadline } from '@/features/ai/entrypoints';
@@ -53,7 +53,7 @@ export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ conf
   const pageSize = estimatePageSize(config.freeform.width, config.freeform.height);
   const { pageItems, pageIndex, pageCount } = useDisplayPagination(headlines, pageSize, 8000);
 
-  const loadNews = useCallback(async () => {
+  const loadNews = async () => {
     setError(null);
     try {
       const items = await getNewsHeadlinesPreview(itemLimit, {
@@ -66,7 +66,7 @@ export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ conf
     } finally {
       setLoading(false);
     }
-  }, [itemLimit, summaryEnabled]);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -75,12 +75,12 @@ export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ conf
       await loadNews();
     })();
     return () => { mounted = false; };
-  }, [loadNews]);
+  }, [itemLimit, summaryEnabled]);
 
   useEffect(() => {
     const id = window.setInterval(() => { void loadNews(); }, 5 * 60 * 1000);
     return () => window.clearInterval(id);
-  }, [loadNews]);
+  }, [itemLimit, summaryEnabled]);
 
   return (
     <div className="widget-content news-widget">

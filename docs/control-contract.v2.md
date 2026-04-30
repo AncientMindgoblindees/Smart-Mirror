@@ -30,7 +30,6 @@ All v2 messages use a shared envelope:
 - `CAMERA_CAPTURED`
 - `CAMERA_ERROR`
 - `WARDROBE_UPDATED`
-- `TRYON_RESULT` — payload: `{ "generation_id": string, "image_url": string }` (mirror + companion)
 
 Legacy `SYNC_STATE` remains supported for backward compatibility.
 
@@ -45,24 +44,16 @@ Legacy `SYNC_STATE` remains supported for backward compatibility.
 ### Camera
 
 - `GET /api/camera/status`
-- `GET /api/camera/live` — MJPEG multipart stream for mirror `<img>` live view (preferred)
-- `GET /api/camera/stream.mjpg` — same MJPEG stream (alternate URL)
-- `POST /api/camera/capture` — starts boot + countdown; final still is written on the Pi after countdown (not from the MJPEG stream)
+- `POST /api/camera/capture`
   - body: `{ "countdown_seconds": number, "source": string, "session_id"?: string }`
 
-### Clothing (wardrobe + Cloudinary + D1 sync)
+### Wardrobe
 
-- `GET /api/clothing/?include_images=true|false` — list items; when `include_images=true`, each item includes `images[]` (Cloudinary URLs).
-- `POST /api/clothing/` — JSON body: `name`, `category`, optional `color`, `season`, `notes`
-- `POST /api/clothing/{item_id}/images` — multipart file upload (stores Cloudinary metadata in SQLite / D1)
-- `DELETE /api/clothing/{item_id}`
-
-### Try-on (person image + Leonardo)
-
-- `POST /api/tryon/person-image` — multipart upload; file saved under `data/person_images/` on the mirror host
-- `GET /api/tryon/person-image/latest` — binary file stream of the newest person image
-- `GET /api/tryon/person-image/{id}` — binary file stream by row id
-- `POST /api/tryon/outfit-generate` — JSON `{ "clothing_image_ids": number[], "prompt"?: string }`; calls Leonardo, then broadcasts `TRYON_RESULT`
+- `GET /api/wardrobe/items?user_id=local-dev`
+- `POST /api/wardrobe/items` (multipart form upload)
+- `DELETE /api/wardrobe/items/{id}`
+- `GET /api/wardrobe/files/{fileName}`
+- `POST /api/wardrobe/virtual-try-on/preview` (stubbed integration contract)
 
 ## Camera action flow
 

@@ -11,12 +11,14 @@ interface Props {
   onToggleSleep: () => void;
   widgets: WidgetConfig[];
   onToggleWidget: (id: string) => void;
-  /** Calendar OAuth (device code -> QR on mirror) */
+  /** Calendar OAuth (device code → QR on mirror) */
   authProviders?: ProviderStatus[];
   authPending?: boolean;
   authError?: string | null;
   onSignInGoogle?: () => void | Promise<void>;
+  onSignInMicrosoft?: () => void | Promise<void>;
   onDisconnectGoogle?: () => void | Promise<void>;
+  onDisconnectMicrosoft?: () => void | Promise<void>;
 }
 
 export const ToolsPanel: React.FC<Props> = ({
@@ -29,11 +31,15 @@ export const ToolsPanel: React.FC<Props> = ({
   authPending = false,
   authError = null,
   onSignInGoogle,
+  onSignInMicrosoft,
   onDisconnectGoogle,
+  onDisconnectMicrosoft,
 }) => {
   const [authBusy, setAuthBusy] = useState(false);
   const google = authProviders.find((p) => p.provider === 'google');
+  const microsoft = authProviders.find((p) => p.provider === 'microsoft');
   const googleConnected = google?.connected ?? false;
+  const microsoftConnected = microsoft?.connected ?? false;
 
   const run = async (fn?: () => void | Promise<void>) => {
     if (!fn || authBusy || authPending) return;
@@ -66,7 +72,7 @@ export const ToolsPanel: React.FC<Props> = ({
         </div>
       </div>
 
-      {onSignInGoogle && (
+      {(onSignInGoogle || onSignInMicrosoft) && (
         <div className="tools-section tools-accounts">
           <div className="tools-account-label">Calendar</div>
           <div className="tools-account-row">
@@ -76,7 +82,7 @@ export const ToolsPanel: React.FC<Props> = ({
               disabled={authBusy || authPending || googleConnected}
               onClick={() => run(onSignInGoogle)}
             >
-              {googleConnected ? 'Google Connected' : 'Google'}
+              {googleConnected ? 'Google ✓' : 'Google'}
             </button>
             {googleConnected && onDisconnectGoogle && (
               <button
@@ -84,6 +90,26 @@ export const ToolsPanel: React.FC<Props> = ({
                 className="tool-btn tool-btn-account tool-btn-disconnect"
                 disabled={authBusy}
                 onClick={() => run(onDisconnectGoogle)}
+              >
+                Out
+              </button>
+            )}
+          </div>
+          <div className="tools-account-row">
+            <button
+              type="button"
+              className="tool-btn tool-btn-account"
+              disabled={authBusy || authPending || microsoftConnected}
+              onClick={() => run(onSignInMicrosoft)}
+            >
+              {microsoftConnected ? 'Microsoft ✓' : 'Microsoft'}
+            </button>
+            {microsoftConnected && onDisconnectMicrosoft && (
+              <button
+                type="button"
+                className="tool-btn tool-btn-account tool-btn-disconnect"
+                disabled={authBusy}
+                onClick={() => run(onDisconnectMicrosoft)}
               >
                 Out
               </button>

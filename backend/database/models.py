@@ -54,10 +54,6 @@ class OAuthProvider(Base):
     token_expiry = Column(DateTime, nullable=True)
     scopes = Column(String(256), nullable=True)
     status = Column(String(16), nullable=False, default="active")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
 
 
 class ClothingItem(Base):
@@ -69,7 +65,6 @@ class ClothingItem(Base):
     color = Column(String(50), nullable=True)
     season = Column(String(30), nullable=True)
     notes = Column(String(255), nullable=True)
-    favorite = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(
@@ -134,10 +129,6 @@ class D1SyncCheckpoint(Base):
 
     table_name = Column(String(64), primary_key=True)
     last_pull_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    # Max remote order column (updated_at or created_at) merged from D1; used as incremental pull cursor.
-    last_remote_cursor = Column(String(128), nullable=True, default=None)
-    # Tie-breaker row id when multiple rows share the same order timestamp.
-    last_remote_cursor_id = Column(Integer, nullable=True, default=None)
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )

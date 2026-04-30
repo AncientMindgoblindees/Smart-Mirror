@@ -4,42 +4,22 @@
 
 /* Sun */
 .wi-sun .sun-core {
-  animation: sunPulse 3.2s ease-in-out infinite alternate;
-  filter: drop-shadow(0 0 7px rgba(255, 187, 55, 0.42));
-}
-
-.wi-sun .sun-highlight {
-  animation: sunShine 2.8s ease-in-out infinite alternate;
-}
-
-.wi-sun .sun-rays {
-  transform-origin: 24px 24px;
-  animation: raySpin 20s linear infinite;
+  animation: sunGlow 4s ease-in-out infinite alternate;
 }
 
 .wi-sun .sun-ray {
   transform-origin: 24px 24px;
-  animation: rayBreathe 2.7s ease-in-out infinite alternate;
+  animation: rayRotate 12s linear infinite;
 }
 
-@keyframes sunPulse {
-  0% { transform: scale(0.96); filter: drop-shadow(0 0 5px rgba(245, 166, 35, 0.28)); }
-  100% { transform: scale(1.04); filter: drop-shadow(0 0 13px rgba(245, 166, 35, 0.56)); }
+@keyframes sunGlow {
+  0% { filter: drop-shadow(0 0 4px rgba(245, 166, 35, 0.3)); }
+  100% { filter: drop-shadow(0 0 12px rgba(245, 166, 35, 0.6)); }
 }
 
-@keyframes sunShine {
-  0% { opacity: 0.35; transform: translate(-0.3px, -0.2px); }
-  100% { opacity: 0.7; transform: translate(0.4px, 0.25px); }
-}
-
-@keyframes raySpin {
+@keyframes rayRotate {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-
-@keyframes rayBreathe {
-  0% { opacity: 0.7; }
-  100% { opacity: 1; }
 }
 
 /* Cloud */

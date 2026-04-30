@@ -53,10 +53,10 @@ class SyncManager:
         finally:
             db.close()
 
-    async def start_provider_sync(self, provider_name: str, run_immediately: bool = True) -> None:
+    async def start_provider_sync(self, provider_name: str) -> None:
         if provider_name in self._tasks and not self._tasks[provider_name].done():
             return
-        task = asyncio.create_task(self._sync_loop(provider_name, run_immediately=run_immediately))
+        task = asyncio.create_task(self._sync_loop(provider_name))
         self._tasks[provider_name] = task
         logger.info("Started sync loop for %s", provider_name)
 
@@ -72,9 +72,10 @@ class SyncManager:
 
     # ── Sync Loop ───────────────────────────────────────────────────────
 
-    async def _sync_loop(self, provider_name: str, run_immediately: bool = True) -> None:
+    async def _sync_loop(self, provider_name: str) -> None:
         backoff = BACKOFF_INITIAL
-        first_run = run_immediately
+        # Do an initial sync immediately
+        first_run = True
         while True:
             try:
                 if not first_run:
@@ -151,7 +152,9 @@ class SyncManager:
         db: Session = SessionLocal()
         now = datetime.now(timezone.utc)
         try:
+            seen_ids = set()
             for item in items:
+                seen_ids.add(item.external_id)
                 row = (
                     db.query(CalendarEvent)
                     .filter_by(provider=provider_name, external_id=item.external_id)

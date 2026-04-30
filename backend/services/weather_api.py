@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -129,7 +129,7 @@ def _parse_forecast(
     condition = _map_condition_code(ccode, ctext)
 
     forecast_out: List[WeatherForecastDayOut] = []
-    for d in days[:7]:
+    for d in days[:3]:
         day = d.get("day") or {}
         date = str(d.get("date") or "")
         if imperial:
@@ -148,35 +148,6 @@ def _parse_forecast(
                 condition=_map_condition_code(dc, dt),
             )
         )
-
-    # WeatherAPI may return fewer than 7 days on some plans.
-    # Keep response shape stable for UI by padding to 7 entries.
-    if len(forecast_out) < 7:
-        seed = forecast_out[-1] if forecast_out else WeatherForecastDayOut(
-            weekday=datetime.utcnow().strftime("%a"),
-            high=temp,
-            low=temp,
-            condition=condition,
-        )
-
-        if days and isinstance(days[0], dict) and days[0].get("date"):
-            try:
-                base_date = datetime.strptime(str(days[0]["date"]), "%Y-%m-%d")
-            except Exception:
-                base_date = datetime.utcnow()
-        else:
-            base_date = datetime.utcnow()
-
-        for idx in range(len(forecast_out), 7):
-            dt = base_date + timedelta(days=idx)
-            forecast_out.append(
-                WeatherForecastDayOut(
-                    weekday=dt.strftime("%a"),
-                    high=seed.high,
-                    low=seed.low,
-                    condition=seed.condition,
-                )
-            )
 
     snap = WeatherSnapshotOut(
         configured=True,
@@ -198,7 +169,7 @@ def _parse_forecast(
 async def fetch_weather_snapshot(
     api_key: str, q: str, imperial: bool
 ) -> tuple[Optional[WeatherSnapshotOut], Optional[str]]:
-    params = {"key": api_key, "q": q, "days": 7}
+    params = {"key": api_key, "q": q, "days": 3}
     url = f"{WEATHERAPI_BASE}/forecast.json"
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:

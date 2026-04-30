@@ -10,21 +10,8 @@ class CameraCaptureRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, max_length=128)
 
 
-class CameraPreviewRequest(BaseModel):
-    source: str = Field("mirror-dev-panel", min_length=1, max_length=64)
-    session_id: Optional[str] = Field(default=None, max_length=128)
-
-
 class CameraStatusOut(BaseModel):
     active: bool
-    booting: bool = Field(
-        default=False,
-        description="True while prepare + min boot dwell run; mirror UI should show boot overlay.",
-    )
     countdown_remaining: int
     last_capture_id: Optional[str] = None
     last_capture_at: Optional[datetime] = None
-    backend_camera_available: bool = False
-    backend_camera_preferred_source: str = "none"
-    picamera2_available: bool = False
-    rpicam_available: bool = False

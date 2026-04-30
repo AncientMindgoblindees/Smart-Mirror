@@ -74,19 +74,11 @@
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.4);
   margin: 0;
-  max-width: 100%;
-  text-align: center;
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .auth-qr-url span {
-  display: inline-block;
-  max-width: 100%;
   color: rgba(255, 255, 255, 0.6);
   text-decoration: underline;
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .auth-qr-waiting {
@@ -94,16 +86,6 @@
   color: rgba(255, 255, 255, 0.35);
   margin: 0;
   animation: auth-pulse 2s ease-in-out infinite;
-}
-
-.auth-qr-dismiss {
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.92);
-  border-radius: 0.75rem;
-  padding: 0.55rem 1.1rem;
-  font-size: 0.82rem;
-  cursor: pointer;
 }
 
 @keyframes auth-pulse {

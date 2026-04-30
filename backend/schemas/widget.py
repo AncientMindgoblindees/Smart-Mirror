@@ -28,19 +28,5 @@ class WidgetConfigUpdate(WidgetConfigBase):
     id: Optional[int] = None
 
 
-class WidgetConfigCreate(WidgetConfigBase):
-    pass
-
-
-class WidgetConfigPatch(BaseModel):
-    widget_id: Optional[str] = None
-    enabled: Optional[bool] = None
-    position_row: Optional[int] = Field(None, ge=1)
-    position_col: Optional[int] = Field(None, ge=1)
-    size_rows: Optional[int] = Field(None, ge=1)
-    size_cols: Optional[int] = Field(None, ge=1)
-    config_json: Optional[Dict[str, Any]] = None
-
-
 WidgetConfigList = List[WidgetConfigOut]
 

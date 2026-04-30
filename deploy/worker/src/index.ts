@@ -66,7 +66,6 @@ const TABLE_SCHEMAS: Record<string, TableSchema> = {
       "color",
       "season",
       "notes",
-      "favorite",
       "created_at",
       "updated_at",
       "synced_at",
@@ -110,30 +109,13 @@ function parseBearerToken(authHeader: string | null): string {
   return h.replace(/^Bearer\s+/i, "").trim();
 }
 
-function toBytes(input: string): Uint8Array {
-  return new TextEncoder().encode(input);
-}
-
-function timingSafeEquals(a: string, b: string): boolean {
-  const aBytes = toBytes(a);
-  const bBytes = toBytes(b);
-  if (aBytes.length !== bBytes.length) {
-    return false;
-  }
-  let diff = 0;
-  for (let i = 0; i < aBytes.length; i += 1) {
-    diff |= aBytes[i] ^ bBytes[i];
-  }
-  return diff === 0;
-}
-
 function isAuthorized(request: Request, env: Env): boolean {
   const token = parseBearerToken(request.headers.get("Authorization"));
   const expected = String(env.MIRROR_SYNC_TOKEN ?? "").trim();
   if (!token || !expected) {
     return false;
   }
-  return timingSafeEquals(token, expected);
+  return token === expected;
 }
 
 function sanitizeRow(input: unknown, schema: TableSchema): RowRecord {
@@ -156,43 +138,27 @@ function compareTimestamp(a: unknown, b: unknown): number {
   const aTs = Date.parse(String(a ?? ""));
   const bTs = Date.parse(String(b ?? ""));
   if (!Number.isFinite(aTs) || !Number.isFinite(bTs)) {
-    return Number.NaN;
+    return 0;
   }
   return aTs - bTs;
 }
 
-async function pullRows(
-  env: Env,
-  table: string,
-  since: string,
-  full: boolean,
-  sinceId: number,
-): Promise<Response> {
+async function pullRows(env: Env, table: string, since: string): Promise<Response> {
   const schema = TABLE_SCHEMAS[table];
   if (!schema) {
-    return json({ error: "invalid table", error_code: "INVALID_TABLE", table, op: "pull" }, 400);
+    return json({ error: "invalid table" }, 400);
   }
-  if (!full) {
-    const sinceTs = Date.parse(since);
-    if (!Number.isFinite(sinceTs)) {
-      return json({ error: "invalid since timestamp", error_code: "INVALID_SINCE", table, op: "pull" }, 400);
-    }
+  const sinceTs = Date.parse(since);
+  if (!Number.isFinite(sinceTs)) {
+    return json({ error: "invalid since timestamp" }, 400);
   }
-  const query = full
-    ? `SELECT * FROM ${table} ORDER BY ${schema.orderColumn} ASC, id ASC`
-    : `SELECT * FROM ${table} WHERE ${schema.orderColumn} > ? OR (${schema.orderColumn} = ? AND id > ?) ORDER BY ${schema.orderColumn} ASC, id ASC`;
-  const result = full
-    ? await env.MIRROR_DB.prepare(query).all<RowRecord>()
-    : await env.MIRROR_DB.prepare(query)
-        .bind(new Date(Date.parse(since)).toISOString(), new Date(Date.parse(since)).toISOString(), sinceId)
-        .all<RowRecord>();
+  const query = `SELECT * FROM ${table} WHERE ${schema.orderColumn} > ? ORDER BY ${schema.orderColumn} ASC`;
+  const result = await env.MIRROR_DB.prepare(query).bind(new Date(sinceTs).toISOString()).all<RowRecord>();
   if (result.success === false) {
     return json(
       {
         error: "d1_query_failed",
-        error_code: "D1_QUERY_FAILED",
         table,
-        op: "pull",
         detail: result.error ?? result.meta ?? result,
       },
       500,
@@ -200,51 +166,7 @@ async function pullRows(
   }
   return json({
     table,
-    full,
     rows: result.results ?? [],
-  });
-}
-
-async function tableStats(env: Env, table: string): Promise<Response> {
-  const schema = TABLE_SCHEMAS[table];
-  if (!schema) {
-    return json({ error: "invalid table", error_code: "INVALID_TABLE", table, op: "stats" }, 400);
-  }
-  const countResult = await env.MIRROR_DB.prepare(`SELECT COUNT(*) as n FROM ${table}`).all<{ n: number }>();
-  if (countResult.success === false) {
-    return json(
-      {
-        error: "d1_stats_failed",
-        error_code: "D1_STATS_COUNT_FAILED",
-        table,
-        op: "stats",
-        detail: countResult.error ?? countResult.meta ?? countResult,
-      },
-      500,
-    );
-  }
-  const maxResult = await env.MIRROR_DB.prepare(`SELECT MAX(${schema.orderColumn}) as m FROM ${table}`).all<{
-    m: unknown;
-  }>();
-  if (maxResult.success === false) {
-    return json(
-      {
-        error: "d1_stats_failed",
-        error_code: "D1_STATS_MAX_FAILED",
-        table,
-        op: "stats",
-        detail: maxResult.error ?? maxResult.meta ?? maxResult,
-      },
-      500,
-    );
-  }
-  const countRow = countResult.results?.[0];
-  const maxRow = maxResult.results?.[0];
-  return json({
-    table,
-    count: Number(countRow?.n ?? 0),
-    max_order: maxRow?.m ?? null,
-    order_column: schema.orderColumn,
   });
 }
 
@@ -252,20 +174,12 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
   const payload = (typeof body === "object" && body !== null ? body : {}) as {
     table?: string;
     rows?: unknown[];
-    mode?: string;
   };
   const table = String(payload.table || "");
   const rows = Array.isArray(payload.rows) ? payload.rows : [];
-  const mode = String(payload.mode || "upsert").toLowerCase();
   const schema = TABLE_SCHEMAS[table];
   if (!schema) {
-    return json({ error: "invalid table", error_code: "INVALID_TABLE", table, op: "push" }, 400);
-  }
-  if (mode !== "upsert" && mode !== "replace") {
-    return json({ error: "invalid mode", error_code: "INVALID_MODE", table, op: "push" }, 400);
-  }
-  if (mode === "replace" && table !== "widget_config") {
-    return json({ error: "replace mode unsupported for table", error_code: "INVALID_MODE_TABLE", table, op: "push" }, 400);
+    return json({ error: "invalid table" }, 400);
   }
 
   const updatableColumns = schema.columns.filter((col) => col !== "id");
@@ -274,8 +188,6 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
   const upsertSql = `INSERT INTO ${table} (${schema.columns.join(", ")}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updates}`;
 
   const conflicts: Array<Record<string, unknown>> = [];
-  const accepted_ids: number[] = [];
-  const skipped_ids: number[] = [];
   let insertedOrUpdated = 0;
   let skipped = 0;
 
@@ -293,21 +205,8 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
         const incomingChangedAt = row.updated_at ?? row.created_at;
         const existingChangedAt = existing.updated_at ?? existing.created_at;
         const cmp = compareTimestamp(incomingChangedAt, existingChangedAt);
-        if (!Number.isFinite(cmp)) {
-          skipped += 1;
-          skipped_ids.push(id);
-          conflicts.push({
-            id,
-            winner: "remote",
-            reason: "invalid_timestamp",
-            incoming_updated_at: incomingChangedAt,
-            remote_updated_at: existingChangedAt,
-          });
-          continue;
-        }
         if (cmp < 0) {
           skipped += 1;
-          skipped_ids.push(id);
           conflicts.push({
             id,
             winner: "remote",
@@ -332,9 +231,7 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
         return json(
           {
             error: "d1_upsert_failed",
-            error_code: "D1_UPSERT_FAILED",
             table,
-            op: "push",
             id,
             detail: runResult.error ?? runResult.meta ?? runResult,
           },
@@ -342,78 +239,22 @@ async function pushRows(env: Env, body: unknown): Promise<Response> {
         );
       }
       insertedOrUpdated += 1;
-      accepted_ids.push(id);
     }
   } catch (err) {
     return json(
       {
         error: "d1_push_exception",
-        error_code: "D1_PUSH_EXCEPTION",
         table,
-        op: "push",
         detail: String(err),
       },
       500,
     );
   }
 
-  if (mode === "replace" && table === "widget_config") {
-    try {
-      if (accepted_ids.length > 0) {
-        const placeholders = accepted_ids.map(() => "?").join(", ");
-        const pruneResult = await env.MIRROR_DB.prepare(
-          `DELETE FROM ${table} WHERE id NOT IN (${placeholders})`,
-        )
-          .bind(...accepted_ids)
-          .run();
-        if (pruneResult.success === false) {
-          return json(
-            {
-              error: "d1_replace_prune_failed",
-              error_code: "D1_REPLACE_PRUNE_FAILED",
-              table,
-              op: "push",
-              detail: pruneResult.error ?? pruneResult.meta ?? pruneResult,
-            },
-            500,
-          );
-        }
-      } else {
-        const wipeResult = await env.MIRROR_DB.prepare(`DELETE FROM ${table}`).run();
-        if (wipeResult.success === false) {
-          return json(
-            {
-              error: "d1_replace_wipe_failed",
-              error_code: "D1_REPLACE_WIPE_FAILED",
-              table,
-              op: "push",
-              detail: wipeResult.error ?? wipeResult.meta ?? wipeResult,
-            },
-            500,
-          );
-        }
-      }
-    } catch (err) {
-      return json(
-        {
-          error: "d1_replace_exception",
-          error_code: "D1_REPLACE_EXCEPTION",
-          table,
-          op: "push",
-          detail: String(err),
-        },
-        500,
-      );
-    }
-  }
-
   return json({
     table,
-    mode,
     accepted: insertedOrUpdated,
     skipped,
-    accepted_ids,
-    skipped_ids,
     conflicts,
   });
 }
@@ -429,18 +270,10 @@ export default {
       return json({ status: "ok" });
     }
 
-    if (request.method === "GET" && url.pathname === "/sync/stats") {
-      const table = String(url.searchParams.get("table") || "");
-      return tableStats(env, table);
-    }
-
     if (request.method === "GET" && url.pathname === "/sync/pull") {
       const table = String(url.searchParams.get("table") || "");
       const since = String(url.searchParams.get("since") || "");
-      const sinceId = Number(url.searchParams.get("since_id") || "0");
-      const fullParam = url.searchParams.get("full");
-      const full = fullParam === "1" || fullParam === "true";
-      return pullRows(env, table, since, full, Number.isFinite(sinceId) ? sinceId : 0);
+      return pullRows(env, table, since);
     }
 
     if (request.method === "POST" && url.pathname === "/sync/push") {

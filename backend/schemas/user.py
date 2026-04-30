@@ -23,7 +23,3 @@ class UserSettingsUpdate(BaseModel):
     primary_font_size: Optional[int] = Field(None, ge=10, le=200)
     accent_color: Optional[str] = None
 
-
-class UserSettingsCreate(UserSettingsBase):
-    pass
-

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getAuthProviders,
   getLoginStatus,
@@ -6,8 +6,6 @@ import {
   logoutProvider,
   cancelLogin,
 } from '@/api/mirrorApi';
-import { useIntervalWhen } from '@/hooks/infra/useIntervalWhen';
-import { useWindowEvent } from '@/hooks/infra/useWindowEvent';
 
 export type ProviderStatus = {
   provider: string;
@@ -31,43 +29,6 @@ export type PendingAuth = {
   deviceCode: DeviceCodeInfo;
 };
 
-type AuthStoreState = {
-  providers: ProviderStatus[];
-  pendingAuth: PendingAuth | null;
-};
-
-const authStore: AuthStoreState = {
-  providers: [],
-  pendingAuth: null,
-};
-
-const listeners = new Set<(state: AuthStoreState) => void>();
-
-function subscribeAuthStore(listener: (state: AuthStoreState) => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-function notifyAuthStore() {
-  const snapshot: AuthStoreState = {
-    providers: authStore.providers,
-    pendingAuth: authStore.pendingAuth,
-  };
-  listeners.forEach((fn) => fn(snapshot));
-}
-
-function setProvidersInStore(next: ProviderStatus[]) {
-  authStore.providers = next;
-  notifyAuthStore();
-}
-
-function setPendingAuthInStore(next: PendingAuth | null) {
-  authStore.pendingAuth = next;
-  notifyAuthStore();
-}
-
 function clearIntervalRef(pollRef: { current: ReturnType<typeof setInterval> | null }) {
   if (pollRef.current) {
     clearInterval(pollRef.current);
@@ -76,17 +37,10 @@ function clearIntervalRef(pollRef: { current: ReturnType<typeof setInterval> | n
 }
 
 export function useAuthState() {
-  const [providers, setProviders] = useState<ProviderStatus[]>(authStore.providers);
-  const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(authStore.pendingAuth);
+  const [providers, setProviders] = useState<ProviderStatus[]>([]);
+  const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingProviderRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    return subscribeAuthStore((state) => {
-      setProviders(state.providers);
-      setPendingAuth(state.pendingAuth);
-    });
-  }, []);
 
   useEffect(() => {
     pendingProviderRef.current = pendingAuth?.provider ?? null;
@@ -95,19 +49,17 @@ export function useAuthState() {
   const refresh = useCallback(async () => {
     try {
       const list = await getAuthProviders();
-      setProvidersInStore(list);
+      setProviders(list);
     } catch {
-      // backend unavailable - keep stale state
+      // backend unavailable — keep stale state
     }
   }, []);
 
   useEffect(() => {
-    if (!authStore.providers.length) {
-      void refresh();
-    }
+    refresh();
+    const id = setInterval(refresh, 10_000);
+    return () => clearInterval(id);
   }, [refresh]);
-
-  useIntervalWhen(() => void refresh(), 10_000, true);
 
   const startPollForProvider = useCallback(
     (provider: string, intervalSec: number) => {
@@ -118,13 +70,13 @@ export function useAuthState() {
           const status = await getLoginStatus(provider);
           if (status.status === 'complete') {
             clearIntervalRef(pollRef);
-            setPendingAuthInStore(null);
+            setPendingAuth(null);
             await refresh();
           } else if (status.status === 'pending') {
             // still waiting
           } else {
             clearIntervalRef(pollRef);
-            setPendingAuthInStore(null);
+            setPendingAuth(null);
             await refresh();
           }
         } catch {
@@ -147,20 +99,25 @@ export function useAuthState() {
         interval: Number(d.interval) || 5,
         message: d.message == null ? null : String(d.message),
       };
-      setPendingAuthInStore({ provider, deviceCode });
+      setPendingAuth({ provider, deviceCode });
       startPollForProvider(provider, deviceCode.interval);
     },
     [startPollForProvider],
   );
 
-  useWindowEvent<Record<string, unknown>>('mirror:oauth_device_code', (detail) => {
-    applyDeviceCodePayload(detail ?? {});
-  });
+  useEffect(() => {
+    const onDeviceCode = (e: Event) => {
+      const ce = e as CustomEvent<Record<string, unknown>>;
+      applyDeviceCodePayload(ce.detail ?? {});
+    };
+    window.addEventListener('mirror:oauth_device_code', onDeviceCode);
+    return () => window.removeEventListener('mirror:oauth_device_code', onDeviceCode);
+  }, [applyDeviceCodePayload]);
 
   const initiateLogin = useCallback(
     async (provider: string) => {
       const dc = await startLogin(provider);
-      setPendingAuthInStore({
+      setPendingAuth({
         provider,
         deviceCode: {
           provider,
@@ -179,7 +136,7 @@ export function useAuthState() {
   const cancelPendingAuth = useCallback(async () => {
     const p = pendingProviderRef.current;
     clearIntervalRef(pollRef);
-    setPendingAuthInStore(null);
+    setPendingAuth(null);
     if (p) {
       try {
         await cancelLogin(p);

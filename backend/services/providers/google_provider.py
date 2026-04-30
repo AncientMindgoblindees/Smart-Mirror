@@ -10,6 +10,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import List
@@ -23,82 +24,33 @@ from backend.services.providers.base import (
     TokenResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 GOOGLE_DEVICE_CODE_URL = "https://oauth2.googleapis.com/device/code"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_CALENDAR_EVENTS_URL = (
     "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 )
 
-GOOGLE_WEB_SCOPES = (
-    "https://www.googleapis.com/auth/calendar.readonly "
-    "https://www.googleapis.com/auth/gmail.readonly"
-)
-GOOGLE_DEVICE_SCOPES = GOOGLE_WEB_SCOPES
-
-
-def get_google_device_oauth_credentials() -> tuple[str, str]:
-    """
-    Credentials for Google Device Authorization Grant (QR / TV flow).
-
-    Preferred:
-      - GOOGLE_TV_CLIENT_ID / GOOGLE_TV_CLIENT_SECRET
-    Backward-compatible fallback:
-      - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
-    """
-    client_id = os.getenv("GOOGLE_TV_CLIENT_ID", "").strip() or os.getenv("GOOGLE_CLIENT_ID", "").strip()
-    client_secret = os.getenv("GOOGLE_TV_CLIENT_SECRET", "").strip() or os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
-    return client_id, client_secret
-
-
-def get_google_web_oauth_credentials() -> tuple[str, str]:
-    """
-    Credentials for Google authorization-code flow (browser redirect flow).
-
-    Preferred:
-      - GOOGLE_WEB_CLIENT_ID / GOOGLE_WEB_CLIENT_SECRET
-    Backward-compatible fallback:
-      - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
-    """
-    client_id = os.getenv("GOOGLE_WEB_CLIENT_ID", "").strip() or os.getenv("GOOGLE_CLIENT_ID", "").strip()
-    client_secret = os.getenv("GOOGLE_WEB_CLIENT_SECRET", "").strip() or os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
-    return client_id, client_secret
+SCOPES = "https://www.googleapis.com/auth/calendar.readonly"
 
 
 class GoogleProvider(CalendarProvider):
     provider_name = "google"
 
     def __init__(self) -> None:
-        self._client_id, self._client_secret = get_google_device_oauth_credentials()
+        self._client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+        self._client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
 
     # ── Device Code Flow ────────────────────────────────────────────────
 
     async def request_device_code(self) -> DeviceCodeResponse:
-        data = {"client_id": self._client_id, "scope": GOOGLE_DEVICE_SCOPES}
         async with httpx.AsyncClient(timeout=15.0) as client:
             r = await client.post(
                 GOOGLE_DEVICE_CODE_URL,
-                data=data,
+                data={"client_id": self._client_id, "scope": SCOPES},
             )
-            if r.status_code >= 400:
-                body = {}
-                try:
-                    body = r.json()
-                except Exception:
-                    body = {}
-                error_code = str(body.get("error", ""))
-                error_desc = str(body.get("error_description", ""))
-                if (
-                    error_code == "invalid_scope"
-                    or "scope" in error_code.lower()
-                    or "scope" in error_desc.lower()
-                ):
-                    raise RuntimeError(
-                        "Google QR/device auth must grant both calendar.readonly and gmail.readonly. "
-                        f"Google returned scope error ({error_code or 'unknown_scope_error'}): {error_desc or 'no description'}"
-                    )
-                raise RuntimeError(
-                    f"Google device code request failed ({r.status_code}): {error_desc or r.text or 'no response body'}"
-                )
+        r.raise_for_status()
         data = r.json()
         return DeviceCodeResponse(
             verification_uri=data["verification_url"],
