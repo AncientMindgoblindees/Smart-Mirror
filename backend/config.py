@@ -43,4 +43,51 @@ def get_sqlalchemy_database_url() -> str:
 D1_WORKER_URL = os.getenv("D1_WORKER_URL", "")
 MIRROR_SYNC_TOKEN = os.getenv("MIRROR_SYNC_TOKEN", "")
 D1_SYNC_INTERVAL_SEC = int(os.getenv("D1_SYNC_INTERVAL_SEC", "600"))
+# One-shot: reset D1 pull cursors to epoch and full-sync on next startup (then disable in .env).
+D1_FORCE_FULL_SYNC = os.getenv("D1_FORCE_FULL_SYNC", "").lower() in ("1", "true", "yes")
+
+LEONARDO_API_KEY = os.getenv("LEONARDO_API_KEY", "")
+LEONARDO_API_BASE = os.getenv("LEONARDO_API_BASE", "https://cloud.leonardo.ai/api/rest/v1")
+LEONARDO_MODEL_ID = os.getenv(
+    "LEONARDO_MODEL_ID",
+    "b24e16ff-06e3-43eb-8d33-4416c2d75876",
+)
+LEONARDO_GENERATION_POLL_SEC = float(os.getenv("LEONARDO_GENERATION_POLL_SEC", "2"))
+LEONARDO_GENERATION_TIMEOUT_SEC = float(os.getenv("LEONARDO_GENERATION_TIMEOUT_SEC", "120"))
+
+# Portrait-oriented default framing for mirror composition.
+PI_CAMERA_CAPTURE_WIDTH = int(os.getenv("PI_CAMERA_CAPTURE_WIDTH", "1440"))
+PI_CAMERA_CAPTURE_HEIGHT = int(os.getenv("PI_CAMERA_CAPTURE_HEIGHT", "1920"))
+PI_CAMERA_MAX_DIM = int(os.getenv("PI_CAMERA_MAX_DIM", "1280"))
+# Long-edge cap for Picamera2 lores frames used for MJPEG live view only (/api/camera/live).
+PI_CAMERA_PREVIEW_LORES_MAX = int(os.getenv("PI_CAMERA_PREVIEW_LORES_MAX", "640"))
+PI_CAMERA_JPEG_QUALITY = int(os.getenv("PI_CAMERA_JPEG_QUALITY", "82"))
+CAMERA_CAPTURE_BUTTON = os.getenv("CAMERA_CAPTURE_BUTTON", "UP").upper()
+CAMERA_CAPTURE_COUNTDOWN_SEC = int(os.getenv("CAMERA_CAPTURE_COUNTDOWN_SEC", "3"))
+# Minimum time from capture start (after LOADING_STARTED) before countdown WebSocket events, so the mirror can show boot + live preview without losing countdown seconds.
+CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC = float(
+    os.getenv("CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC", "2.5")
+)
+# Max MJPEG frames per second from GET /api/camera/live (Pi CPU / USB bandwidth).
+CAMERA_MJPEG_MAX_FPS = float(os.getenv("CAMERA_MJPEG_MAX_FPS", "30"))
+# If enabled, use native `rpicam-hello` preview window during capture flow
+# (mirror UI shows controls/countdown only; no browser live decode).
+CAMERA_NATIVE_PREVIEW = os.getenv("CAMERA_NATIVE_PREVIEW", "0").lower() in ("1", "true", "yes")
+# If enabled, run a small native overlay window for countdown text on top of preview.
+CAMERA_NATIVE_COUNTDOWN_OVERLAY = os.getenv("CAMERA_NATIVE_COUNTDOWN_OVERLAY", "1").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+
+# Allow GPIO power-button interrupt to request host shutdown.
+# Keep disabled by default for safety on non-Pi/dev machines.
+ALLOW_PI_SHUTDOWN_BUTTON = os.getenv("ALLOW_PI_SHUTDOWN_BUTTON", "0").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+PI_SHUTDOWN_COMMAND = os.getenv("PI_SHUTDOWN_COMMAND", "sudo /sbin/shutdown -h now")
+
+TRYON_LOCAL_KEEP_LAST = int(os.getenv("TRYON_LOCAL_KEEP_LAST", "10"))
 

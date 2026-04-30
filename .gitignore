@@ -11,5 +11,7 @@ data/
 node_modules/
 .venv/
 .env
-\data\mirror.db
+venv
+graphify-out/
+data/mirror.db
 \ui\package-lock.json

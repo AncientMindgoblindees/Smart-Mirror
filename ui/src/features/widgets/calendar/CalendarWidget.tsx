@@ -1,20 +1,30 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { WidgetConfig } from '../types';
+import type { CalendarTimeFormat } from '@/api/transforms/calendar';
 import { estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
 import { useCalendarEvents } from './useCalendarEvents';
 import type { CalendarEventDisplay } from './useCalendarEvents';
 import './calendar-widget.css';
 
 const ACCENT_COLORS = ['#60a5fa', '#f5a623', '#34d399', '#a78bfa', '#f472b6'];
+const PAGE_SIZE_CAP_BY_PRESET = {
+  small: 3,
+  medium: 5,
+  large: 6,
+} as const;
 
-function getRelativeLabel(timeStr: string): string | null {
-  if (timeStr === 'All day') return null;
-  const now = new Date();
-  const [h, m] = timeStr.split(':').map(Number);
-  const eventDate = new Date(now);
-  eventDate.setHours(h, m, 0, 0);
-  const diffMin = Math.round((eventDate.getTime() - now.getTime()) / 60000);
+function resolveCalendarPageSize(config: WidgetConfig): number {
+  const base = estimatePageSize(config.freeform.width, config.freeform.height);
+  const preset = config.freeform.sizePreset;
+  if (!preset) return base;
+  const cap = PAGE_SIZE_CAP_BY_PRESET[preset];
+  return Math.min(base, cap);
+}
+
+function getRelativeLabel(event: CalendarEventDisplay): string | null {
+  if (event.allDay || event.startMs === null) return null;
+  const diffMin = Math.round((event.startMs - Date.now()) / 60000);
 
   if (diffMin > -15 && diffMin <= 0) return 'Now';
   if (diffMin > 0 && diffMin <= 60) return `in ${diffMin}m`;
@@ -28,8 +38,9 @@ const EmptyState: React.FC = () => (
 );
 
 export const CalendarWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
-  const { events, loading } = useCalendarEvents();
-  const pageSize = estimatePageSize(config.freeform.width, config.freeform.height);
+  const timeFormat: CalendarTimeFormat = config.timeFormat === '12h' ? '12h' : '24h';
+  const { events, loading } = useCalendarEvents(timeFormat);
+  const pageSize = resolveCalendarPageSize(config);
   const { pageItems, pageIndex, pageCount } = useDisplayPagination<CalendarEventDisplay>(
     events,
     pageSize,
@@ -50,13 +61,14 @@ export const CalendarWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ 
         <motion.div
           key={pageIndex}
           className="calendar-page"
+          data-count={Math.max(1, pageItems.length)}
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
           transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
         >
           {pageItems.map((item, idx) => {
-            const relLabel = getRelativeLabel(item.time);
+            const relLabel = getRelativeLabel(item);
             const isNow = relLabel === 'Now';
             const color = ACCENT_COLORS[idx % ACCENT_COLORS.length];
 
@@ -76,10 +88,14 @@ export const CalendarWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ 
               >
                 <span className="calendar-bar" aria-hidden="true" />
                 <span className="calendar-time">
-                  {item.time}
+                  <span className="calendar-day">{item.dayLabel}</span>
+                  <span className="calendar-clock">{item.timeLabel}</span>
                   {relLabel && <span className="calendar-rel">{relLabel}</span>}
                 </span>
-                <span className="calendar-event">{item.event}</span>
+                <span className="calendar-main">
+                  <span className="calendar-event">{item.event}</span>
+                  <span className="calendar-meta">{item.detailLabel}</span>
+                </span>
               </motion.div>
             );
           })}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from hardware.gpio.config import (
     DEBOUNCE_MS,
@@ -28,17 +28,67 @@ class _MockGPIO:
     def setup(self, pin: int) -> None:
         self._pins[pin] = 1
 
+    def close(self) -> None:
+        self._pins.clear()
 
-def _load_gpio_backend():
+
+class _RPiInterruptGPIO:
+    """
+    RPi.GPIO interrupt-backed implementation.
+    Uses pull-up buttons (active-low): pressed when pin reads LOW.
+    """
+
+    def __init__(self, on_edge: Callable[[int, bool], None]) -> None:
+        import RPi.GPIO as GPIO  # type: ignore[import-not-found]
+
+        self._gpio = GPIO
+        self._on_edge = on_edge
+        self._bid_by_pin: Dict[int, ButtonId] = {}
+        self._gpio.setwarnings(False)
+        self._gpio.setmode(self._gpio.BCM)
+
+    def setup(self, pin: int, button_id: ButtonId) -> None:
+        self._bid_by_pin[pin] = button_id
+        self._gpio.setup(pin, self._gpio.IN, pull_up_down=self._gpio.PUD_UP)
+
+        def _callback(channel: int) -> None:
+            try:
+                # Active-low input with pull-up.
+                pressed = self._gpio.input(channel) == self._gpio.LOW
+            except Exception:
+                return
+            self._on_edge(channel, pressed)
+
+        self._gpio.add_event_detect(pin, self._gpio.BOTH, callback=_callback, bouncetime=1)
+
+    def close(self) -> None:
+        try:
+            for pin in self._bid_by_pin:
+                self._gpio.remove_event_detect(pin)
+        except Exception:
+            pass
+        try:
+            self._gpio.cleanup(list(self._bid_by_pin.keys()))
+        except Exception:
+            pass
+
+    def button_for_pin(self, pin: int) -> Optional[ButtonId]:
+        return self._bid_by_pin.get(pin)
+
+
+def _load_gpio_backend(on_edge: Callable[[int, bool], None]) -> Any:
     """
     Lightweight GPIO loader.
     In dev (non-Pi), this returns a mock; on Pi, this can be
     switched to gpiozero or RPi.GPIO integration in a follow-up.
     """
-    if os.getenv("ENABLE_GPIO") != "true":
+    if os.getenv("ENABLE_GPIO", "false").lower() != "true":
         return _MockGPIO()
-    # Placeholder: real GPIO integration to be added when running on Pi.
-    return _MockGPIO()
+    try:
+        return _RPiInterruptGPIO(on_edge=on_edge)
+    except Exception:
+        # Keep service running in mock mode if GPIO backend is unavailable.
+        return _MockGPIO()
 
 
 class Buttons:
@@ -51,17 +101,28 @@ class Buttons:
     """
 
     def __init__(self, on_event: Callback) -> None:
-        self._gpio = _load_gpio_backend()
+        self._gpio = _load_gpio_backend(self._on_gpio_edge)
         self._on_event = on_event
         self._state: Dict[ButtonId, Dict[str, Optional[float]]] = {}
+        self._pin_to_button: Dict[int, ButtonId] = {}
 
         for bid, pin in PIN_MAP.items():
-            self._gpio.setup(pin)
+            self._pin_to_button[pin] = bid
+            if isinstance(self._gpio, _RPiInterruptGPIO):
+                self._gpio.setup(pin, bid)
+            else:
+                self._gpio.setup(pin)
             self._state[bid] = {
                 "last_change_ms": None,
                 "pressed": False,
                 "long_emitted": False,
             }
+
+    def _on_gpio_edge(self, pin: int, pressed: bool) -> None:
+        bid = self._pin_to_button.get(pin)
+        if bid is None:
+            return
+        self.process_edge(bid, pressed)
 
     def _now_ms(self) -> int:
         return int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -113,6 +174,11 @@ class Buttons:
             ts=datetime.now(timezone.utc),
         )
         self._on_event(evt)
+
+    def close(self) -> None:
+        close = getattr(self._gpio, "close", None)
+        if callable(close):
+            close()
 
     # Convenience for local dev tests
     def emit_mock_event(self, button_id: ButtonId, action: ButtonAction) -> None:

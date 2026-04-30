@@ -59,19 +59,13 @@ def _seed_default_widgets(db: Session) -> List[WidgetConfig]:
             config_json={"freeform": {"x": 56, "y": 68, "width": 41, "height": 26}},
         ),
         WidgetConfig(
-            widget_id="virtual_try_on",
+            widget_id="email",
             enabled=True,
             position_row=2,
-            position_col=2,
+            position_col=3,
             size_rows=1,
             size_cols=1,
-            config_json={
-                "freeform": {"x": 39, "y": 41, "width": 22, "height": 16},
-                "integration": {
-                    "feature": "virtual_try_on",
-                    "endpoint": "/api/integrations/try-on",
-                },
-            },
+            config_json={"freeform": {"x": 56, "y": 42, "width": 30, "height": 18}},
         ),
     ]
     db.add_all(defaults)
@@ -88,6 +82,10 @@ def get_all_widgets(db: Session) -> List[WidgetConfig]:
     Return all widget configurations ordered for deterministic layout.
     Seed with a default layout if DB is empty.
     """
+    removed = db.query(WidgetConfig).filter(WidgetConfig.widget_id == "virtual_try_on").delete()
+    if removed:
+        db.commit()
+
     widgets = (
         db.query(WidgetConfig)
         .order_by(WidgetConfig.position_row, WidgetConfig.position_col, WidgetConfig.id)

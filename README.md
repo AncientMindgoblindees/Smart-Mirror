@@ -1,230 +1,235 @@
-# Smart-Mirror
-This README.md contains information about the SmartMirror project process, workflows, rules, and notes for Senior Design Group 12. 
+# Smart Mirror
 
-#### Next Biweekly TODO:
-- Buy all hardware components early to get a demo started ASAP
-- Start a rough draft build on the camera module
-- Research + planning for GPIO interaction and UI event handling
-- Build demo mirror for presentation
+Smart Mirror is a mirror-first, edge-oriented dashboard system with:
+- a FastAPI backend (`backend/`) for data, auth, camera, sync, and realtime events
+- a React/Vite frontend (`ui/`) for widget rendering, menu navigation, and companion-state UX
+- Raspberry Pi launch/deploy scripts for fullscreen mirror runtime
 
-## General Description
-### Hardware Stack
-- Raspberry Pi 5
-- Camera (details soon)
-- Buttons/Sensors
-- TV/Monitor
-- Wood frame
-### Software Stack
-- Coming soon
+This repository is optimized for a physical mirror display where center reflection stays clear and widgets remain on the periphery.
 
-## Run the Application
+## Current Architecture (Graphify Summary)
 
-### Raspberry Pi app window mode (no normal browser tab)
-Runs backend + opens Chromium in app/fullscreen mode so it behaves like a dedicated mirror application.
+Based on `graphify-out/GRAPH_REPORT.md` (updated `2026-04-26`):
+- `797` nodes
+- `1439` edges
+- `36` communities
+- key hub abstractions: `D1SyncService`, `ButtonId`, `GoogleProvider`, `WidgetConfig`, `SyncStateInbound`, `AuthManager`
 
-1. Install system dependencies:
-```
-sudo apt update
-sudo apt install -y python3 python3-pip chromium-browser curl
-```
-2. Install Python dependencies (from repo root):
-```
-pip3 install -r backend/requirements.txt
-```
-3. Start the mirror app window:
-```
-bash scripts/start-mirror-app.sh
-```
-4. (Optional) stop backend later:
-```
-bash scripts/stop-mirror-app.sh
+High-signal subsystem clusters:
+- Auth + provider integration
+- Camera and capture pipeline
+- Widget persistence + sync state
+- GPIO/button and control-event runtime
+- Frontend widget config/transforms/theme/runtime APIs
+
+## Repository Structure
+
+Top-level layout:
+- `backend/`: FastAPI app, database models, schemas, service layer
+- `ui/`: React app, widget system, menu overlays, API client, hooks
+- `hardware/`: GPIO integration and button abstractions
+- `scripts/`: runtime launch/stop scripts (including Pi app mode)
+- `deploy/`: deployment helpers (including Pi launcher/autostart)
+- `docs/`: focused technical documentation
+- `graphify-out/`: generated code knowledge graph outputs
+
+Backend structure:
+- `backend/main.py`: app composition and router mounting
+- `backend/api/`: route handlers (`/widgets`, `/user/settings`, `/weather`, `/camera`, `/auth`, `/calendar`, `/email`, `/ws/control`, `/ws/buttons`)
+- `backend/services/`: business logic (widget, user, weather, auth manager, device connection, realtime registries, D1 sync)
+- `backend/schemas/`: request/response models and WS payload models
+- `backend/database/`: SQLAlchemy models/session configuration
+
+Frontend structure:
+- `ui/src/app/`: `MirrorApp` shell and app-level hooks
+- `ui/src/features/widgets/`: widget registry, widget components, persistence/sync engine, size presets
+- `ui/src/components/`: menu overlay and reusable UI primitives
+- `ui/src/hooks/`: input, control WS handlers, navigation, infra hooks
+- `ui/src/config/`: widget parameter map, theme presets, backend origin
+- `ui/src/api/`: typed API wrappers + backend payload transforms
+- `ui/src/styles/`: design tokens and global theme variables
+
+## Core Runtime Flows
+
+### 1) Widget lifecycle
+
+1. Frontend loads `/api/widgets/` + `/api/user/settings`.
+2. Backend seeds default widgets if database is empty.
+3. Frontend normalizes backend rows to local widget configs.
+4. Widget edits/randomization/settings updates are pushed via `PUT /api/widgets/`.
+5. Backend upserts by `id` or `widget_id` and removes stale rows.
+
+Recent behavior highlights:
+- randomization uses grid occupancy collision checks (no overlap/out-of-bounds)
+- widget settings are staged in editor and committed on explicit Back
+- frontend payload transform now hardens invalid numeric grid/freeform values before PUT
+
+### 2) Companion/control channel
+
+Control channel: `WS /ws/control`
+- accepts `DEVICE_PAIR` and sync envelopes (`SYNC_STATE`, `WIDGETS_SYNC`)
+- broadcasts lifecycle events (`DEVICE_SEARCHING`, `DEVICE_CONNECTING`, `DEVICE_CONNECTED`, errors/disconnect)
+- now emits `MIRROR_STATE_SNAPSHOT`:
+  - on websocket connect
+  - when pair is received
+  - after widgets sync is applied
+
+Snapshot payload contains:
+- current widget rows
+- user settings
+- device state
+- layout revision token
+
+This keeps companion app bootstrap state aligned with mirror state at connection time.
+
+### 3) Weather pipeline
+
+- Frontend calls `GET /api/weather/` with location + unit (`metric`/`imperial`)
+- Backend proxies WeatherAPI `forecast.json` with `days=7`
+- Backend pads forecast output to 7 entries if upstream plan returns fewer rows
+- Backend caches weather snapshots in-memory (`5 min`)
+- Frontend caches weather in localStorage (`10 min`) to reduce refresh-call pressure
+- Large weather widget renders full 7-day forecast; size is preserved through randomization
+
+## Menu and Interaction Model
+
+Main menu includes:
+- Take Picture
+- Randomize Widgets
+- Widget Settings
+- Theme Styles
+- Link Google (QR)
+- Sleep
+- Power Down
+- Exit
+
+Navigation model:
+- `UP`/`DOWN`: move selection
+- `SELECT`: invoke/cycle
+- keyboard listeners remain as temporary dev input
+- GPIO integration points are intentionally marked for replacement in code comments
+
+Nested menu layers are handled in `useMenuNavigation`:
+- `main`
+- `widget_list`
+- `parameter_editor`
+- `randomize_panel`
+- `theme_panel`
+- `theme_widget_list`
+- `theme_background_list`
+
+## Theme System
+
+Theme selection is split into:
+- Widget Themes
+- Background Themes
+
+Stored as serialized pair in user settings theme field:
+- format: `w:<widgetTheme>|b:<backgroundTheme>`
+
+Theme config lives in:
+- `ui/src/config/themePresets.ts`
+- `ui/src/styles/tokens.css`
+
+Includes legacy mapping so older theme strings still resolve.
+
+## Connection UX
+
+Connection presentation is intentionally minimal:
+- no fullscreen connection takeover
+- compact bottom-right device status chip
+- error popup positioned off the main mirror focal area
+
+This preserves mirror visual continuity while still surfacing app connectivity state.
+
+## Authentication Scope
+
+Current mirrored auth UX in menu is Google QR linking.
+Microsoft OAuth is out of scope for mirror-side menu interactions.
+
+## APIs (High-Level)
+
+Common backend endpoints:
+- `GET /api/widgets/`
+- `PUT /api/widgets/`
+- `GET /api/user/settings`
+- `PUT /api/user/settings`
+- `GET /api/weather/`
+- `POST /api/camera/capture`
+- `GET /api/auth/providers`
+- `POST /api/auth/login/{provider}`
+- `DELETE /api/auth/logout/{provider}`
+- `GET /api/calendar/events`
+- `GET /api/email/messages`
+- `WS /ws/control`
+- `WS /ws/buttons`
+
+## Local Development
+
+Backend (example):
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Raspberry Pi desktop launcher / autostart
-Creates a clickable app launcher and optional login autostart entry.
-
-```
-bash deploy/raspberry-pi/install-pi-launcher.sh
-```
-
-Enable autostart on login:
-```
-bash deploy/raspberry-pi/install-pi-launcher.sh --autostart
-```
-
-### Option 1: Full app (recommended)
-Runs FastAPI backend + serves the **built** React UI at `/ui` (API routes, WebSockets, etc.).
-
-**Prerequisite:** build the UI once (or after UI changes):
-
-```
+Frontend:
+```bash
 cd ui
 npm install
+npm run dev
+```
+
+Production UI build:
+```bash
+cd ui
 npm run build
 ```
 
-From repo root:
-
-1. Create and activate a Python virtual environment:
-```
-python -m venv .venv
-.\venv\Scripts\Activate
-```
-2. Install backend dependencies:
-```
-pip install -r backend/requirements.txt
-```
-3. Start the backend from repo root:
-```
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
-4. Open:
-```
-http://localhost:8000/ui/
+Run UI tests:
+```bash
+cd ui
+npm run test -- --run
 ```
 
-### Option 2: UI dev server (Vite + hot reload)
-Runs the React app with `/api` proxied to the backend (default proxy: `http://127.0.0.1:8002`).
+## Raspberry Pi Runtime
 
-1. Terminal A — backend on port **8002** (must match Vite proxy in `ui/vite.config.ts`):
-```
-npm run backend
-```
-2. Terminal B — Vite:
-```
-npm run ui:dev
-```
-3. Open:
-```
-http://localhost:5173/ui/
+Launch mirror app (backend + Chromium app/fullscreen mode):
+```bash
+bash scripts/start-mirror-app.sh
 ```
 
-### Raspberry Pi: build UI before kiosk launch
-The mirror launcher opens `http://127.0.0.1:<port>/ui/`. That path serves files from `ui/dist`. On the Pi, install Node once and build:
-
-```
-cd /path/to/Smart-Mirror/ui && npm install && npm run build
+Stop:
+```bash
+bash scripts/stop-mirror-app.sh
 ```
 
-Then use `scripts/start-mirror-app.sh` as before.
-
-## Weather (WeatherAPI.com)
-
-The mirror loads weather through the backend at **`GET /api/weather/`**, which proxies [WeatherAPI.com](https://www.weatherapi.com/docs/) ([Swagger reference](https://app.swaggerhub.com/apis-docs/WeatherAPI.com/WeatherAPI/1.0.2)) so your API key is not exposed to the browser.
-
-1. Copy `.env.example` to `.env` in the repo root (`.env` is gitignored).
-2. Set `WEATHERAPI_KEY` to your key from the WeatherAPI dashboard.
-3. Optionally set `WEATHERAPI_Q` (default `San Francisco`) to any `q` supported by the API (city, lat/lon, zip code, etc.).
-4. Restart the backend so the environment variables are picked up.
-
-If the key is missing or the upstream request fails, the widget shows a short message (and a **Retry** button when the API is configured but a request fails). Responses are cached server-side for 5 minutes; the widget polls `/api/weather/` on the same interval so updates stay in sync without extra upstream calls.
-
-**Security:** Treat API keys like passwords. If a key was ever pasted into chat or committed, regenerate it in your WeatherAPI account.
-
-## External integrations (legacy note)
-
-The previous vanilla JS layout adapter (`layoutAdjustmentsProvider`) has been replaced by the React UI, which talks to the backend via `/api/widgets/` and `/api/user/settings`. For external hook concepts, see `docs/EXTERNAL-INTEGRATION-HOOKS.md` (some paths refer to the old `ui/js` tree and may need updating).
-
-## Mirror default layout + scaffolded AI widgets
-
-Current mirror-first default composition uses these widget ids:
-
-- `clock` (top-left)
-- `weather` (top-right)
-- `news` (bottom-left)
-- `calendar` (bottom-right)
-- `virtual_try_on` (center action button)
-
-Notes:
-
-- Layout is freeform and persisted through `/api/widgets/` (`config_json.freeform`), so companion apps can reposition widgets at runtime.
-- Keyboard/GPIO mapping: `d` toggle tools panel, `1` cycle layout preset, `2` dim, `3` sleep.
-- `news` and `virtual_try_on` are scaffolded with integration entry points in `ui/src/features/ai/entrypoints.ts` (mock data/stub responses only for now).
-
-## How to: Version Control with Git
-### Cloning the repo in VSCode:
-In GitHub, go to the SmartMirror repository in the main branch. In the top right corner you will see the green "<> Code" button. Copy the HTTPS link that appears in the dropdown. Now you can open VSCode. 
-
-If you are already signed in to your GitHub in VSCode, then cloning the repository is as easy as selecting "Clone Git Repository..." > "Clone from GitHub" > "AncientMindGoblindees/Smart-Mirror"
-
-If you are not signed in, you can easily clone the repository in a VSCode terminal. Go to your working directory, open a new terminal window and clone the repository:
-```
-git clone https://github.com/AncientMindgoblindees/Smart-Mirror.git
-cd Smart-Mirror
+Install desktop launcher/autostart helper:
+```bash
+bash deploy/raspberry-pi/install-pi-launcher.sh
+bash deploy/raspberry-pi/install-pi-launcher.sh --autostart
 ```
 
-### Creating a new branch
-You should create a new branch for each new feature you implement. For example, adding a weather module to the mirror would require creating a new branch from main called "feature-weather" or something along those lines.
+## Environment Variables
 
-Each time you create a new branch, you MUST branch from main. This is to ensure that the main branch is always available as a working version of our code.
-```
-git checkout main
-```
-Then, you will need to pull the latest changes from the main branch (in case others have changed the main branch remotely, which does not affect your local copy of the main branch):
-```
-git pull origin main
-```
-Finally, to create and switch to your new branch:
-```
-git checkout -b new-branch-name
-```
+Common:
+- `WEATHERAPI_KEY` (required for live weather)
+- `WEATHERAPI_Q` (default location fallback)
+- `ENABLE_DEV_ENDPOINTS` (`true` to expose dev simulation routes)
 
-### Getting Started - Common Git Commands
-```
-git status
-```
-This command helps you see if the local repository on your machine is up-to-date with the remote repository (in GitHub). It will tell you the branch that you are currently working in within your local VSCode workspace and whether or not it is up to date with the remote version of that branch. This command will also show you if there are any changes in your local workspace, which you will add and commit to the local repository.
+Pi launch tuning (examples):
+- `MIRROR_KIOSK`
+- `MIRROR_CHROMIUM_DISABLE_INFOBARS`
+- `MIRROR_CHROMIUM_USE_OZONE_PLATFORM`
+- `MIRROR_CHROMIUM_OZONE_PLATFORM`
+- `MIRROR_CHROMIUM_EXTRA_ARGS`
 
-```
-git add <filename>
-% OR
-git add . (adds all files)
-```
-This command stages your local changes for a commit to your local repository. It is generally better practice to add and commit files individually and very often. The commit messages should usually reflect the changes that you added, so adding files individually allows you to write better, more specific messages.
+## Notes for Contributors
 
-```
-git commit -m "your commit message"
-```
-This commits the changes you added to your local repository (the one saved only to your machine).
-
-```
-git push
-% OR
-git push -u origin [branch_name]
-```
-This is how you push your local version of the repository into the remote repository. You should NEVER be pushing into the main branch, we will be using PRs to push code into the main branch. You should only push your code into the remote version of the branch you are working on in VSCode.
-
-*Note: The add, commit, and push commands can all be done in the VSCode UI under the "Source Control" panel on the left of the window. If you want to use this, make sure that you follow this process:
-- Press the "+" button to stage your changes
-- Add your commit message
-- Press the "Commit" button
-- Press the "Sync" button
-
-### Merging
-While you are in YOUR OWN branch...
-``` 
-git checkout main     
-git pull origin main                   # switch to the main branch and pull the latest changes from remote
-git checkout [your-branch-name]        # switch back to the branch that is ready to merge
-git merge origin/main
-```
-Merging can be complex. If you mess up during a merge, it can sometimes be hard to recover. With that being said, understanding what the merge command even does is fairly important. For example, if you are in a branch named "goblin-branch" and you have just completed and tested the new feature, you will want to create a PR (pull request) to merge your branch into main. The 'git merge origin/main' command does not affect the local nor the remote main branch. Using this command would update your current "goblin-branch" branch with the changes that have been made to main since the last time that you branched from it. Basically, this command is prepping your branch to be fully pushed into the main branch.
-
-*If there are any merge conflicts and you are unsure how to manually resolve, ask a team member. These conflicts could be work that a team member made, and deleting them might break the main branch.
-
-## PR (Pull Request) Rules
-When you have a branch that is working and tested and needs to be added to the main branch, you will need to create a PR. 
-
-To create a new PR, navigate to the "Pull Requests" tab at the top of the GitHub repository. Then, click "New pull request".
-
-At the top, under "Compare Changes", make sure that it is configured to base:main <- compare:[your-branch-name]
-
-At this point, if you properly merged your branch with the current version of the origin/main branch, the UI should tell you that your branch is ready to be merged. If not, try to merge again and resolve the merge conflicts.
-
-Now, other team members will be able to review the changed that you are adding to the main branch. Once your PR is reviewed and approved, it will be added into origin/main.
-
-
-
-
-
-
+- Prefer updating `ui/src/config/widgetParameters.ts` when adding widget-editable options.
+- Keep widget randomization/grid logic in `ui/src/utils/widgetGrid.ts` unit-testable.
+- Preserve API payload compatibility in `ui/src/api/transforms.ts`.
+- Keep realtime/control payload changes schema-backed under `backend/schemas/`.
+- After code changes, refresh graph artifacts:
+  - `graphify update . --force`

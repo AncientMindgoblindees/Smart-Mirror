@@ -3,7 +3,9 @@ Version=1.0
 Type=Application
 Name=Smart Mirror
 Comment=Launch Smart Mirror in app window mode
-Exec=/bin/bash __SMART_MIRROR_ROOT__/scripts/start-mirror-app.sh
+Exec=env MIRROR_CHROMIUM_PASSWORD_STORE=basic MIRROR_CHROMIUM_USER_DATA_DIR=__SMART_MIRROR_ROOT__/data/chromium-profile /bin/bash __SMART_MIRROR_ROOT__/scripts/start-mirror-app.sh
 Path=__SMART_MIRROR_ROOT__
 Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
 Categories=Utility;

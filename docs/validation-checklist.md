@@ -6,6 +6,7 @@
 - `/ws/control` accepts legacy `SYNC_STATE` and v2 `WIDGETS_SYNC`.
 - Camera endpoints return expected responses:
   - `GET /api/camera/status`
+  - `GET /api/camera/live` (MJPEG live view)
   - `POST /api/camera/capture`
 - Wardrobe endpoints function end-to-end:
   - `GET /api/wardrobe/items`

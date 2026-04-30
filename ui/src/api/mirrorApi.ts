@@ -2,6 +2,7 @@ import type {
   AuthLoginStatus,
   AuthProviderStatus,
   CalendarEventsResponse,
+  EmailMessagesResponse,
   CalendarTasksResponse,
   CameraCaptureRequest,
   CameraStatusOut,
@@ -11,26 +12,15 @@ import type {
   WeatherSnapshotOut,
   WidgetConfigOut,
   WidgetConfigUpdate,
+  ClothingItemRead,
+  ClothingItemUpdate,
+  OutfitGenerateRequest,
+  OutfitGenerateResponse,
+  PersonImageRead,
 } from './backendTypes';
-
-import { getApiBase } from '@/config/backendOrigin';
-
-const API_BASE = getApiBase();
-
-async function jsonRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    cache: 'no-store',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
-  if (!res.ok) {
-    throw new Error(`Request failed: ${res.status} ${res.statusText}`);
-  }
-  return res.json() as Promise<T>;
-}
+import { getApiBase, getApiToken } from '@/config/backendOrigin';
+import { withQuery } from './endpoints';
+import { jsonRequest } from './httpClient';
 
 export function getWidgets(): Promise<WidgetConfigOut[]> {
   return jsonRequest<WidgetConfigOut[]>('/widgets/');
@@ -62,11 +52,54 @@ export function getWeather(opts?: {
   q?: string;
   units?: 'metric' | 'imperial';
 }): Promise<WeatherSnapshotOut> {
-  const sp = new URLSearchParams();
-  if (opts?.q) sp.set('q', opts.q);
-  if (opts?.units) sp.set('units', opts.units);
-  const qs = sp.toString();
-  return jsonRequest<WeatherSnapshotOut>(`/weather/${qs ? `?${qs}` : ''}`);
+  return jsonRequest<WeatherSnapshotOut>(withQuery('/weather/', { q: opts?.q, units: opts?.units }));
+}
+
+export function getClothingItems(opts?: {
+  includeImages?: boolean;
+  favoriteOnly?: boolean;
+}): Promise<ClothingItemRead[]> {
+  return jsonRequest<ClothingItemRead[]>(
+    withQuery('/clothing/', {
+      include_images: opts?.includeImages ? 1 : undefined,
+      favorite_only: opts?.favoriteOnly ? 1 : undefined,
+    }),
+  );
+}
+
+export function updateClothingItem(itemId: number, updates: ClothingItemUpdate): Promise<ClothingItemRead> {
+  return jsonRequest<ClothingItemRead>(`/clothing/${itemId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+export function generateOutfitTryOn(payload: OutfitGenerateRequest): Promise<OutfitGenerateResponse> {
+  return jsonRequest<OutfitGenerateResponse>('/tryon/outfit-generate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getPersonImages(): Promise<PersonImageRead[]> {
+  return jsonRequest<PersonImageRead[]>('/tryon/person-image');
+}
+
+export async function uploadPersonImage(file: Blob, filename = 'webcam-capture.jpg'): Promise<PersonImageRead> {
+  const form = new FormData();
+  form.append('file', file, filename);
+  const token = getApiToken();
+  const res = await fetch(`${getApiBase()}/tryon/person-image`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: form,
+  });
+  if (!res.ok) {
+    throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<PersonImageRead>;
 }
 
 export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ status: string }> {
@@ -104,18 +137,24 @@ export function getCalendarEvents(opts?: {
   days?: number;
   provider?: string;
 }): Promise<CalendarEventsResponse> {
-  const sp = new URLSearchParams();
-  if (opts?.days) sp.set('days', String(opts.days));
-  if (opts?.provider) sp.set('provider', opts.provider);
-  const qs = sp.toString();
-  return jsonRequest<CalendarEventsResponse>(`/calendar/events${qs ? `?${qs}` : ''}`);
+  return jsonRequest<CalendarEventsResponse>(
+    withQuery('/calendar/events', { days: opts?.days, provider: opts?.provider }),
+  );
 }
 
 export function getCalendarTasks(opts?: {
   provider?: string;
 }): Promise<CalendarTasksResponse> {
-  const sp = new URLSearchParams();
-  if (opts?.provider) sp.set('provider', opts.provider);
-  const qs = sp.toString();
-  return jsonRequest<CalendarTasksResponse>(`/calendar/tasks${qs ? `?${qs}` : ''}`);
+  return jsonRequest<CalendarTasksResponse>(
+    withQuery('/calendar/tasks', { provider: opts?.provider }),
+  );
+}
+
+export function getEmailMessages(opts?: {
+  provider?: string;
+  limit?: number;
+}): Promise<EmailMessagesResponse> {
+  return jsonRequest<EmailMessagesResponse>(
+    withQuery('/email/messages', { provider: opts?.provider, limit: opts?.limit }),
+  );
 }

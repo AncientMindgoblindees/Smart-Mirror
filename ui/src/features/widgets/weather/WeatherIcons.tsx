@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import './weather-icons.css';
 
 export type WeatherCondition =
@@ -16,22 +16,45 @@ interface IconProps {
   className?: string;
 }
 
-export const SunIcon: React.FC<IconProps> = ({ size = 48, className }) => (
-  <svg width={size} height={size} viewBox="0 0 48 48" className={`weather-icon wi-sun ${className ?? ''}`}>
-    <circle cx="24" cy="24" r="9" fill="none" stroke="var(--color-warm)" strokeWidth="2" className="sun-core" />
-    {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
-      <line
-        key={angle}
-        x1="24" y1="6" x2="24" y2="10"
-        stroke="var(--color-warm)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        transform={`rotate(${angle} 24 24)`}
-        className="sun-ray"
-      />
-    ))}
-  </svg>
-);
+export const SunIcon: React.FC<IconProps> = ({ size = 48, className }) => {
+  const gradBase = useId().replace(/:/g, '');
+  const coreId = `${gradBase}-sun-core`;
+  const haloId = `${gradBase}-sun-halo`;
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" className={`weather-icon wi-sun ${className ?? ''}`}>
+      <defs>
+        <radialGradient id={coreId} cx="50%" cy="50%" r="60%">
+          <stop offset="0%" stopColor="#ffe59a" />
+          <stop offset="58%" stopColor="#ffc24b" />
+          <stop offset="100%" stopColor="#f5a623" />
+        </radialGradient>
+        <radialGradient id={haloId} cx="50%" cy="50%" r="75%">
+          <stop offset="0%" stopColor="rgba(255, 210, 90, 0.28)" />
+          <stop offset="100%" stopColor="rgba(255, 170, 40, 0)" />
+        </radialGradient>
+      </defs>
+      <circle cx="24" cy="24" r="14" fill={`url(#${haloId})`} className="sun-halo" />
+      <circle cx="24" cy="24" r={size <= 28 ? 9.8 : 9.5} fill={`url(#${coreId})`} className="sun-core" />
+      <circle cx="20.8" cy="20.2" r={size <= 28 ? 1.7 : 2.2} fill="rgba(255,255,255,0.48)" className="sun-highlight" />
+      {size > 28 ? (
+        <g className="sun-rays">
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
+            <line
+              key={angle}
+              x1="24" y1="4.5" x2="24" y2="10.5"
+              stroke="#f8b73b"
+              strokeWidth="2.3"
+              strokeLinecap="round"
+              transform={`rotate(${angle} 24 24)`}
+              className="sun-ray"
+            />
+          ))}
+        </g>
+      ) : null}
+    </svg>
+  );
+};
 
 export const CloudIcon: React.FC<IconProps> = ({ size = 48, className }) => (
   <svg width={size} height={size} viewBox="0 0 48 48" className={`weather-icon wi-cloud ${className ?? ''}`}>
@@ -116,7 +139,8 @@ export const ThunderstormIcon: React.FC<IconProps> = ({ size = 48, className }) 
 
 export const PartlyCloudyIcon: React.FC<IconProps> = ({ size = 48, className }) => (
   <svg width={size} height={size} viewBox="0 0 48 48" className={`weather-icon wi-partly-cloudy ${className ?? ''}`}>
-    <circle cx="18" cy="16" r="7" fill="none" stroke="var(--color-warm)" strokeWidth="2" className="sun-core" opacity="0.6" />
+    <circle cx="18" cy="16" r="8.2" fill="rgba(255, 185, 63, 0.24)" className="sun-halo" />
+    <circle cx="18" cy="16" r="6.6" fill="#f7b53a" className="sun-core" opacity="0.95" />
     <path
       d="M16 34a6 6 0 0 1-1-11.9A9 9 0 0 1 33 20a7 7 0 0 1 3 14H16z"
       fill="none"

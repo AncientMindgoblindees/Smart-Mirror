@@ -1,0 +1,22 @@
+{
+  "plugins": {
+    "cloudinary": {
+      "enabled": true
+    },
+    "superpowers": {
+      "enabled": true
+    },
+    "cloudflare": {
+      "enabled": true
+    },
+    "docs-canvas": {
+      "enabled": true
+    },
+    "pr-review-canvas": {
+      "enabled": true
+    },
+    "figma": {
+      "enabled": true
+    }
+  }
+}

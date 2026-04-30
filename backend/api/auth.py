@@ -1,14 +1,17 @@
 """
-Auth API router — device-code login/logout for Google and Microsoft.
+Auth API router - login/logout for supported providers (Google only in this project).
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, List
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from backend import config
 from backend.schemas.auth import AuthStatusOut, DeviceCodeOut, ProviderStatusOut
 from backend.services.auth_manager import auth_manager
 
@@ -23,11 +26,21 @@ async def list_providers() -> Any:
 
 
 @router.post("/login/{provider}", response_model=DeviceCodeOut)
-async def start_login(provider: str) -> Any:
+async def start_login(provider: str, request: Request) -> Any:
     if provider not in auth_manager.supported_providers:
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
     try:
-        dc = await auth_manager.start_login(provider)
+        if provider == "google":
+            configured_base = os.getenv("OAUTH_PUBLIC_BASE_URL", "").strip()
+            base = configured_base or str(request.base_url).rstrip("/")
+            token = (os.getenv("MIRROR_API_TOKEN") or config.MIRROR_SYNC_TOKEN or "").strip()
+            query = {"source": "qr"}
+            if token:
+                query["token"] = token
+            start_url = f"{base}/api/oauth/google/start?{urlencode(query)}"
+            dc = await auth_manager.start_web_redirect_login("google", start_url)
+        else:
+            dc = await auth_manager.start_login(provider)
     except Exception as exc:
         logger.exception("Failed to start login for %s", provider)
         raise HTTPException(status_code=502, detail=str(exc)) from exc

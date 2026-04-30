@@ -1,42 +1,31 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import { useCameraStream } from './useCameraStream';
 import './camera-overlay.css';
 
-export const CameraOverlay: React.FC<{ onClose: () => void; countdown?: number | null }> = ({
+export const CameraOverlay: React.FC<{
+  onClose: () => void;
+  errorMessage?: string | null;
+}> = ({
   onClose,
-  countdown = null,
+  errorMessage = null,
 }) => {
-  const { camera, videoRef, stopTracks } = useCameraStream();
-
-  const handleClose = () => {
-    stopTracks();
-    onClose();
-  };
-
   return (
     <div className="camera-overlay">
       <div className="camera-stage">
         <div className="camera-video-wrap">
-          <video
-            ref={videoRef}
-            className="camera-video"
-            playsInline
-            muted
-            autoPlay
-            aria-label="Camera preview"
-          />
-          {camera.status === 'loading' && (
-            <div className="camera-status camera-status-loading">Starting camera…</div>
-          )}
-          {camera.status === 'error' && (
-            <div className="camera-status camera-status-error">{camera.message}</div>
-          )}
-          {typeof countdown === 'number' && countdown > 0 && (
-            <div className="camera-status camera-status-loading">Capture in {countdown}…</div>
+          <div className="camera-native-preview-hint" aria-live="polite">
+            Native camera preview is running.
+          </div>
+          {errorMessage && (
+            <div className="camera-status camera-status-error">
+              <div className="camera-error-content">
+                <strong>Mirror camera unavailable.</strong>
+                <span>{errorMessage}</span>
+              </div>
+            </div>
           )}
         </div>
-        <button type="button" className="camera-exit-btn" onClick={handleClose}>
+        <button type="button" className="camera-exit-btn" onClick={onClose}>
           <X size={20} /> Exit Camera
         </button>
       </div>

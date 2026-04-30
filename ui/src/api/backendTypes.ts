@@ -41,9 +41,14 @@ export interface UserSettingsUpdate {
 
 export interface CameraStatusOut {
   active: boolean;
+  booting?: boolean;
   countdown_remaining: number;
   last_capture_id?: string | null;
   last_capture_at?: string | null;
+  backend_camera_available?: boolean;
+  backend_camera_preferred_source?: 'picamera2' | 'rpicam' | 'none' | string;
+  picamera2_available?: boolean;
+  rpicam_available?: boolean;
 }
 
 export interface CameraCaptureRequest {
@@ -84,8 +89,10 @@ export interface ClothingItemRead {
   color?: string | null;
   season?: string | null;
   notes?: string | null;
+  favorite: boolean;
   created_at: string;
   updated_at: string;
+  images?: ClothingImageRead[] | null;
 }
 
 /** GET /api/clothing/{id}/images — matches `ClothingImageRead`. */
@@ -95,6 +102,33 @@ export interface ClothingImageRead {
   storage_provider: string;
   storage_key: string;
   image_url: string;
+  created_at: string;
+}
+
+export interface ClothingItemUpdate {
+  name?: string;
+  category?: string;
+  color?: string | null;
+  season?: string | null;
+  notes?: string | null;
+  favorite?: boolean;
+}
+
+export interface OutfitGenerateRequest {
+  clothing_image_ids: number[];
+  prompt?: string;
+}
+
+export interface OutfitGenerateResponse {
+  status: string;
+  generation_id: string;
+  image_url: string;
+}
+
+export interface PersonImageRead {
+  id: number;
+  file_path: string;
+  status: string;
   created_at: string;
 }
 
@@ -148,4 +182,18 @@ export interface CalendarTasksResponse {
   tasks: CalendarEventItem[];
   providers: string[];
   last_sync?: string | null;
+}
+
+export interface EmailMessageItem {
+  source: string;
+  sender: string;
+  subject: string;
+  received_at?: string | null;
+  unread: boolean;
+  high_priority: boolean;
+}
+
+export interface EmailMessagesResponse {
+  messages: EmailMessageItem[];
+  providers: string[];
 }
