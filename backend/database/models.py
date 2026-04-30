@@ -110,7 +110,7 @@ class ClothingImage(Base):
     id = Column(Integer, primary_key=True, index=True)
     clothing_item_id = Column(Integer, ForeignKey("clothing_item.id"), nullable=False)
     
-    storage_provider = Column(String(50), nullable=False, default="cloud")
+    storage_provider = Column(String(50), nullable=False, default="cloudinary")
     storage_key = Column(String(255), nullable=False)
     image_url = Column(String(500), nullable=False)
 
@@ -141,3 +141,37 @@ class D1SyncCheckpoint(Base):
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+
+class TryOnGeneration(Base):
+    __tablename__ = "tryon_generation"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    person_image_id = Column(Integer, ForeignKey("person_image.id"), nullable=False)
+    pants_image_id = Column(Integer, ForeignKey("clothing_image.id"), nullable=True)
+    shirt_image_id = Column(Integer, ForeignKey("clothing_image.id"), nullable=True)
+    shoes_image_id = Column(Integer, ForeignKey("clothing_image.id"), nullable=True)
+    hat_image_id = Column(Integer, ForeignKey("clothing_image.id"), nullable=True)
+
+    status = Column(String(50), nullable=False, default="processing")
+
+    leonardo_execution_id = Column(String(128), nullable=True)
+    leonardo_generation_id = Column(String(128), nullable=True)
+
+    result_storage_provider = Column(String(50), nullable=True)
+    result_storage_key = Column(String(255), nullable=True)
+    result_image_url = Column(String(500), nullable=True)
+
+    error_message = Column(String(500), nullable=True)
+
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    person_image = relationship("PersonImage", foreign_keys=[person_image_id])
+    pants_image = relationship("ClothingImage", foreign_keys=[pants_image_id])
+    shirt_image = relationship("ClothingImage", foreign_keys=[shirt_image_id])
+    shoes_image = relationship("ClothingImage", foreign_keys=[shoes_image_id])
+    hat_image = relationship("ClothingImage", foreign_keys=[hat_image_id])

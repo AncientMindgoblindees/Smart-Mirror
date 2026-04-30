@@ -114,20 +114,34 @@ export interface ClothingItemUpdate {
   favorite?: boolean;
 }
 
-export interface OutfitGenerateRequest {
-  clothing_image_ids: number[];
-  prompt?: string;
+export interface TryOnRequest {
+  person_image_id: number;
+  pants_image_id?: number | null;
+  shirt_image_id?: number | null;
+  shoes_image_id?: number | null;
+  hat_image_id?: number | null;
 }
 
-export interface OutfitGenerateResponse {
+export interface TryOnGenerationRead {
+  id: number;
+  person_image_id: number;
+  pants_image_id?: number | null;
+  shirt_image_id?: number | null;
+  shoes_image_id?: number | null;
+  hat_image_id?: number | null;
   status: string;
-  generation_id: string;
-  image_url: string;
+  leonardo_execution_id?: string | null;
+  leonardo_generation_id?: string | null;
+  result_storage_provider?: string | null;
+  result_storage_key?: string | null;
+  result_image_url?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PersonImageRead {
   id: number;
-  file_path: string;
   status: string;
   created_at: string;
 }

@@ -46,15 +46,6 @@ D1_SYNC_INTERVAL_SEC = int(os.getenv("D1_SYNC_INTERVAL_SEC", "600"))
 # One-shot: reset D1 pull cursors to epoch and full-sync on next startup (then disable in .env).
 D1_FORCE_FULL_SYNC = os.getenv("D1_FORCE_FULL_SYNC", "").lower() in ("1", "true", "yes")
 
-LEONARDO_API_KEY = os.getenv("LEONARDO_API_KEY", "")
-LEONARDO_API_BASE = os.getenv("LEONARDO_API_BASE", "https://cloud.leonardo.ai/api/rest/v1")
-LEONARDO_MODEL_ID = os.getenv(
-    "LEONARDO_MODEL_ID",
-    "b24e16ff-06e3-43eb-8d33-4416c2d75876",
-)
-LEONARDO_GENERATION_POLL_SEC = float(os.getenv("LEONARDO_GENERATION_POLL_SEC", "2"))
-LEONARDO_GENERATION_TIMEOUT_SEC = float(os.getenv("LEONARDO_GENERATION_TIMEOUT_SEC", "120"))
-
 # Portrait-oriented default framing for mirror composition.
 PI_CAMERA_CAPTURE_WIDTH = int(os.getenv("PI_CAMERA_CAPTURE_WIDTH", "1440"))
 PI_CAMERA_CAPTURE_HEIGHT = int(os.getenv("PI_CAMERA_CAPTURE_HEIGHT", "1920"))
@@ -88,6 +79,4 @@ ALLOW_PI_SHUTDOWN_BUTTON = os.getenv("ALLOW_PI_SHUTDOWN_BUTTON", "0").lower() in
     "yes",
 )
 PI_SHUTDOWN_COMMAND = os.getenv("PI_SHUTDOWN_COMMAND", "sudo /sbin/shutdown -h now")
-
-TRYON_LOCAL_KEEP_LAST = int(os.getenv("TRYON_LOCAL_KEEP_LAST", "10"))
 

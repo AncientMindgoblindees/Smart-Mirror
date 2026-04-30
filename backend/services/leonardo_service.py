@@ -1,169 +1,248 @@
-"""
-Leonardo.Ai REST client: init image upload + image-to-image generation + polling.
-See https://docs.leonardo.ai/docs/getting-started
-"""
-
-from __future__ import annotations
-
+import asyncio
 import json
-import logging
+import mimetypes
+import os
+import tempfile
 import time
+import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import httpx
-
-from backend import config
-
-logger = logging.getLogger(__name__)
+from fastapi import HTTPException
 
 
-class LeonardoError(Exception):
-    pass
+BASE_URL = "https://cloud.leonardo.ai/api/rest/v1"
+
+API_KEY = os.getenv("LEONARDO_API_KEY")
+BLUEPRINT_VERSION_ID = os.getenv("LEONARDO_BLUEPRINT_VERSION_ID")
+
+PERSON_NODE_ID = os.getenv("LEONARDO_PERSON_NODE_ID")
+PANTS_NODE_ID = os.getenv("LEONARDO_PANTS_NODE_ID")
+SHIRT_NODE_ID = os.getenv("LEONARDO_SHIRT_NODE_ID")
+SHOES_NODE_ID = os.getenv("LEONARDO_SHOES_NODE_ID")
+HAT_NODE_ID = os.getenv("LEONARDO_HAT_NODE_ID")
+
+PUBLIC_OUTPUT = os.getenv("LEONARDO_PUBLIC_OUTPUT", "false").lower() == "true"
+
+JSON_HEADERS = {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "authorization": f"Bearer {API_KEY}",
+}
+
+AUTH_HEADERS = {
+    "accept": "application/json",
+    "authorization": f"Bearer {API_KEY}",
+}
 
 
-def _headers() -> Dict[str, str]:
-    key = config.LEONARDO_API_KEY.strip()
-    if not key:
-        raise LeonardoError("LEONARDO_API_KEY is not configured")
-    return {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
+def _ensure_config() -> None:
+    required = {
+        "LEONARDO_API_KEY": API_KEY,
+        "LEONARDO_BLUEPRINT_VERSION_ID": BLUEPRINT_VERSION_ID,
+        "LEONARDO_PERSON_NODE_ID": PERSON_NODE_ID,
+        "LEONARDO_PANTS_NODE_ID": PANTS_NODE_ID,
+        "LEONARDO_SHIRT_NODE_ID": SHIRT_NODE_ID,
+        "LEONARDO_SHOES_NODE_ID": SHOES_NODE_ID,
+        "LEONARDO_HAT_NODE_ID": HAT_NODE_ID,
     }
-
-
-def _extension_for_path(path: Path) -> str:
-    ext = path.suffix.lower().lstrip(".")
-    if ext in ("jpg", "jpeg", "png", "webp"):
-        return "jpg" if ext == "jpeg" else ext
-    raise LeonardoError(f"Unsupported image extension for Leonardo init upload: {path.suffix}")
-
-
-def upload_init_image_file(file_path: Path) -> str:
-    """
-    POST /init-image, upload bytes to presigned URL, return init image id for generations.
-    """
-    ext = _extension_for_path(file_path)
-    base = config.LEONARDO_API_BASE.rstrip("/")
-    with httpx.Client(timeout=60.0) as client:
-        r = client.post(
-            f"{base}/init-image",
-            headers=_headers(),
-            json={"extension": ext},
+    missing = [key for key, value in required.items() if not value]
+    if missing:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Missing Leonardo configuration: {', '.join(missing)}",
         )
-        if r.status_code >= 400:
-            raise LeonardoError(f"init-image failed: {r.status_code} {r.text[:500]}")
-        data = r.json()
-        block = data.get("uploadInitImage") or data.get("uploadDatasetImage")
-        if not block:
-            raise LeonardoError(f"Unexpected init-image response: {data!r}")
-        init_id = block.get("id")
-        url = block.get("url")
-        fields_raw = block.get("fields")
-        if not init_id or not url or fields_raw is None:
-            raise LeonardoError(f"Incomplete init-image payload: {block!r}")
-        fields = json.loads(fields_raw) if isinstance(fields_raw, str) else fields_raw
-        if not isinstance(fields, dict):
-            raise LeonardoError("init-image fields must be a JSON object")
-
-        with file_path.open("rb") as f:
-            up = client.post(url, data=fields, files={"file": (file_path.name, f, "application/octet-stream")})
-        if up.status_code >= 400:
-            raise LeonardoError(f"Presigned upload failed: {up.status_code} {up.text[:300]}")
-
-    return str(init_id)
 
 
-def create_img2img_generation(
-    *,
-    init_image_id: str,
-    prompt: str,
-    image_prompt_urls: List[str],
-    model_id: Optional[str] = None,
-    num_images: int = 1,
-    init_strength: float = 0.42,
-    width: int = 768,
-    height: int = 768,
-) -> str:
-    """POST /generations — returns generationId (UUID string)."""
-    mid = (model_id or config.LEONARDO_MODEL_ID).strip()
-    body: Dict[str, Any] = {
-        "prompt": prompt,
-        "modelId": mid,
-        "num_images": num_images,
-        "width": width,
-        "height": height,
-        "init_image_id": init_image_id,
-        "init_strength": init_strength,
-        "alchemy": True,
+async def upload_init_image(local_file: str) -> str:
+    try:
+        _ensure_config()
+
+        path = Path(local_file)
+        if not path.exists():
+            raise HTTPException(status_code=500, detail=f"File does not exist: {local_file}")
+
+        ext = path.suffix.lower().replace(".", "")
+        if ext == "jpg":
+            ext = "jpeg"
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            init_resp = await client.post(
+                f"{BASE_URL}/init-image",
+                headers=JSON_HEADERS,
+                json={"extension": ext},
+            )
+            print("INIT STATUS:", init_resp.status_code)
+            print("INIT TEXT:", init_resp.text)
+            init_resp.raise_for_status()
+            init_data = init_resp.json()
+
+        print("INIT DATA TYPE:", type(init_data))
+        print("INIT DATA:", init_data)
+
+        upload_info = init_data["uploadInitImage"]
+        upload_url = upload_info["url"]
+        fields = upload_info["fields"]
+
+        if isinstance(fields, str):
+            fields = json.loads(fields)
+
+        mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+
+        with open(path, "rb") as f:
+            files = {"file": (path.name, f, mime_type)}
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                s3_resp = await client.post(upload_url, data=fields, files=files)
+                print("S3 STATUS:", s3_resp.status_code)
+                print("S3 TEXT:", s3_resp.text[:500])
+                s3_resp.raise_for_status()
+
+        key = upload_info["key"]
+        return f"https://cdn.leonardo.ai/{key}"
+    except Exception:
+        traceback.print_exc()
+        raise
+
+
+async def download_remote_image_to_tempfile(image_url: str) -> str:
+    suffix = Path(urlparse(image_url).path).suffix or ".png"
+
+    async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+        resp = await client.get(image_url)
+        resp.raise_for_status()
+        content = resp.content
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_file.write(content)
+        return temp_file.name
+
+
+async def upload_remote_image(image_url: str) -> str:
+    temp_path = await download_remote_image_to_tempfile(image_url)
+    try:
+        return await upload_init_image(temp_path)
+    finally:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+
+
+async def execute_blueprint(node_inputs: list[dict]) -> str:
+    _ensure_config()
+
+    payload = {
+        "blueprintVersionId": BLUEPRINT_VERSION_ID,
+        "input": {
+            "nodeInputs": node_inputs,
+            "public": PUBLIC_OUTPUT,
+        },
     }
-    if image_prompt_urls:
-        body["imagePrompts"] = image_prompt_urls
-        body["imagePromptWeight"] = 0.45
 
-    base = config.LEONARDO_API_BASE.rstrip("/")
-    with httpx.Client(timeout=60.0) as client:
-        r = client.post(f"{base}/generations", headers=_headers(), json=body)
-        if r.status_code >= 400:
-            raise LeonardoError(f"generations create failed: {r.status_code} {r.text[:800]}")
-        data = r.json()
-        job = data.get("sdGenerationJob") or {}
-        gen_id = job.get("generationId")
-        if not gen_id:
-            raise LeonardoError(f"No generationId in response: {data!r}")
-        return str(gen_id)
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            f"{BASE_URL}/blueprint-executions",
+            headers=JSON_HEADERS,
+            json=payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
+    if isinstance(data, list):
+        first_error = data[0] if data else {}
+        message = first_error.get("message", "Leonardo blueprint execution failed")
+        details = first_error.get("extensions", {}).get("details", [])
+        if details:
+            detail_text = "; ".join(
+                f"{d.get('nodeId')}: {d.get('message')}" for d in details
+            )
+            raise HTTPException(status_code=400, detail=f"{message}: {detail_text}")
+        raise HTTPException(status_code=400, detail=message)
 
-def poll_generation_result(generation_id: str) -> str:
-    """GET /generations/{id} until COMPLETE; return first generated image https URL."""
-    base = config.LEONARDO_API_BASE.rstrip("/")
-    deadline = time.monotonic() + config.LEONARDO_GENERATION_TIMEOUT_SEC
-    last_status = ""
-    with httpx.Client(timeout=60.0) as client:
-        while time.monotonic() < deadline:
-            r = client.get(f"{base}/generations/{generation_id}", headers=_headers())
-            if r.status_code >= 400:
-                raise LeonardoError(f"get generation failed: {r.status_code} {r.text[:500]}")
-            data = r.json()
-            gen = data.get("generations_by_pk")
-            if not gen:
-                raise LeonardoError(f"Unexpected get generation payload: {data!r}")
-            last_status = str(gen.get("status") or "")
-            if last_status == "COMPLETE":
-                images = gen.get("generated_images") or []
-                for img in images:
-                    url = img.get("url")
-                    if url:
-                        return str(url)
-                raise LeonardoError("Generation COMPLETE but no image URL returned")
-            if last_status == "FAILED":
-                raise LeonardoError("Leonardo generation FAILED")
-            time.sleep(config.LEONARDO_GENERATION_POLL_SEC)
-    raise LeonardoError(f"Leonardo generation timed out (last status={last_status!r})")
+    return data["executeBlueprint"]["akUUID"]
 
 
-def run_virtual_try_on(
-    person_image_path: Path,
-    garment_image_urls: List[str],
-    extra_prompt: Optional[str] = None,
-) -> tuple[str, str]:
-    """
-    Upload person as init image, run img2img with garment URLs as image prompts.
-    Returns (generation_id, result_image_url).
-    """
-    init_id = upload_init_image_file(person_image_path)
-    base_prompt = (
-        "Fashion virtual try-on: dress the person from the init image in the garments "
-        "shown in the reference images. Keep pose, lighting, and identity coherent. "
-        "Photorealistic clothing fit, natural folds, full outfit visible."
-    )
-    if extra_prompt:
-        base_prompt = f"{base_prompt} {extra_prompt}"
-    gen_id = create_img2img_generation(
-        init_image_id=init_id,
-        prompt=base_prompt,
-        image_prompt_urls=garment_image_urls,
-    )
-    url = poll_generation_result(gen_id)
-    return gen_id, url
+async def wait_for_generation_id(execution_id: str, timeout_seconds: int = 600) -> str:
+    try:
+        _ensure_config()
+        url = f"{BASE_URL}/blueprint-executions/{execution_id}/generations"
+        start = time.time()
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            while True:
+                elapsed = time.time() - start
+                if elapsed > timeout_seconds:
+                    raise HTTPException(status_code=504, detail="Leonardo generation timed out")
+
+                resp = await client.get(url, headers=AUTH_HEADERS)
+                print("POLL STATUS:", resp.status_code)
+                print("POLL TEXT:", resp.text)
+                resp.raise_for_status()
+                data = resp.json()
+
+                print("POLL DATA TYPE:", type(data))
+                print("POLL DATA:", data)
+
+                edges = data.get("blueprintExecutionGenerations", {}).get("edges", [])
+                if edges:
+                    for edge in edges:
+                        node = edge.get("node", {})
+                        status = node.get("status")
+                        generation_id = node.get("generationId")
+                        failed_reason = node.get("failedReason")
+
+                        if status == "COMPLETED" and generation_id:
+                            return generation_id
+
+                        if status == "FAILED":
+                            raise HTTPException(
+                                status_code=502,
+                                detail=f"Leonardo generation failed: {failed_reason or 'Unknown error'}",
+                            )
+
+                await asyncio.sleep(1)
+    except Exception:
+        traceback.print_exc()
+        raise
+
+
+async def get_generated_image_url(generation_id: str) -> str:
+    try:
+        _ensure_config()
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.get(
+                f"{BASE_URL}/generations/{generation_id}",
+                headers=AUTH_HEADERS,
+            )
+            print("GENERATION STATUS:", resp.status_code)
+            print("GENERATION TEXT:", resp.text)
+            resp.raise_for_status()
+            data = resp.json()
+
+        print("GENERATION DATA TYPE:", type(data))
+        print("GENERATION DATA:", data)
+
+        root = data.get("generations_by_pk", data)
+        images = root.get("generated_images", [])
+        if not images:
+            raise HTTPException(status_code=502, detail="Leonardo returned no generated images")
+
+        return images[0]["url"]
+    except Exception:
+        traceback.print_exc()
+        raise
+
+
+async def download_image(image_url: str) -> str:
+    suffix = Path(urlparse(image_url).path).suffix or ".png"
+
+    async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+        resp = await client.get(image_url)
+        resp.raise_for_status()
+        content = resp.content
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_file.write(content)
+        return temp_file.name

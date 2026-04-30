@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, ChevronUp, Heart, Moon, Palette, Power, QrCode, Shirt, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
-  generateOutfitTryOn,
+  generateTryOn,
   getClothingItems,
   getPersonImages,
   getUserSettings,
@@ -241,6 +241,20 @@ function categoryToSlot(category: string): TryOnSlotKey | null {
   }
   if (c.includes('accessor') || c.includes('hat') || c.includes('shoe') || c.includes('bag') || c.includes('glass')) {
     return 'accessories';
+  }
+  return null;
+}
+
+function categoryToTryOnPayloadKey(category: string, name: string): 'pants_image_id' | 'shirt_image_id' | 'shoes_image_id' | 'hat_image_id' | null {
+  const text = `${category} ${name}`.trim().toLowerCase();
+  if (!text) return null;
+  if (text.includes('shoe') || text.includes('sneaker') || text.includes('boot')) return 'shoes_image_id';
+  if (text.includes('hat') || text.includes('cap') || text.includes('beanie')) return 'hat_image_id';
+  if (text.includes('bottom') || text.includes('pants') || text.includes('short') || text.includes('skirt') || text.includes('jean')) {
+    return 'pants_image_id';
+  }
+  if (text.includes('top') || text.includes('shirt') || text.includes('jacket') || text.includes('hoodie') || text.includes('coat')) {
+    return 'shirt_image_id';
   }
   return null;
 }
@@ -686,10 +700,26 @@ export default function MirrorApp() {
       }
       setTryOnStatus('Generating virtual try-on...');
       let lastError: unknown = null;
-      let result: Awaited<ReturnType<typeof generateOutfitTryOn>> | null = null;
+      let result: Awaited<ReturnType<typeof generateTryOn>> | null = null;
       for (let attempt = 1; attempt <= TRYON_MAX_GENERATE_ATTEMPTS; attempt += 1) {
         try {
-          result = await generateOutfitTryOn({ clothing_image_ids: selectedClothingImageIds });
+          if (capturedLatestId === null) {
+            throw new Error('No captured person image id was available');
+          }
+          const payload = {
+            person_image_id: capturedLatestId,
+            pants_image_id: null as number | null,
+            shirt_image_id: null as number | null,
+            shoes_image_id: null as number | null,
+            hat_image_id: null as number | null,
+          };
+          for (const imageId of selectedClothingImageIds) {
+            const option = clothingOptionByImageId.get(imageId);
+            if (!option) continue;
+            const key = categoryToTryOnPayloadKey(option.category, option.itemName);
+            if (key) payload[key] = imageId;
+          }
+          result = await generateTryOn(payload);
           break;
         } catch (error: unknown) {
           lastError = error;
@@ -707,10 +737,18 @@ export default function MirrorApp() {
             : `Virtual try-on failed after ${TRYON_MAX_GENERATE_ATTEMPTS} attempts`;
         throw new Error(message);
       }
-      setFullScreenTryOnUrl(result.image_url);
+      if (!result.result_image_url) {
+        throw new Error(result.error_message ?? 'Try-on generation did not return an image');
+      }
+      setFullScreenTryOnUrl(result.result_image_url);
+      window.dispatchEvent(
+        new CustomEvent('mirror:tryon_result', {
+          detail: { generation_id: String(result.id), image_url: result.result_image_url },
+        }),
+      );
       setTryOnStatus('Virtual try-on ready');
       logMenu('outfit_tryon_generated', {
-        generationId: result.generation_id,
+        generationId: result.id,
         selectedCount: selectedClothingImageIds.length,
       });
     } catch (error: unknown) {
@@ -720,7 +758,7 @@ export default function MirrorApp() {
     } finally {
       setTryOnBusy(false);
     }
-  }, [logMenu, selectedClothingImageIds, setCameraError, setShowCamera]);
+  }, [clothingOptionByImageId, logMenu, selectedClothingImageIds, setCameraError, setShowCamera]);
   const randomizeWidgets = useCallback(() => {
     let summary:
       | {

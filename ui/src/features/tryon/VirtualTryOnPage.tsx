@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { generateOutfitTryOn, getClothingItems, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
+import { generateTryOn, getClothingItems, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
 import type { ClothingItemRead } from '@/api/backendTypes';
 import { useControlEvents } from '@/hooks/useControlEvents';
 import CameraView from './CameraView';
@@ -33,6 +33,24 @@ function imageIdsFromSelection(selection: Record<string, FashionItem | null>): n
   return Object.values(selection)
     .filter((item): item is FashionItem => item !== null)
     .map((item) => item.sourceImageId);
+}
+
+function tryOnPayloadFromSelection(selection: Record<string, FashionItem | null>, personImageId: number) {
+  const payload = {
+    person_image_id: personImageId,
+    pants_image_id: null as number | null,
+    shirt_image_id: null as number | null,
+    shoes_image_id: null as number | null,
+    hat_image_id: null as number | null,
+  };
+  for (const item of Object.values(selection)) {
+    if (!item) continue;
+    if (item.tryOnSlot === 'pants') payload.pants_image_id = item.sourceImageId;
+    if (item.tryOnSlot === 'shirt') payload.shirt_image_id = item.sourceImageId;
+    if (item.tryOnSlot === 'shoes') payload.shoes_image_id = item.sourceImageId;
+    if (item.tryOnSlot === 'hat') payload.hat_image_id = item.sourceImageId;
+  }
+  return payload;
 }
 
 async function captureLocalWebcamBlob(): Promise<Blob> {
@@ -232,23 +250,23 @@ export function VirtualTryOnPage() {
 
       const blob = await captureLocalWebcamBlob();
       logFlow('local_webcam_snapshot_captured', { bytes: blob.size });
-      await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
+      const personImage = await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
       logFlow('local_webcam_snapshot_uploaded');
       setStatusText('Photo captured');
 
       setStatusText('Mapping digital twin...');
       setCameraPhase('generating');
       logFlow('tryon_generate_start');
-      let result: Awaited<ReturnType<typeof generateOutfitTryOn>> | null = null;
+      let result: Awaited<ReturnType<typeof generateTryOn>> | null = null;
       let lastError: unknown = null;
       for (let attempt = 1; attempt <= TRYON_MAX_GENERATE_ATTEMPTS; attempt += 1) {
         try {
           const attemptStart = performance.now();
-          result = await generateOutfitTryOn({ clothing_image_ids: selectedImageIds });
+          result = await generateTryOn(tryOnPayloadFromSelection(selectedItems, personImage.id));
           logFlow('tryon_generate_attempt_success', {
             attempt,
             duration_ms: Math.round(performance.now() - attemptStart),
-            generation_id: result.generation_id,
+            generation_id: result.id,
           });
           break;
         } catch (error: unknown) {
@@ -265,8 +283,18 @@ export function VirtualTryOnPage() {
         throw new Error(message);
       }
 
-      setResultImageUrl(result.image_url);
-      setTryOnHistory((prev) => [result.image_url, ...prev.filter((url) => url !== result.image_url)].slice(0, 40));
+      if (!result.result_image_url) {
+        throw new Error(result.error_message ?? 'Try-on generation did not return an image');
+      }
+
+      const resultImageUrl = result.result_image_url;
+      setResultImageUrl(resultImageUrl);
+      setTryOnHistory((prev) => [resultImageUrl, ...prev.filter((url) => url !== resultImageUrl)].slice(0, 40));
+      window.dispatchEvent(
+        new CustomEvent('mirror:tryon_result', {
+          detail: { generation_id: String(result.id), image_url: resultImageUrl },
+        }),
+      );
       setTryOnHistoryIndex(0);
       setShowResult(true);
       setStatusText('Synthesized environment ready');

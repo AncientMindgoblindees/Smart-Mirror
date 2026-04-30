@@ -14,9 +14,9 @@ import type {
   WidgetConfigUpdate,
   ClothingItemRead,
   ClothingItemUpdate,
-  OutfitGenerateRequest,
-  OutfitGenerateResponse,
   PersonImageRead,
+  TryOnGenerationRead,
+  TryOnRequest,
 } from './backendTypes';
 import { getApiBase, getApiToken } from '@/config/backendOrigin';
 import { withQuery } from './endpoints';
@@ -74,8 +74,8 @@ export function updateClothingItem(itemId: number, updates: ClothingItemUpdate):
   });
 }
 
-export function generateOutfitTryOn(payload: OutfitGenerateRequest): Promise<OutfitGenerateResponse> {
-  return jsonRequest<OutfitGenerateResponse>('/tryon/outfit-generate', {
+export function generateTryOn(payload: TryOnRequest): Promise<TryOnGenerationRead> {
+  return jsonRequest<TryOnGenerationRead>('/tryon/generate', {
     method: 'POST',
     body: JSON.stringify(payload),
   });

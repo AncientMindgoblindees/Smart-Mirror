@@ -86,16 +86,23 @@ async def save_person_image(db: Session, file: UploadFile) -> PersonImage:
             detail="Unsupported file type. Use jpg, jpeg, png, or webp.",
         )
 
-    canonical_ext = ".jpg" if ext in {".jpg", ".jpeg"} else ext
-    tmp_name = f"{uuid.uuid4()}{canonical_ext}"
-    tmp_path = PERSON_IMAGE_DIR / tmp_name
+    unique_name = f"{uuid.uuid4()}{ext}"
+    save_path = PERSON_IMAGE_DIR / unique_name
 
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    with open(tmp_path, "wb") as f:
+    with open(save_path, "wb") as f:
         f.write(contents)
-    tmp_path.replace(LATEST_PERSON_IMAGE_PATH)
 
-    return set_latest_person_image_path(db, LATEST_PERSON_IMAGE_PATH, status="uploaded")
+    person_image = PersonImage(
+        file_path=str(save_path),
+        status="uploaded",
+    )
+
+    db.add(person_image)
+    db.commit()
+    db.refresh(person_image)
+
+    return person_image
