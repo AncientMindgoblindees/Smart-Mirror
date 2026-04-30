@@ -4,6 +4,7 @@ import uuid
 import asyncio
 import shutil
 import logging
+import errno
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -345,7 +346,15 @@ async def _download_clothing_to_runtime_cache(image_id: int, image_url: str) -> 
     temp_suffix = Path(temp_path).suffix or ".jpg"
     target_path = WARDROBE_RUNTIME_CACHE_DIR / f"clothing-{image_id}{temp_suffix}"
     target_path.unlink(missing_ok=True)
-    os.replace(temp_path, target_path)
+    try:
+        os.replace(temp_path, target_path)
+    except OSError as exc:
+        # EXDEV happens on Linux when /tmp and project data dirs are different mounts.
+        if exc.errno == errno.EXDEV:
+            shutil.copy2(temp_path, target_path)
+            os.unlink(temp_path)
+        else:
+            raise
     return target_path
 
 

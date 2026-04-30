@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import errno
 
 import pytest
 from fastapi import FastAPI
@@ -179,3 +180,28 @@ def test_cache_clothing_endpoint_reports_hit_and_miss(
     assert set(body["cache_hit_image_ids"]) == {hit_row.id}
     assert set(body["cloudinary_fetch_image_ids"]) == {miss_row.id}
     assert body["cache_failed_image_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_download_clothing_cross_device_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cache_dir = tmp_path / "wardrobe_runtime_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(tryon_service, "WARDROBE_RUNTIME_CACHE_DIR", cache_dir)
+
+    temp_source = tmp_path / "tmp-source.webp"
+    temp_source.write_bytes(b"image-bytes")
+
+    async def _fake_download_remote(image_url: str) -> str:
+        return str(temp_source)
+
+    monkeypatch.setattr(tryon_service.leonardo_service, "download_remote_image_to_tempfile", _fake_download_remote)
+
+    def _raise_exdev(src, dst):
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    monkeypatch.setattr(tryon_service.os, "replace", _raise_exdev)
+
+    out = await tryon_service._download_clothing_to_runtime_cache(99, "https://example.invalid/x.webp")
+    assert out.exists()
+    assert out.read_bytes() == b"image-bytes"
+    assert not temp_source.exists()
