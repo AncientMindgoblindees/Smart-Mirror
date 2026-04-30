@@ -88,8 +88,8 @@ async def cache_clothing(
     payload: TryOnCacheRequest,
     db: Session = Depends(get_db),
 ):
-    cached_ids = await tryon_service.cache_clothing_images(db, payload.image_ids)
-    return TryOnCacheResponse(cached_image_ids=cached_ids)
+    result = await tryon_service.cache_clothing_images(db, payload.image_ids)
+    return TryOnCacheResponse(**result)
 
 
 async def _process_tryon_generation(generation_id: int) -> None:

@@ -260,8 +260,11 @@ def get_generation_local_image_path(generation_id: int) -> Path:
     return image_path
 
 
-async def cache_clothing_images(db: Session, image_ids: list[int]) -> list[int]:
+async def cache_clothing_images(db: Session, image_ids: list[int]) -> dict[str, list[int]]:
     cached: list[int] = []
+    hits: list[int] = []
+    fetched: list[int] = []
+    failed: list[int] = []
     seen: set[int] = set()
     for image_id in image_ids:
         if image_id in seen:
@@ -273,18 +276,29 @@ async def cache_clothing_images(db: Session, image_ids: list[int]) -> list[int]:
         cached_path = _RUNTIME_CLOTHING_FILE_CACHE.get(row.id)
         if cached_path and os.path.exists(cached_path):
             cached.append(row.id)
+            hits.append(row.id)
             continue
-        local_path = await _download_clothing_to_runtime_cache(row.id, row.image_url)
-        _RUNTIME_CLOTHING_FILE_CACHE[row.id] = str(local_path)
-        cached.append(row.id)
-    return cached
+        try:
+            local_path = await _download_clothing_to_runtime_cache(row.id, row.image_url)
+            _RUNTIME_CLOTHING_FILE_CACHE[row.id] = str(local_path)
+            cached.append(row.id)
+            fetched.append(row.id)
+        except Exception:
+            failed.append(row.id)
+    return {
+        "cached_image_ids": cached,
+        "cache_hit_image_ids": hits,
+        "cloudinary_fetch_image_ids": fetched,
+        "cache_failed_image_ids": failed,
+    }
 
 
 async def _download_clothing_to_runtime_cache(image_id: int, image_url: str) -> Path:
-    suffix = Path(urlparse(image_url).path).suffix or ".jpg"
     temp_path = await leonardo_service.download_remote_image_to_tempfile(image_url)
-    target_path = WARDROBE_RUNTIME_CACHE_DIR / f"clothing-{image_id}{suffix}"
-    shutil.move(temp_path, target_path)
+    temp_suffix = Path(temp_path).suffix or ".jpg"
+    target_path = WARDROBE_RUNTIME_CACHE_DIR / f"clothing-{image_id}{temp_suffix}"
+    target_path.unlink(missing_ok=True)
+    os.replace(temp_path, target_path)
     return target_path
 
 

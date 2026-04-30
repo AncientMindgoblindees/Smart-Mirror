@@ -198,7 +198,22 @@ export function VirtualTryOnPage() {
   useEffect(() => {
     const selectedIds = imageIdsFromSelection(selectedItems);
     if (!selectedIds.length) return;
-    void cacheTryOnClothing(selectedIds).catch(() => {});
+    void cacheTryOnClothing(selectedIds)
+      .then((result) => {
+        const hits = result.cache_hit_image_ids.length;
+        const misses = result.cloudinary_fetch_image_ids.length;
+        const failed = result.cache_failed_image_ids.length;
+        if (failed > 0) {
+          setStatusText(`Cache failed for ${failed}; using Cloudinary fallback`);
+        } else if (misses > 0) {
+          setStatusText(`Cache miss ${misses}; fetched from Cloudinary`);
+        } else if (hits > 0) {
+          setStatusText(`Cache hit ${hits}`);
+        }
+      })
+      .catch(() => {
+        setStatusText('Cache request failed; using Cloudinary fallback');
+      });
   }, [selectedItems]);
 
   useEffect(() => {
@@ -234,6 +249,9 @@ export function VirtualTryOnPage() {
   }, []);
 
   const handleSelectItem = useCallback((item: FashionItem | null, category: string) => {
+    if (item?.sourceImageId) {
+      void cacheTryOnClothing([item.sourceImageId]).catch(() => {});
+    }
     setSelectedItems((prev) => ({ ...prev, [category]: item }));
   }, []);
 

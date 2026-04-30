@@ -386,6 +386,24 @@ export default function MirrorApp() {
   const [tryOnBusy, setTryOnBusy] = useState(false);
   const [tryOnStatus, setTryOnStatus] = useState<string | null>(null);
   const [tryOnReadyNotice, setTryOnReadyNotice] = useState<string | null>(null);
+  const cacheClothingAndReport = useCallback(async (imageIds: number[], context: string) => {
+    if (!imageIds.length) return;
+    try {
+      const result = await cacheTryOnClothing(imageIds);
+      const hits = result.cache_hit_image_ids.length;
+      const misses = result.cloudinary_fetch_image_ids.length;
+      const failed = result.cache_failed_image_ids.length;
+      if (failed > 0) {
+        setTryOnStatus(`${context}: cache failed for ${failed}; will use Cloudinary at generation`);
+      } else if (misses > 0) {
+        setTryOnStatus(`${context}: cache miss ${misses}, fetched from Cloudinary`);
+      } else if (hits > 0) {
+        setTryOnStatus(`${context}: cache hit ${hits}`);
+      }
+    } catch {
+      setTryOnStatus(`${context}: cache request failed; will use Cloudinary at generation`);
+    }
+  }, []);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
@@ -539,8 +557,8 @@ export default function MirrorApp() {
   }, [selectedSlotItems]);
   useEffect(() => {
     if (!selectedClothingImageIds.length) return;
-    void cacheTryOnClothing(selectedClothingImageIds).catch(() => {});
-  }, [selectedClothingImageIds]);
+    void cacheClothingAndReport(selectedClothingImageIds, 'Selection');
+  }, [cacheClothingAndReport, selectedClothingImageIds]);
   useEffect(() => {
     const onReady = () => {
       setTryOnReadyNotice('Try-on is ready. Open Virtual Try-On to view.');
@@ -613,10 +631,12 @@ export default function MirrorApp() {
       setSlotIndices((prev) => {
         const current = prev[slot] ?? 0;
         const next = direction === 1 ? (current + 1) % total : (current - 1 + total) % total;
+        const nextOption = slotOptions[slot][next];
+        if (nextOption?.imageId) void cacheClothingAndReport([nextOption.imageId], 'Slot');
         return { ...prev, [slot]: next };
       });
     },
-    [slotOptions],
+    [cacheClothingAndReport, slotOptions],
   );
   const loadFavoriteSnapshot = useCallback(
     (favorite: OutfitFavoriteSnapshot) => {

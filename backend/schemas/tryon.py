@@ -41,3 +41,6 @@ class TryOnCacheRequest(BaseModel):
 
 class TryOnCacheResponse(BaseModel):
     cached_image_ids: list[int]
+    cache_hit_image_ids: list[int] = Field(default_factory=list)
+    cloudinary_fetch_image_ids: list[int] = Field(default_factory=list)
+    cache_failed_image_ids: list[int] = Field(default_factory=list)
