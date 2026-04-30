@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { cacheTryOnClothing, generateTryOn, getClothingItems, getTryOnGeneration, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
+import { cacheTryOnClothing, generateTryOn, getClothingItems, getPersonImages, getTryOnGeneration, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
 import { withApiTokenIfProtectedMedia } from '@/api/authMediaUrl';
 import type { ClothingItemRead } from '@/api/backendTypes';
 import { useControlEvents } from '@/hooks/useControlEvents';
@@ -291,27 +291,53 @@ export function VirtualTryOnPage() {
     setIsGenerating(true);
     setShowResult(false);
     setResultImageUrl(null);
-    setStatusText('Capturing image...');
+    setStatusText('Preparing image...');
     setCameraPhase('loading');
     setCountdownRemaining(CAPTURE_COUNTDOWN_SECONDS);
     try {
-      logFlow('browser_camera_capture_mode');
-      setCameraPhase('countdown');
-      localCountdownActiveRef.current = true;
-      for (let remaining = CAPTURE_COUNTDOWN_SECONDS; remaining > 0; remaining -= 1) {
-        logFlow('local_countdown_tick', { remaining });
-        setCountdownRemaining(remaining);
-        setStatusText(`Taking photo in ${remaining}...`);
-        await sleep(1000);
+      let personImageId: number | null = null;
+      try {
+        const existing = await getPersonImages();
+        const savedLatestId = existing[0]?.id ?? null;
+        if (savedLatestId !== null) {
+          const useSaved = window.confirm('Would you like to use the saved image (Yes)/(No: Take a New Picture)');
+          if (useSaved) {
+            personImageId = savedLatestId;
+            setStatusText('Using saved image');
+          }
+        }
+      } catch {
+        // ignore and proceed to capture
       }
-      localCountdownActiveRef.current = false;
-      logFlow('local_countdown_complete');
 
-      const blob = await captureLocalWebcamBlob();
-      logFlow('local_webcam_snapshot_captured', { bytes: blob.size });
-      const personImage = await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
-      logFlow('local_webcam_snapshot_uploaded');
-      setStatusText('Photo captured');
+      if (personImageId === null) {
+        logFlow('browser_camera_capture_mode');
+        setCameraPhase('countdown');
+        localCountdownActiveRef.current = true;
+        for (let remaining = CAPTURE_COUNTDOWN_SECONDS; remaining > 0; remaining -= 1) {
+          logFlow('local_countdown_tick', { remaining });
+          setCountdownRemaining(remaining);
+          setStatusText(`Taking photo in ${remaining}...`);
+          await sleep(1000);
+        }
+        localCountdownActiveRef.current = false;
+        logFlow('local_countdown_complete');
+
+        const blob = await captureLocalWebcamBlob();
+        logFlow('local_webcam_snapshot_captured', { bytes: blob.size });
+        const personImage = await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
+        logFlow('local_webcam_snapshot_uploaded');
+        const useNew = window.confirm('Want to use this picture? (Yes/No)');
+        if (!useNew) {
+          setStatusText('Generation cancelled');
+          return;
+        }
+        personImageId = personImage.id;
+        setStatusText('Photo captured');
+      }
+      if (personImageId === null) {
+        throw new Error('No person image available');
+      }
 
       setStatusText('Mapping digital twin...');
       setCameraPhase('generating');
@@ -322,7 +348,7 @@ export function VirtualTryOnPage() {
       for (let attempt = 1; attempt <= TRYON_MAX_GENERATE_ATTEMPTS; attempt += 1) {
         try {
           const attemptStart = performance.now();
-          const queued = await generateTryOn(tryOnPayloadFromSelection(selectedItems, personImage.id));
+          const queued = await generateTryOn(tryOnPayloadFromSelection(selectedItems, personImageId));
           const pollStartedAt = performance.now();
           while (true) {
             if (performance.now() - pollStartedAt > TRYON_POLL_TIMEOUT_MS) {

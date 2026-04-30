@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -13,6 +14,7 @@ from backend.services import person_image_service, tryon_service
 
 router = APIRouter(prefix="/tryon", tags=["tryon"])
 public_router = APIRouter(prefix="/tryon/public", tags=["tryon-public"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/person-image", response_model=PersonImageRead, status_code=201)
@@ -89,13 +91,22 @@ async def cache_clothing(
     payload: TryOnCacheRequest,
     db: Session = Depends(get_db),
 ):
+    logger.info("tryon_cache endpoint=cache-clothing image_ids=%s", payload.image_ids)
     result = await tryon_service.cache_clothing_images(db, payload.image_ids)
     return TryOnCacheResponse(**result)
 
 
 @router.get("/cache-status", response_model=TryOnCacheStatusResponse)
 def get_cache_status():
-    return TryOnCacheStatusResponse(**tryon_service.get_cache_status())
+    status = tryon_service.get_cache_status()
+    logger.info(
+        "tryon_cache endpoint=cache-status cached_count=%s last_hit=%s last_miss=%s last_failed=%s",
+        status.get("cached_count", 0),
+        status.get("last_cache_hit_count", 0),
+        status.get("last_cloudinary_fetch_count", 0),
+        status.get("last_cache_failed_count", 0),
+    )
+    return TryOnCacheStatusResponse(**status)
 
 
 async def _process_tryon_generation(generation_id: int) -> None:

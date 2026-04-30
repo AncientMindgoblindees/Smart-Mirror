@@ -709,38 +709,60 @@ export default function MirrorApp() {
       return;
     }
     setTryOnBusy(true);
-    setTryOnStatus('Capturing image...');
+    setTryOnStatus('Preparing image...');
     try {
-      let baselineLatestId: number | null = null;
+      let capturedLatestId: number | null = null;
       try {
         const existing = await getPersonImages();
-        baselineLatestId = existing[0]?.id ?? null;
-      } catch {
-        baselineLatestId = null;
-      }
-      captureFlowActiveRef.current = true;
-      setShowCamera(true);
-      setCameraError(null);
-      await triggerCameraCapture({
-        countdown_seconds: 3,
-        source: 'virtual-try-on-menu',
-        session_id: `virtual-tryon-${Date.now()}`,
-      });
-      const deadline = Date.now() + 45000;
-      let captureDetected = false;
-      let capturedLatestId: number | null = null;
-      while (Date.now() < deadline) {
-        const rows = await getPersonImages();
-        const latestId = rows[0]?.id ?? null;
-        if (latestId !== null && (baselineLatestId === null || latestId > baselineLatestId)) {
-          captureDetected = true;
-          capturedLatestId = latestId;
-          break;
+        const savedLatestId = existing[0]?.id ?? null;
+        if (savedLatestId !== null) {
+          const useSaved = window.confirm('Would you like to use the saved image (Yes)/(No: Take a New Picture)');
+          if (useSaved) {
+            capturedLatestId = savedLatestId;
+            setTryOnStatus('Using saved image');
+          }
         }
-        await sleep(1000);
+      } catch {
+        // ignore; fallback to taking a new picture
       }
-      if (!captureDetected) {
-        throw new Error('Camera capture did not complete in time');
+
+      if (capturedLatestId === null) {
+        let baselineLatestId: number | null = null;
+        try {
+          const existing = await getPersonImages();
+          baselineLatestId = existing[0]?.id ?? null;
+        } catch {
+          baselineLatestId = null;
+        }
+        setTryOnStatus('Capturing image...');
+        captureFlowActiveRef.current = true;
+        setShowCamera(true);
+        setCameraError(null);
+        await triggerCameraCapture({
+          countdown_seconds: 3,
+          source: 'virtual-try-on-menu',
+          session_id: `virtual-tryon-${Date.now()}`,
+        });
+        const deadline = Date.now() + 45000;
+        let captureDetected = false;
+        while (Date.now() < deadline) {
+          const rows = await getPersonImages();
+          const latestId = rows[0]?.id ?? null;
+          if (latestId !== null && (baselineLatestId === null || latestId > baselineLatestId)) {
+            captureDetected = true;
+            capturedLatestId = latestId;
+            break;
+          }
+          await sleep(1000);
+        }
+        if (!captureDetected || capturedLatestId === null) {
+          throw new Error('Camera capture did not complete in time');
+        }
+        const useNew = window.confirm('Want to use this picture? (Yes/No)');
+        if (!useNew) {
+          setTryOnStatus('Generation cancelled');
+          return;
+        }
       }
       if (capturedLatestId !== null) {
         setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${capturedLatestId}?t=${Date.now()}`);
@@ -1350,7 +1372,8 @@ export default function MirrorApp() {
               if (latestId !== null) {
                 setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${latestId}?t=${Date.now()}`);
               }
-              setTryOnStatus('Picture captured');
+              const useNew = window.confirm('Want to use this picture? (Yes/No)');
+              setTryOnStatus(useNew ? 'Picture captured and selected' : 'Picture captured (not selected)');
               setTryOnBusy(false);
             })
             .catch((error: unknown) => {
