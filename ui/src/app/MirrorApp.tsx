@@ -13,6 +13,7 @@ import {
   triggerCameraCapture,
   updateClothingItem,
 } from '@/api/mirrorApi';
+import { withApiTokenIfProtectedMedia } from '@/api/authMediaUrl';
 import type { ClothingItemRead } from '@/api/backendTypes';
 import { applyUserSettings } from '@/userSettings';
 import {
@@ -799,10 +800,11 @@ export default function MirrorApp() {
       if (!result.result_image_url) {
         throw new Error(result.error_message ?? 'Try-on generation did not return an image');
       }
-      setFullScreenTryOnUrl(result.result_image_url);
+      const authedResultUrl = withApiTokenIfProtectedMedia(result.result_image_url);
+      setFullScreenTryOnUrl(authedResultUrl);
       window.dispatchEvent(
         new CustomEvent('mirror:tryon_result', {
-          detail: { generation_id: String(result.id), image_url: result.result_image_url },
+          detail: { generation_id: String(result.id), image_url: authedResultUrl },
         }),
       );
       setTryOnStatus('Virtual try-on ready');
@@ -1780,7 +1782,7 @@ export default function MirrorApp() {
       setShowCamera(false);
     },
     onTryOnResult: (payload) => {
-      if (payload.image_url) setFullScreenTryOnUrl(payload.image_url);
+      if (payload.image_url) setFullScreenTryOnUrl(withApiTokenIfProtectedMedia(payload.image_url));
     },
     ...deviceHandlers,
     onAuthStateChanged: () => {

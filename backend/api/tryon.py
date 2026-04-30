@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from backend.database.models import PersonImage
 from backend.database.session import SessionLocal, get_db
 from backend.schemas.person_image import PersonImageRead
-from backend.schemas.tryon import TryOnCacheRequest, TryOnCacheResponse, TryOnGenerationRead, TryOnRequest
+from backend.schemas.tryon import TryOnCacheRequest, TryOnCacheResponse, TryOnCacheStatusResponse, TryOnGenerationRead, TryOnRequest
 from backend.services.realtime import control_registry
 from backend.services import person_image_service, tryon_service
 
@@ -90,6 +90,11 @@ async def cache_clothing(
 ):
     result = await tryon_service.cache_clothing_images(db, payload.image_ids)
     return TryOnCacheResponse(**result)
+
+
+@router.get("/cache-status", response_model=TryOnCacheStatusResponse)
+def get_cache_status():
+    return TryOnCacheStatusResponse(**tryon_service.get_cache_status())
 
 
 async def _process_tryon_generation(generation_id: int) -> None:

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { cacheTryOnClothing, generateTryOn, getClothingItems, getTryOnGeneration, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
+import { withApiTokenIfProtectedMedia } from '@/api/authMediaUrl';
 import type { ClothingItemRead } from '@/api/backendTypes';
 import { useControlEvents } from '@/hooks/useControlEvents';
 import CameraView from './CameraView';
@@ -334,7 +335,7 @@ export function VirtualTryOnPage() {
         throw new Error(result.error_message ?? 'Try-on generation did not return an image');
       }
 
-      const resultImageUrl = result.result_image_url;
+      const resultImageUrl = withApiTokenIfProtectedMedia(result.result_image_url);
       setResultImageUrl(resultImageUrl);
       setTryOnHistory((prev) => [resultImageUrl, ...prev.filter((url) => url !== resultImageUrl)].slice(0, TRYON_HISTORY_LIMIT));
       window.dispatchEvent(

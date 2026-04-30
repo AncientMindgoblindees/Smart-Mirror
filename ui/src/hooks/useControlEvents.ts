@@ -2,6 +2,7 @@ import { useRef } from 'react';
 
 import { getWebSocketUrl } from '@/config/backendOrigin';
 import { useReconnectingWebSocket } from '@/hooks/infra/useReconnectingWebSocket';
+import { withApiTokenIfProtectedMedia } from '@/api/authMediaUrl';
 import {
   type AuthStatePayload,
   type CalendarUpdatedPayload,
@@ -94,8 +95,14 @@ export function useControlEvents(handlers: ControlEventHandlers): void {
           window.dispatchEvent(new CustomEvent('mirror:calendar_updated', { detail: parsed.rawPayload }));
           break;
         case 'TRYON_RESULT':
-          ref.current.onTryOnResult?.(parsed.payload);
-          window.dispatchEvent(new CustomEvent('mirror:tryon_result', { detail: parsed.payload }));
+          {
+            const payload = {
+              ...parsed.payload,
+              image_url: withApiTokenIfProtectedMedia(parsed.payload.image_url),
+            };
+            ref.current.onTryOnResult?.(payload);
+            window.dispatchEvent(new CustomEvent('mirror:tryon_result', { detail: payload }));
+          }
           break;
         default:
           break;

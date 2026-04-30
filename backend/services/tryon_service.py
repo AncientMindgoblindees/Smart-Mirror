@@ -27,6 +27,11 @@ WARDROBE_RUNTIME_CACHE_DIR = BASE_DIR / "data" / "wardrobe_runtime_cache"
 
 _DEFAULT_IMAGE_CACHE: dict[str, str] = {}
 _RUNTIME_CLOTHING_FILE_CACHE: dict[int, str] = {}
+_LAST_CACHE_RESULT: dict[str, list[int]] = {
+    "cache_hit_image_ids": [],
+    "cloudinary_fetch_image_ids": [],
+    "cache_failed_image_ids": [],
+}
 
 TRYON_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 WARDROBE_RUNTIME_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -39,6 +44,7 @@ def _clear_runtime_wardrobe_cache() -> None:
 
 
 _clear_runtime_wardrobe_cache()
+_RUNTIME_CLOTHING_FILE_CACHE.clear()
 
 
 def create_generation(db: Session, payload: TryOnRequest) -> TryOnGeneration:
@@ -285,11 +291,35 @@ async def cache_clothing_images(db: Session, image_ids: list[int]) -> dict[str, 
             fetched.append(row.id)
         except Exception:
             failed.append(row.id)
-    return {
+    result = {
         "cached_image_ids": cached,
         "cache_hit_image_ids": hits,
         "cloudinary_fetch_image_ids": fetched,
         "cache_failed_image_ids": failed,
+    }
+    _LAST_CACHE_RESULT["cache_hit_image_ids"] = list(hits)
+    _LAST_CACHE_RESULT["cloudinary_fetch_image_ids"] = list(fetched)
+    _LAST_CACHE_RESULT["cache_failed_image_ids"] = list(failed)
+    return result
+
+
+def get_cache_status() -> dict[str, object]:
+    valid_cache_ids = sorted(
+        [
+            image_id
+            for image_id, file_path in _RUNTIME_CLOTHING_FILE_CACHE.items()
+            if os.path.exists(file_path)
+        ]
+    )
+    return {
+        "cached_count": len(valid_cache_ids),
+        "cached_image_ids": valid_cache_ids,
+        "last_cache_hit_count": len(_LAST_CACHE_RESULT["cache_hit_image_ids"]),
+        "last_cloudinary_fetch_count": len(_LAST_CACHE_RESULT["cloudinary_fetch_image_ids"]),
+        "last_cache_failed_count": len(_LAST_CACHE_RESULT["cache_failed_image_ids"]),
+        "last_cache_hit_image_ids": list(_LAST_CACHE_RESULT["cache_hit_image_ids"]),
+        "last_cloudinary_fetch_image_ids": list(_LAST_CACHE_RESULT["cloudinary_fetch_image_ids"]),
+        "last_cache_failed_image_ids": list(_LAST_CACHE_RESULT["cache_failed_image_ids"]),
     }
 
 
