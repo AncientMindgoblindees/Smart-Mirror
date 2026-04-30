@@ -1,9 +1,11 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from backend.database.models import PersonImage
-from backend.database.session import get_db
+from backend.database.session import SessionLocal, get_db
 from backend.schemas.person_image import PersonImageRead
 from backend.schemas.tryon import TryOnGenerationRead, TryOnRequest
 from backend.services import person_image_service, tryon_service
@@ -58,7 +60,9 @@ async def generate_tryon(
     payload: TryOnRequest,
     db: Session = Depends(get_db),
 ):
-    return await tryon_service.generate_tryon(db, payload)
+    generation = tryon_service.create_generation(db, payload)
+    asyncio.create_task(_process_tryon_generation(generation.id))
+    return generation
 
 
 @router.get("/generations/{generation_id}", response_model=TryOnGenerationRead)
@@ -70,3 +74,14 @@ def get_generation(
     if generation is None:
         raise HTTPException(status_code=404, detail="Generation not found")
     return generation
+
+
+async def _process_tryon_generation(generation_id: int) -> None:
+    db = SessionLocal()
+    try:
+        await tryon_service.process_generation(db, generation_id)
+    except Exception:
+        # Errors are persisted on the generation row by process_generation.
+        pass
+    finally:
+        db.close()

@@ -24,6 +24,7 @@ def init_db() -> None:
     _ensure_sync_columns()
     _ensure_clothing_favorite_column()
     _ensure_d1_checkpoint_columns()
+    _ensure_clothing_image_leonardo_column()
 
 
 def _ensure_d1_checkpoint_columns() -> None:
@@ -66,6 +67,18 @@ def _ensure_clothing_favorite_column() -> None:
         if not columns or "favorite" in columns:
             return
         conn.execute(text("ALTER TABLE clothing_item ADD COLUMN favorite BOOLEAN NOT NULL DEFAULT 0"))
+
+
+def _ensure_clothing_image_leonardo_column() -> None:
+    """Backfill clothing_image.leonardo_init_url for existing SQLite databases."""
+    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(clothing_image)")).fetchall()
+        columns = {str(row[1]) for row in rows}
+        if not columns or "leonardo_init_url" in columns:
+            return
+        conn.execute(text("ALTER TABLE clothing_image ADD COLUMN leonardo_init_url VARCHAR(500)"))
 
 
 def get_db():

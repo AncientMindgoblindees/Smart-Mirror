@@ -24,9 +24,9 @@ def upload_clothing_image(file_path: str, public_id: str | None = None) -> dict:
         "image_url": result["secure_url"],
     }
 
-def upload_generated_image(file_path: str, public_id: str | None = None) -> dict:
+def upload_generated_image(source: str, public_id: str | None = None) -> dict:
     result = cloudinary.uploader.upload(
-        file_path,
+        source,
         folder="smart-mirror/tryon-results",
         public_id=public_id,
         resource_type="image",
@@ -37,3 +37,7 @@ def upload_generated_image(file_path: str, public_id: str | None = None) -> dict
         "storage_key": result["public_id"],
         "image_url": result["secure_url"],
     }
+
+
+def delete_image(public_id: str) -> None:
+    cloudinary.uploader.destroy(public_id, resource_type="image", invalidate=True)

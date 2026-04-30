@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { generateTryOn, getClothingItems, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
+import { generateTryOn, getClothingItems, getTryOnGeneration, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
 import type { ClothingItemRead } from '@/api/backendTypes';
 import { useControlEvents } from '@/hooks/useControlEvents';
 import CameraView from './CameraView';
@@ -12,6 +12,9 @@ import { toFashionItems } from './constants';
 const FAVORITES_KEY = 'mirror:outfit-favorites';
 const TRYON_MAX_GENERATE_ATTEMPTS = 2;
 const CAPTURE_COUNTDOWN_SECONDS = 3;
+const TRYON_POLL_INTERVAL_MS = 1500;
+const TRYON_POLL_TIMEOUT_MS = 8 * 60 * 1000;
+const TRYON_HISTORY_LIMIT = 10;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -262,7 +265,16 @@ export function VirtualTryOnPage() {
       for (let attempt = 1; attempt <= TRYON_MAX_GENERATE_ATTEMPTS; attempt += 1) {
         try {
           const attemptStart = performance.now();
-          result = await generateTryOn(tryOnPayloadFromSelection(selectedItems, personImage.id));
+          const queued = await generateTryOn(tryOnPayloadFromSelection(selectedItems, personImage.id));
+          const pollStartedAt = performance.now();
+          while (true) {
+            if (performance.now() - pollStartedAt > TRYON_POLL_TIMEOUT_MS) {
+              throw new Error('Try-on generation timed out');
+            }
+            result = await getTryOnGeneration(queued.id);
+            if (result.status === 'completed' || result.status === 'failed') break;
+            await sleep(TRYON_POLL_INTERVAL_MS);
+          }
           logFlow('tryon_generate_attempt_success', {
             attempt,
             duration_ms: Math.round(performance.now() - attemptStart),
@@ -289,7 +301,7 @@ export function VirtualTryOnPage() {
 
       const resultImageUrl = result.result_image_url;
       setResultImageUrl(resultImageUrl);
-      setTryOnHistory((prev) => [resultImageUrl, ...prev.filter((url) => url !== resultImageUrl)].slice(0, 40));
+      setTryOnHistory((prev) => [resultImageUrl, ...prev.filter((url) => url !== resultImageUrl)].slice(0, TRYON_HISTORY_LIMIT));
       window.dispatchEvent(
         new CustomEvent('mirror:tryon_result', {
           detail: { generation_id: String(result.id), image_url: resultImageUrl },

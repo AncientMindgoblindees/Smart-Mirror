@@ -81,6 +81,10 @@ export function generateTryOn(payload: TryOnRequest): Promise<TryOnGenerationRea
   });
 }
 
+export function getTryOnGeneration(generationId: number): Promise<TryOnGenerationRead> {
+  return jsonRequest<TryOnGenerationRead>(`/tryon/generations/${generationId}`);
+}
+
 export function getPersonImages(): Promise<PersonImageRead[]> {
   return jsonRequest<PersonImageRead[]>('/tryon/person-image');
 }

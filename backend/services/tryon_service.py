@@ -1,6 +1,7 @@
 import os
 import traceback
 import uuid
+import asyncio
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -18,9 +19,12 @@ DEFAULT_PANTS_IMAGE = TRYON_DEFAULTS_DIR / "pants_blank.jpg"
 DEFAULT_SHIRT_IMAGE = TRYON_DEFAULTS_DIR / "shirt_blank.jpg"
 DEFAULT_SHOES_IMAGE = TRYON_DEFAULTS_DIR / "shoes_blank.jpg"
 DEFAULT_HAT_IMAGE = TRYON_DEFAULTS_DIR / "hat_blank.jpg"
+MAX_STORED_GENERATIONS = 10
+
+_DEFAULT_IMAGE_CACHE: dict[str, str] = {}
 
 
-async def generate_tryon(db: Session, payload: TryOnRequest) -> TryOnGeneration:
+def create_generation(db: Session, payload: TryOnRequest) -> TryOnGeneration:
     person_image = (
         db.query(PersonImage)
         .filter(PersonImage.id == payload.person_image_id)
@@ -51,31 +55,45 @@ async def generate_tryon(db: Session, payload: TryOnRequest) -> TryOnGeneration:
     db.add(generation)
     db.commit()
     db.refresh(generation)
+    return generation
 
-    generated_temp_path = None
+
+async def process_generation(db: Session, generation_id: int) -> TryOnGeneration:
+    generation = (
+        db.query(TryOnGeneration)
+        .filter(TryOnGeneration.id == generation_id)
+        .first()
+    )
+    if generation is None:
+        raise HTTPException(status_code=404, detail="Generation not found")
 
     try:
+        person_image = (
+            db.query(PersonImage)
+            .filter(PersonImage.id == generation.person_image_id)
+            .first()
+        )
+        if person_image is None:
+            raise HTTPException(status_code=404, detail="Person image not found")
+
+        if not os.path.exists(person_image.file_path):
+            raise HTTPException(
+                status_code=404,
+                detail="Person image file not found on disk",
+            )
+
+        pants_image = _get_clothing_image_if_present(db, generation.pants_image_id, "Pants")
+        shirt_image = _get_clothing_image_if_present(db, generation.shirt_image_id, "Shirt")
+        shoes_image = _get_clothing_image_if_present(db, generation.shoes_image_id, "Shoes")
+        hat_image = _get_clothing_image_if_present(db, generation.hat_image_id, "Hat")
+
         person_url = await leonardo_service.upload_init_image(person_image.file_path)
 
-        pants_url = await _resolve_slot_image_url(
-            provided_image=pants_image,
-            default_file=DEFAULT_PANTS_IMAGE,
-            label="pants",
-        )
-        shirt_url = await _resolve_slot_image_url(
-            provided_image=shirt_image,
-            default_file=DEFAULT_SHIRT_IMAGE,
-            label="shirt",
-        )
-        shoes_url = await _resolve_slot_image_url(
-            provided_image=shoes_image,
-            default_file=DEFAULT_SHOES_IMAGE,
-            label="shoes",
-        )
-        hat_url = await _resolve_slot_image_url(
-            provided_image=hat_image,
-            default_file=DEFAULT_HAT_IMAGE,
-            label="hat",
+        pants_url, shirt_url, shoes_url, hat_url = await asyncio.gather(
+            _resolve_slot_image_url(db, provided_image=pants_image, default_file=DEFAULT_PANTS_IMAGE, label="pants"),
+            _resolve_slot_image_url(db, provided_image=shirt_image, default_file=DEFAULT_SHIRT_IMAGE, label="shirt"),
+            _resolve_slot_image_url(db, provided_image=shoes_image, default_file=DEFAULT_SHOES_IMAGE, label="shoes"),
+            _resolve_slot_image_url(db, provided_image=hat_image, default_file=DEFAULT_HAT_IMAGE, label="hat"),
         )
 
         node_inputs = [
@@ -121,10 +139,9 @@ async def generate_tryon(db: Session, payload: TryOnRequest) -> TryOnGeneration:
         output_url = await leonardo_service.get_generated_image_url(
             leonardo_generation_id
         )
-        generated_temp_path = await leonardo_service.download_image(output_url)
 
         upload_result = cloud_storage_service.upload_generated_image(
-            generated_temp_path,
+            output_url,
             public_id=f"tryon-{generation.id}-{uuid.uuid4()}",
         )
 
@@ -136,6 +153,7 @@ async def generate_tryon(db: Session, payload: TryOnRequest) -> TryOnGeneration:
 
         db.commit()
         db.refresh(generation)
+        _enforce_generation_retention(db, keep_latest=MAX_STORED_GENERATIONS)
         return generation
 
     except HTTPException as exc:
@@ -157,18 +175,20 @@ async def generate_tryon(db: Session, payload: TryOnRequest) -> TryOnGeneration:
             detail=f"Try-on generation failed: {exc}",
         )
 
-    finally:
-        if generated_temp_path and os.path.exists(generated_temp_path):
-            os.remove(generated_temp_path)
-
 
 async def _resolve_slot_image_url(
+    db: Session,
     provided_image: ClothingImage | None,
     default_file: Path,
     label: str,
 ) -> str:
     if provided_image is not None:
-        return await leonardo_service.upload_remote_image(provided_image.image_url)
+        if provided_image.leonardo_init_url:
+            return provided_image.leonardo_init_url
+        leonardo_url = await leonardo_service.upload_remote_image(provided_image.image_url)
+        provided_image.leonardo_init_url = leonardo_url
+        db.commit()
+        return leonardo_url
 
     if not default_file.exists():
         raise HTTPException(
@@ -176,7 +196,13 @@ async def _resolve_slot_image_url(
             detail=f"Missing default {label} placeholder image: {default_file}",
         )
 
-    return await leonardo_service.upload_init_image(str(default_file))
+    cache_key = str(default_file)
+    cached = _DEFAULT_IMAGE_CACHE.get(cache_key)
+    if cached:
+        return cached
+    leonardo_url = await leonardo_service.upload_init_image(str(default_file))
+    _DEFAULT_IMAGE_CACHE[cache_key] = leonardo_url
+    return leonardo_url
 
 
 def _get_clothing_image_if_present(
@@ -199,3 +225,26 @@ def get_generation_by_id(db: Session, generation_id: int) -> TryOnGeneration | N
         .filter(TryOnGeneration.id == generation_id)
         .first()
     )
+
+
+def _enforce_generation_retention(db: Session, keep_latest: int) -> None:
+    completed = (
+        db.query(TryOnGeneration)
+        .filter(
+            TryOnGeneration.status == "completed",
+            TryOnGeneration.result_storage_provider == "cloudinary",
+            TryOnGeneration.result_storage_key.is_not(None),
+        )
+        .order_by(TryOnGeneration.created_at.desc(), TryOnGeneration.id.desc())
+        .all()
+    )
+    stale = completed[keep_latest:]
+    for row in stale:
+        if row.result_storage_key:
+            try:
+                cloud_storage_service.delete_image(row.result_storage_key)
+            except Exception:
+                traceback.print_exc()
+        db.delete(row)
+    if stale:
+        db.commit()

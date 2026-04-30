@@ -113,6 +113,7 @@ class ClothingImage(Base):
     storage_provider = Column(String(50), nullable=False, default="cloudinary")
     storage_key = Column(String(255), nullable=False)
     image_url = Column(String(500), nullable=False)
+    leonardo_init_url = Column(String(500), nullable=True)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     synced_at = Column(DateTime, nullable=True, default=None)
