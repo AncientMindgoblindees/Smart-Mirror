@@ -30,6 +30,7 @@ def db_session(tmp_path: Path):
 def client(db_session: Session):
     app = FastAPI()
     app.include_router(tryon_api.router, prefix="/api")
+    app.include_router(tryon_api.public_router, prefix="/api")
 
     def _override_get_db():
         try:
