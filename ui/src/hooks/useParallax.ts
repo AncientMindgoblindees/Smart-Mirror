@@ -7,6 +7,7 @@ interface ParallaxOffset {
 
 const SPRING_FACTOR = 0.08;
 const MAX_OFFSET = 12;
+const MIN_DELTA_TO_RENDER = 0.2;
 
 export function useParallax(enabled = true): ParallaxOffset {
   const [offset, setOffset] = useState<ParallaxOffset>({ x: 0, y: 0 });
@@ -32,7 +33,7 @@ export function useParallax(enabled = true): ParallaxOffset {
       cur.x += (tgt.x - cur.x) * SPRING_FACTOR;
       cur.y += (tgt.y - cur.y) * SPRING_FACTOR;
 
-      if (Math.abs(cur.x - tgt.x) > 0.01 || Math.abs(cur.y - tgt.y) > 0.01) {
+      if (Math.abs(cur.x - tgt.x) > MIN_DELTA_TO_RENDER || Math.abs(cur.y - tgt.y) > MIN_DELTA_TO_RENDER) {
         setOffset({ x: cur.x, y: cur.y });
       }
       rafRef.current = requestAnimationFrame(animate);

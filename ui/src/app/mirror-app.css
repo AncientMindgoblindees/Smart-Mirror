@@ -8,6 +8,11 @@
   isolation: isolate;
 }
 
+.mirror-shell.performance-lite .mirror-ambient-layer {
+  animation: none;
+  opacity: 0.32;
+}
+
 @media (orientation: portrait) {
   .mirror-shell {
     padding: 1rem;

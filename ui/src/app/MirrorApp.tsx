@@ -33,6 +33,7 @@ import { useMirrorInput } from '@/hooks/useMirrorInput';
 import { useMenuNavigation } from '@/hooks/useMenuNavigation';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
 import { useParallax } from '@/hooks/useParallax';
+import { shouldUsePerformanceLiteMode } from './performanceMode';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { MenuOverlay, type MenuMainItem, type MenuOverlayItem, type MenuPreviewState } from '@/components/MenuOverlay';
 import { useMirrorDisplayMode } from './hooks/useMirrorDisplayMode';
@@ -438,7 +439,15 @@ export default function MirrorApp() {
   } = useAuthActions(initiateLogin, disconnectProvider);
 
   useTimeOfDay();
-  const parallax = useParallax();
+  const performanceLiteMode = useMemo(
+    () =>
+      shouldUsePerformanceLiteMode({
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+      }),
+    [],
+  );
+  const parallax = useParallax(!performanceLiteMode);
   const logMenu = useCallback(
     (
       event: string,
@@ -1785,7 +1794,7 @@ export default function MirrorApp() {
 
   return (
     <TooltipProvider delayDuration={400}>
-      <div className="mirror-shell">
+      <div className={`mirror-shell${performanceLiteMode ? ' performance-lite' : ''}`}>
         <div className="mirror-ambient-layer" aria-hidden="true" />
 
       <motion.div
@@ -1800,7 +1809,7 @@ export default function MirrorApp() {
       >
         <AnimatePresence mode="popLayout">
           {activeWidgets.map((w) => (
-            <WidgetFrame key={w.id} config={w} canvasRect={canvasRect} />
+            <WidgetFrame key={w.id} config={w} canvasRect={canvasRect} disableAnimations={performanceLiteMode} />
           ))}
         </AnimatePresence>
       </motion.div>

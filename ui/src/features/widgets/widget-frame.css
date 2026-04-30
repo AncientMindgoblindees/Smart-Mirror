@@ -12,9 +12,8 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  box-shadow: var(--glow-widget);
+  box-shadow: none;
   transition:
-    box-shadow var(--duration-normal) var(--ease-spring),
     border-color var(--duration-normal) var(--ease-spring),
     background var(--duration-normal) var(--ease-spring);
   will-change: transform, opacity;
@@ -34,7 +33,7 @@
 }
 
 .widget-frame:hover {
-  box-shadow: var(--glow-widget-hover);
+  box-shadow: none;
   border-color: var(--glass-strong-border);
 }
 
@@ -171,31 +170,16 @@
   }
 }
 
-@keyframes widgetFloat {
-  0% { transform: translateY(0); }
-  100% { transform: translateY(-2px); }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .widget-frame {
-    animation: widgetFloat 6s ease-in-out infinite alternate;
-  }
-}
-
 @media (prefers-reduced-transparency: reduce) {
   .widget-frame {
     backdrop-filter: blur(12px) saturate(1.15);
     -webkit-backdrop-filter: blur(12px) saturate(1.15);
     background: rgba(22, 22, 26, 0.94);
-    box-shadow:
-      0 8px 28px rgba(0, 0, 0, 0.5),
-      0 0 0 1px rgba(255, 255, 255, 0.1);
+    box-shadow: none;
   }
 
   .widget-frame:hover {
-    box-shadow:
-      0 12px 36px rgba(0, 0, 0, 0.55),
-      0 0 0 1px rgba(255, 255, 255, 0.14);
+    box-shadow: none;
     border-color: rgba(255, 255, 255, 0.2);
   }
 
