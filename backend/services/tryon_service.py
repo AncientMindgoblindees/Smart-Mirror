@@ -170,7 +170,7 @@ async def process_generation(db: Session, generation_id: int) -> TryOnGeneration
         generation.status = "completed"
         generation.result_storage_provider = upload_result["storage_provider"]
         generation.result_storage_key = upload_result["storage_key"]
-        generation.result_image_url = f"/api/tryon/generations/{generation.id}/image"
+        generation.result_image_url = f"/api/tryon/public/generations/{generation.id}/image"
         generation.error_message = None
 
         db.commit()

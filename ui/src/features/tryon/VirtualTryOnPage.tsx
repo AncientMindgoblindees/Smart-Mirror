@@ -11,6 +11,7 @@ import type { FashionItem } from './types';
 import { toFashionItems } from './constants';
 
 const FAVORITES_KEY = 'mirror:outfit-favorites';
+const TRYON_HISTORY_KEY = 'mirror:tryon-history';
 const TRYON_MAX_GENERATE_ATTEMPTS = 2;
 const CAPTURE_COUNTDOWN_SECONDS = 3;
 const TRYON_POLL_INTERVAL_MS = 1500;
@@ -28,6 +29,18 @@ function readFavoritesInitial(): Record<string, FashionItem | null>[] {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed as Record<string, FashionItem | null>[];
+  } catch {
+    return [];
+  }
+}
+
+function readTryOnHistoryInitial(): string[] {
+  try {
+    const raw = localStorage.getItem(TRYON_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((v): v is string => typeof v === 'string' && v.length > 0).slice(0, TRYON_HISTORY_LIMIT);
   } catch {
     return [];
   }
@@ -99,8 +112,8 @@ export function VirtualTryOnPage() {
   const [showResult, setShowResult] = useState(false);
   const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
   const [capturedImageUrl, setCapturedImageUrl] = useState<string | null>(null);
-  const [tryOnHistory, setTryOnHistory] = useState<string[]>([]);
-  const [tryOnHistoryIndex, setTryOnHistoryIndex] = useState<number>(-1);
+  const [tryOnHistory, setTryOnHistory] = useState<string[]>(readTryOnHistoryInitial);
+  const [tryOnHistoryIndex, setTryOnHistoryIndex] = useState<number>(0);
   const [statusText, setStatusText] = useState<string | null>('Loading catalog...');
   const [cameraPhase, setCameraPhase] = useState<'idle' | 'loading' | 'countdown' | 'captured' | 'generating' | 'error'>('idle');
   const [remoteCaptureActive, setRemoteCaptureActive] = useState(false);
@@ -162,6 +175,14 @@ export function VirtualTryOnPage() {
       // ignore
     }
   }, [favoriteOutfits]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TRYON_HISTORY_KEY, JSON.stringify(tryOnHistory.slice(0, TRYON_HISTORY_LIMIT)));
+    } catch {
+      // ignore
+    }
+  }, [tryOnHistory]);
 
   useEffect(() => {
     let cancelled = false;

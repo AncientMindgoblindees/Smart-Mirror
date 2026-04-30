@@ -12,6 +12,7 @@ from backend.services.realtime import control_registry
 from backend.services import person_image_service, tryon_service
 
 router = APIRouter(prefix="/tryon", tags=["tryon"])
+public_router = APIRouter(prefix="/tryon/public", tags=["tryon-public"])
 
 
 @router.post("/person-image", response_model=PersonImageRead, status_code=201)
@@ -77,7 +78,7 @@ def get_generation(
     return generation
 
 
-@router.get("/generations/{generation_id}/image")
+@public_router.get("/generations/{generation_id}/image")
 def get_generation_image_file(generation_id: int):
     path = tryon_service.get_generation_local_image_path(generation_id)
     return FileResponse(path)

@@ -103,7 +103,7 @@ def test_get_generation_image_serves_local_file(tmp_path: Path, db_session: Sess
     local_file = tryon_service.TRYON_OUTPUT_DIR / f"generation-{generation.id}-abc.jpg"
     local_file.write_bytes(expected_bytes)
 
-    resp = client.get(f"/api/tryon/generations/{generation.id}/image")
+    resp = client.get(f"/api/tryon/public/generations/{generation.id}/image")
     assert resp.status_code == 200
     assert resp.content == expected_bytes
 
@@ -119,7 +119,7 @@ async def test_process_wrapper_broadcasts_tryon_result(monkeypatch: pytest.Monke
     async def _fake_process_generation(db, generation_id: int):
         class _Generation:
             id = generation_id
-            result_image_url = f"/api/tryon/generations/{generation_id}/image"
+            result_image_url = f"/api/tryon/public/generations/{generation_id}/image"
 
         return _Generation()
 
@@ -136,7 +136,7 @@ async def test_process_wrapper_broadcasts_tryon_result(monkeypatch: pytest.Monke
     payload = sent[0]
     assert payload["type"] == "TRYON_RESULT"
     assert payload["payload"]["generation_id"] == "42"
-    assert payload["payload"]["image_url"] == "/api/tryon/generations/42/image"
+    assert payload["payload"]["image_url"] == "/api/tryon/public/generations/42/image"
 
 
 def test_cache_clothing_endpoint_reports_hit_and_miss(

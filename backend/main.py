@@ -88,6 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(events.router)
     app.include_router(clothing.router, prefix="/api", dependencies=secure_api)
     app.include_router(tryon.router, prefix="/api", dependencies=secure_api)
+    app.include_router(tryon.public_router, prefix="/api")
     app.include_router(d1_checkpoint.router, prefix="/api", dependencies=secure_api)
 
     # Serve built React UI under /ui (run: cd ui && npm install && npm run build)
