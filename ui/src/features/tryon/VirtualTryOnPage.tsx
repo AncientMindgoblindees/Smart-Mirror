@@ -13,7 +13,7 @@ import { toFashionItems } from './constants';
 const FAVORITES_KEY = 'mirror:outfit-favorites';
 const TRYON_HISTORY_KEY = 'mirror:tryon-history';
 const TRYON_MAX_GENERATE_ATTEMPTS = 2;
-const CAPTURE_COUNTDOWN_SECONDS = 3;
+const CAPTURE_COUNTDOWN_SECONDS = 8;
 const TRYON_POLL_INTERVAL_MS = 1500;
 const TRYON_POLL_TIMEOUT_MS = 8 * 60 * 1000;
 const TRYON_HISTORY_LIMIT = 10;
