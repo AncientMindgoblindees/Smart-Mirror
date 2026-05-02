@@ -1813,6 +1813,16 @@ export default function MirrorApp() {
     },
   });
 
+  useEffect(() => {
+    const onOpenResult = (event: Event) => {
+      const detail = (event as CustomEvent<{ image_url?: string }>).detail;
+      if (!detail?.image_url) return;
+      setFullScreenTryOnUrl(withApiTokenIfProtectedMedia(detail.image_url));
+    };
+    window.addEventListener('mirror:tryon_open_result', onOpenResult as EventListener);
+    return () => window.removeEventListener('mirror:tryon_open_result', onOpenResult as EventListener);
+  }, []);
+
   const toggleWidget = (id: string) => {
     setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)));
   };

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { cacheTryOnClothing, generateTryOn, getClothingItems, getPersonImages, getTryOnGeneration, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
-import { withApiTokenIfProtectedMedia } from '@/api/authMediaUrl';
-import type { ClothingItemRead } from '@/api/backendTypes';
+import { cacheTryOnClothing, getClothingItems, getPersonImages, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
+import type { ClothingItemRead, TryOnRequest } from '@/api/backendTypes';
 import { useControlEvents } from '@/hooks/useControlEvents';
+import { enqueueTryOnGeneration, subscribeTryOnQueue, type TryOnQueueSnapshot } from '@/features/tryon/tryonQueue';
 import CameraView from './CameraView';
 import MirrorUI from './MirrorUI';
 import type { FashionItem } from './types';
@@ -12,11 +12,27 @@ import { toFashionItems } from './constants';
 
 const FAVORITES_KEY = 'mirror:outfit-favorites';
 const TRYON_HISTORY_KEY = 'mirror:tryon-history';
-const TRYON_MAX_GENERATE_ATTEMPTS = 2;
 const CAPTURE_COUNTDOWN_SECONDS = 8;
-const TRYON_POLL_INTERVAL_MS = 1500;
-const TRYON_POLL_TIMEOUT_MS = 8 * 60 * 1000;
 const TRYON_HISTORY_LIMIT = 10;
+const CATALOG_REFRESH_INTERVAL_MS = 8000;
+
+type ConfirmKind = 'use_saved' | 'use_new';
+
+type ConfirmState = {
+  open: boolean;
+  kind: ConfirmKind;
+  prompt: string;
+  yesLabel: string;
+  noLabel: string;
+};
+
+const DEFAULT_CONFIRM: ConfirmState = {
+  open: false,
+  kind: 'use_saved',
+  prompt: '',
+  yesLabel: 'Yes',
+  noLabel: 'No',
+};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,13 +68,13 @@ function imageIdsFromSelection(selection: Record<string, FashionItem | null>): n
     .map((item) => item.sourceImageId);
 }
 
-function tryOnPayloadFromSelection(selection: Record<string, FashionItem | null>, personImageId: number) {
-  const payload = {
+function tryOnPayloadFromSelection(selection: Record<string, FashionItem | null>, personImageId: number): TryOnRequest {
+  const payload: TryOnRequest = {
     person_image_id: personImageId,
-    pants_image_id: null as number | null,
-    shirt_image_id: null as number | null,
-    shoes_image_id: null as number | null,
-    hat_image_id: null as number | null,
+    pants_image_id: null,
+    shirt_image_id: null,
+    shoes_image_id: null,
+    hat_image_id: null,
   };
   for (const item of Object.values(selection)) {
     if (!item) continue;
@@ -68,6 +84,18 @@ function tryOnPayloadFromSelection(selection: Record<string, FashionItem | null>
     if (item.tryOnSlot === 'hat') payload.hat_image_id = item.sourceImageId;
   }
   return payload;
+}
+
+function reconcileSelectedItems(
+  prev: Record<string, FashionItem | null>,
+  nextItems: FashionItem[],
+): Record<string, FashionItem | null> {
+  const byImageId = new Map<number, FashionItem>(nextItems.map((item) => [item.sourceImageId, item]));
+  return {
+    TOP: prev.TOP ? byImageId.get(prev.TOP.sourceImageId) ?? null : null,
+    BOTTOM: prev.BOTTOM ? byImageId.get(prev.BOTTOM.sourceImageId) ?? null : null,
+    ACCESSORIES: prev.ACCESSORIES ? byImageId.get(prev.ACCESSORIES.sourceImageId) ?? null : null,
+  };
 }
 
 async function captureLocalWebcamBlob(): Promise<Blob> {
@@ -88,6 +116,8 @@ async function captureLocalWebcamBlob(): Promise<Blob> {
 
 export function VirtualTryOnPage() {
   const perfZeroRef = useRef<number>(performance.now());
+  const confirmResolveRef = useRef<((value: boolean) => void) | null>(null);
+
   const logFlow = useCallback((event: string, details?: Record<string, unknown>) => {
     const t = performance.now();
     const elapsedMs = Math.round(t - perfZeroRef.current);
@@ -115,14 +145,36 @@ export function VirtualTryOnPage() {
   const [tryOnHistory, setTryOnHistory] = useState<string[]>(readTryOnHistoryInitial);
   const [tryOnHistoryIndex, setTryOnHistoryIndex] = useState<number>(0);
   const [statusText, setStatusText] = useState<string | null>('Loading catalog...');
-  const [cameraPhase, setCameraPhase] = useState<'idle' | 'loading' | 'countdown' | 'captured' | 'generating' | 'error'>('idle');
+  const [cameraPhase, setCameraPhase] = useState<'idle' | 'loading' | 'countdown' | 'captured' | 'error'>('idle');
   const [remoteCaptureActive, setRemoteCaptureActive] = useState(false);
   const [countdownRemaining, setCountdownRemaining] = useState<number>(CAPTURE_COUNTDOWN_SECONDS);
-  const [globalNotice, setGlobalNotice] = useState<string | null>(null);
+  const [queueSnapshot, setQueueSnapshot] = useState<TryOnQueueSnapshot>({
+    jobs: [],
+    pendingCount: 0,
+    runningCount: 0,
+    completedCount: 0,
+    failedCount: 0,
+  });
+  const [confirmState, setConfirmState] = useState<ConfirmState>(DEFAULT_CONFIRM);
+
   const localCountdownActiveRef = useRef(false);
   const generateInFlightRef = useRef(false);
 
   const fashionItems = useMemo(() => toFashionItems(catalogRows), [catalogRows]);
+
+  const askConfirm = useCallback((kind: ConfirmKind, prompt: string, yesLabel: string, noLabel: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      confirmResolveRef.current = resolve;
+      setConfirmState({ open: true, kind, prompt, yesLabel, noLabel });
+    });
+  }, []);
+
+  const closeConfirm = useCallback((answer: boolean) => {
+    const resolve = confirmResolveRef.current;
+    confirmResolveRef.current = null;
+    setConfirmState(DEFAULT_CONFIRM);
+    resolve?.(answer);
+  }, []);
 
   useControlEvents({
     onCameraLoadingStarted: () => {
@@ -186,22 +238,52 @@ export function VirtualTryOnPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+
+    const refreshCatalog = async (reason: 'initial' | 'interval' | 'focus') => {
       try {
         const rows = await getClothingItems({ includeImages: true });
         if (cancelled) return;
         setCatalogRows(rows);
-        setStatusText('Ready');
+        const remapped = toFashionItems(rows);
+        setSelectedItems((prev) => reconcileSelectedItems(prev, remapped));
+        if (reason === 'initial') setStatusText('Ready');
       } catch (error: unknown) {
         if (cancelled) return;
-        const message = error instanceof Error ? error.message : 'Could not load catalog';
-        setStatusText(message);
+        if (reason === 'initial') {
+          const message = error instanceof Error ? error.message : 'Could not load catalog';
+          setStatusText(message);
+        }
       }
     };
-    void load();
+
+    const onFocusRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshCatalog('focus');
+      }
+    };
+
+    void refreshCatalog('initial');
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void refreshCatalog('interval');
+      }
+    }, CATALOG_REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', onFocusRefresh);
+    document.addEventListener('visibilitychange', onFocusRefresh);
+
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocusRefresh);
+      document.removeEventListener('visibilitychange', onFocusRefresh);
     };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeTryOnQueue((next) => {
+      setQueueSnapshot(next);
+    });
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -239,12 +321,31 @@ export function VirtualTryOnPage() {
   }, [selectedItems]);
 
   useEffect(() => {
-    const onReady = () => {
-      setGlobalNotice('Try-on is ready. Open Virtual Try-On to view.');
-      window.setTimeout(() => setGlobalNotice(null), 6000);
+    const onReady = (event: Event) => {
+      const detail = (event as CustomEvent<{ image_url?: string }>).detail;
+      const imageUrl = detail?.image_url;
+      if (!imageUrl) return;
+      setTryOnHistory((prev) => [imageUrl, ...prev.filter((url) => url !== imageUrl)].slice(0, TRYON_HISTORY_LIMIT));
+      setTryOnHistoryIndex(0);
+      setResultImageUrl(imageUrl);
+      setStatusText('Try-on ready');
     };
-    window.addEventListener('mirror:tryon_result', onReady);
-    return () => window.removeEventListener('mirror:tryon_result', onReady);
+
+    const onOpenResult = (event: Event) => {
+      const detail = (event as CustomEvent<{ image_url?: string }>).detail;
+      const imageUrl = detail?.image_url;
+      if (!imageUrl) return;
+      setResultImageUrl(imageUrl);
+      setShowResult(true);
+      setStatusText('Viewing queued try-on result');
+    };
+
+    window.addEventListener('mirror:tryon_result', onReady as EventListener);
+    window.addEventListener('mirror:tryon_open_result', onOpenResult as EventListener);
+    return () => {
+      window.removeEventListener('mirror:tryon_result', onReady as EventListener);
+      window.removeEventListener('mirror:tryon_open_result', onOpenResult as EventListener);
+    };
   }, []);
 
   const handleToggleFavoriteOutfit = useCallback(async () => {
@@ -294,13 +395,14 @@ export function VirtualTryOnPage() {
     setStatusText('Preparing image...');
     setCameraPhase('loading');
     setCountdownRemaining(CAPTURE_COUNTDOWN_SECONDS);
+
     try {
       let personImageId: number | null = null;
       try {
         const existing = await getPersonImages();
         const savedLatestId = existing[0]?.id ?? null;
         if (savedLatestId !== null) {
-          const useSaved = window.confirm('Would you like to use the saved image (Yes)/(No: Take a New Picture)');
+          const useSaved = await askConfirm('use_saved', 'Use your latest saved picture for this try-on?', 'Use Saved', 'Take New');
           if (useSaved) {
             personImageId = savedLatestId;
             setStatusText('Using saved image');
@@ -327,7 +429,7 @@ export function VirtualTryOnPage() {
         logFlow('local_webcam_snapshot_captured', { bytes: blob.size });
         const personImage = await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
         logFlow('local_webcam_snapshot_uploaded');
-        const useNew = window.confirm('Want to use this picture? (Yes/No)');
+        const useNew = await askConfirm('use_new', 'Use this newly captured picture for generation?', 'Use Photo', 'Retake Later');
         if (!useNew) {
           setStatusText('Generation cancelled');
           return;
@@ -335,79 +437,34 @@ export function VirtualTryOnPage() {
         personImageId = personImage.id;
         setStatusText('Photo captured');
       }
+
       if (personImageId === null) {
         throw new Error('No person image available');
       }
 
-      setStatusText('Mapping digital twin...');
-      setCameraPhase('generating');
+      const enqueued = enqueueTryOnGeneration(tryOnPayloadFromSelection(selectedItems, personImageId));
+      if (!enqueued.ok) {
+        setStatusText('Queue is full (10 pending). Wait for completion before adding more.');
+        return;
+      }
+
       window.dispatchEvent(new CustomEvent('mirror:tryon_generation_started'));
-      logFlow('tryon_generate_start');
-      let result: Awaited<ReturnType<typeof generateTryOn>> | null = null;
-      let lastError: unknown = null;
-      for (let attempt = 1; attempt <= TRYON_MAX_GENERATE_ATTEMPTS; attempt += 1) {
-        try {
-          const attemptStart = performance.now();
-          const queued = await generateTryOn(tryOnPayloadFromSelection(selectedItems, personImageId));
-          const pollStartedAt = performance.now();
-          while (true) {
-            if (performance.now() - pollStartedAt > TRYON_POLL_TIMEOUT_MS) {
-              throw new Error('Try-on generation timed out');
-            }
-            result = await getTryOnGeneration(queued.id);
-            if (result.status === 'completed' || result.status === 'failed') break;
-            await sleep(TRYON_POLL_INTERVAL_MS);
-          }
-          logFlow('tryon_generate_attempt_success', {
-            attempt,
-            duration_ms: Math.round(performance.now() - attemptStart),
-            generation_id: result.id,
-          });
-          break;
-        } catch (error: unknown) {
-          lastError = error;
-          logFlow('tryon_generate_attempt_failed', {
-            attempt,
-            message: error instanceof Error ? error.message : String(error),
-          });
-          if (attempt < TRYON_MAX_GENERATE_ATTEMPTS) await sleep(1500);
-        }
-      }
-      if (!result) {
-        const message = lastError instanceof Error ? lastError.message : 'Try-on generation failed';
-        throw new Error(message);
-      }
-
-      if (!result.result_image_url) {
-        throw new Error(result.error_message ?? 'Try-on generation did not return an image');
-      }
-
-      const resultImageUrl = withApiTokenIfProtectedMedia(result.result_image_url);
-      setResultImageUrl(resultImageUrl);
-      setTryOnHistory((prev) => [resultImageUrl, ...prev.filter((url) => url !== resultImageUrl)].slice(0, TRYON_HISTORY_LIMIT));
-      window.dispatchEvent(
-        new CustomEvent('mirror:tryon_result', {
-          detail: { generation_id: String(result.id), image_url: resultImageUrl },
-        }),
-      );
-      setTryOnHistoryIndex(0);
-      setShowResult(true);
-      setStatusText('Synthesized environment ready');
-      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_completed'));
-      logFlow('flow_complete_success');
+      setCameraPhase('captured');
+      setStatusText(`Queued try-on request (${enqueued.pendingCount} pending)`);
+      logFlow('tryon_queued', { queue_job_id: enqueued.queueJobId, pending_count: enqueued.pendingCount });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Try-on generation failed';
       setStatusText(message);
       setCameraPhase('error');
-      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_completed'));
       logFlow('flow_failed', { message });
     } finally {
       localCountdownActiveRef.current = false;
       setIsGenerating(false);
       generateInFlightRef.current = false;
+      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_completed'));
       logFlow('flow_finalized');
     }
-  }, [logFlow, selectedItems]);
+  }, [askConfirm, logFlow, selectedItems]);
 
   const handleTakePicture = useCallback(async () => {
     if (generateInFlightRef.current) return;
@@ -511,7 +568,7 @@ export function VirtualTryOnPage() {
         </div>
       )}
 
-      {isGenerating && cameraPhase === 'generating' && (
+      {(queueSnapshot.runningCount > 0 || queueSnapshot.pendingCount > 0) && (
         <div className="absolute top-5 right-5 z-50 bg-black/70 border border-blue-500/40 rounded-xl px-4 py-3 font-mono pointer-events-none">
           <div className="w-44 h-1 bg-white/15 rounded-full overflow-hidden mb-2">
             <motion.div
@@ -521,13 +578,36 @@ export function VirtualTryOnPage() {
               className="w-1/2 h-full bg-blue-500"
             />
           </div>
-          <p className="text-[9px] tracking-[0.35em] text-white/70 uppercase">Generating</p>
+          <p className="text-[9px] tracking-[0.35em] text-white/70 uppercase">Queue {queueSnapshot.pendingCount} Pending</p>
         </div>
       )}
 
-      {globalNotice && (
-        <div className="absolute top-20 right-5 z-50 bg-emerald-500/20 border border-emerald-400/50 text-emerald-100 px-4 py-2 rounded-lg text-xs font-mono">
-          {globalNotice}
+      <div className="absolute top-5 left-5 z-50 rounded-full border border-cyan-300/40 bg-black/65 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100">
+        Q {queueSnapshot.pendingCount} | R {queueSnapshot.runningCount} | D {queueSnapshot.completedCount}
+      </div>
+
+      {confirmState.open && (
+        <div className="absolute inset-0 z-[70] bg-black/65 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-2xl border border-cyan-400/40 bg-black/85 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.65)]">
+            <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-cyan-200">Virtual Try-On</div>
+            <p className="mt-3 text-sm text-white/90">{confirmState.prompt}</p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                className="flex-1 rounded-lg border border-cyan-300/60 bg-cyan-500/20 px-3 py-2 text-xs uppercase tracking-[0.2em] text-cyan-100"
+                onClick={() => closeConfirm(true)}
+              >
+                {confirmState.yesLabel}
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs uppercase tracking-[0.2em] text-white/85"
+                onClick={() => closeConfirm(false)}
+              >
+                {confirmState.noLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

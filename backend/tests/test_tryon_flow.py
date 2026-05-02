@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 import errno
 
@@ -139,6 +140,42 @@ async def test_process_wrapper_broadcasts_tryon_result(monkeypatch: pytest.Monke
     assert payload["type"] == "TRYON_RESULT"
     assert payload["payload"]["generation_id"] == "42"
     assert payload["payload"]["image_url"] == "/api/tryon/public/generations/42/image"
+
+
+@pytest.mark.asyncio
+async def test_process_wrapper_handles_concurrent_generation_ids(monkeypatch: pytest.MonkeyPatch):
+    seen: list[int] = []
+    sent: list[dict] = []
+
+    class _FakeSession:
+        def close(self):
+            return None
+
+    async def _fake_process_generation(_db, generation_id: int):
+        seen.append(generation_id)
+        await asyncio.sleep(0)
+
+        class _Generation:
+            id = generation_id
+            result_image_url = f"/api/tryon/public/generations/{generation_id}/image"
+
+        return _Generation()
+
+    async def _fake_broadcast(payload: dict):
+        sent.append(payload)
+
+    monkeypatch.setattr(tryon_api, "SessionLocal", lambda: _FakeSession())
+    monkeypatch.setattr(tryon_api.tryon_service, "process_generation", _fake_process_generation)
+    monkeypatch.setattr(tryon_api.control_registry, "broadcast", _fake_broadcast)
+
+    await asyncio.gather(
+        tryon_api._process_tryon_generation(101),
+        tryon_api._process_tryon_generation(102),
+        tryon_api._process_tryon_generation(103),
+    )
+
+    assert set(seen) == {101, 102, 103}
+    assert {item["payload"]["generation_id"] for item in sent} == {"101", "102", "103"}
 
 
 def test_cache_clothing_endpoint_reports_hit_and_miss(
