@@ -107,7 +107,7 @@ export default function CameraView({ hidden }: CameraViewProps) {
             muted
             width={TRYON_FRAME_WIDTH}
             height={TRYON_FRAME_HEIGHT}
-            className={`max-w-full max-h-full object-contain bg-black transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1]' : 'opacity-0'}`}
+            className={`max-w-full max-h-full object-contain bg-black transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1] rotate-180' : 'opacity-0'}`}
             aria-label="Local webcam feed"
           />
         </div>
