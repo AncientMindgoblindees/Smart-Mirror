@@ -25,6 +25,20 @@ type InternalPlacedWidget = {
   attempts: number;
 };
 
+function unmarkOccupied(
+  occupied: boolean[][],
+  row: number,
+  col: number,
+  rowSpan: number,
+  colSpan: number,
+): void {
+  for (let r = row; r < row + rowSpan; r += 1) {
+    for (let c = col; c < col + colSpan; c += 1) {
+      occupied[r][c] = false;
+    }
+  }
+}
+
 function createGrid(rows: number, cols: number): boolean[][] {
   return Array.from({ length: rows }, () => Array.from({ length: cols }, () => false));
 }
@@ -90,6 +104,61 @@ function firstFit(
     }
   }
   return null;
+}
+
+function buildOccupiedFromPlacements(
+  rows: number,
+  cols: number,
+  placements: Map<string, InternalPlacedWidget>,
+): boolean[][] {
+  const occupied = createGrid(rows, cols);
+  for (const placement of placements.values()) {
+    markOccupied(occupied, placement.row, placement.col, placement.rowSpan, placement.colSpan);
+  }
+  return occupied;
+}
+
+function expandPlacementsToFill(
+  rows: number,
+  cols: number,
+  placements: Map<string, InternalPlacedWidget>,
+): number {
+  const occupied = buildOccupiedFromPlacements(rows, cols, placements);
+  const ordered = Array.from(placements.entries()).sort(
+    (a, b) => b[1].rowSpan * b[1].colSpan - a[1].rowSpan * a[1].colSpan,
+  );
+  let resizedCount = 0;
+
+  for (const [id, placement] of ordered) {
+    const originalRowSpan = placement.rowSpan;
+    const originalColSpan = placement.colSpan;
+    unmarkOccupied(occupied, placement.row, placement.col, placement.rowSpan, placement.colSpan);
+
+    let grew = true;
+    while (grew) {
+      grew = false;
+      if (
+        placement.col + placement.colSpan < cols &&
+        canPlace(occupied, placement.row, placement.col, placement.rowSpan, placement.colSpan + 1)
+      ) {
+        placement.colSpan += 1;
+        grew = true;
+      }
+      if (
+        placement.row + placement.rowSpan < rows &&
+        canPlace(occupied, placement.row, placement.col, placement.rowSpan + 1, placement.colSpan)
+      ) {
+        placement.rowSpan += 1;
+        grew = true;
+      }
+    }
+
+    markOccupied(occupied, placement.row, placement.col, placement.rowSpan, placement.colSpan);
+    placements.set(id, placement);
+    if (placement.rowSpan !== originalRowSpan || placement.colSpan !== originalColSpan) resizedCount += 1;
+  }
+
+  return resizedCount;
 }
 
 export function randomizeWidgetsOnGrid(
@@ -185,6 +254,8 @@ export function randomizeWidgetsOnGrid(
     totalAttempts,
   };
 
+  summary.resizedPlacements = expandPlacementsToFill(rows, cols, placements);
+
   const randomized = widgets.map((widget) => {
     const placement = placements.get(widget.id);
     if (!placement) return widget;
@@ -192,8 +263,8 @@ export function randomizeWidgetsOnGrid(
     if (placement.mode === 'random') summary.randomPlacements += 1;
     if (placement.mode === 'fallback') summary.fallbackPlacements += 1;
 
-    const width = Number(widget.freeform.width.toFixed(2));
-    const height = Number(widget.freeform.height.toFixed(2));
+    const width = Number(((placement.colSpan / cols) * 100).toFixed(2));
+    const height = Number(((placement.rowSpan / rows) * 100).toFixed(2));
     const rawX = Number(((placement.col / cols) * 100).toFixed(2));
     const rawY = Number(((placement.row / rows) * 100).toFixed(2));
     const x = Math.min(Math.max(0, rawX), Math.max(0, 100 - width));

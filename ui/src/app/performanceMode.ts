@@ -10,5 +10,5 @@ export function shouldUsePerformanceLiteMode(hints: DeviceHints): boolean {
 }
 
 export function shouldShowMenuPreviewInLiteMode(layer: string): boolean {
-  return layer === 'main';
+  return layer === 'main' || layer === 'widget_list' || layer === 'parameter_editor';
 }

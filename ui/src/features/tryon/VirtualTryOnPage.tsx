@@ -27,6 +27,7 @@ type ConfirmState = {
   yesLabel: string;
   noLabel: string;
 };
+type ConfirmChoice = 'yes' | 'no';
 
 const DEFAULT_CONFIRM: ConfirmState = {
   open: false,
@@ -191,6 +192,7 @@ export function VirtualTryOnPage() {
     failedCount: 0,
   });
   const [confirmState, setConfirmState] = useState<ConfirmState>(DEFAULT_CONFIRM);
+  const [confirmChoice, setConfirmChoice] = useState<ConfirmChoice>('yes');
 
   const localCountdownActiveRef = useRef(false);
   const generateInFlightRef = useRef(false);
@@ -200,6 +202,7 @@ export function VirtualTryOnPage() {
   const askConfirm = useCallback((kind: ConfirmKind, prompt: string, yesLabel: string, noLabel: string): Promise<boolean> => {
     return new Promise((resolve) => {
       confirmResolveRef.current = resolve;
+      setConfirmChoice('yes');
       setConfirmState({ open: true, kind, prompt, yesLabel, noLabel });
     });
   }, []);
@@ -210,6 +213,52 @@ export function VirtualTryOnPage() {
     setConfirmState(DEFAULT_CONFIRM);
     resolve?.(answer);
   }, []);
+
+  useEffect(() => {
+    if (!confirmState.open) return;
+    const toggleChoice = () => setConfirmChoice((prev) => (prev === 'yes' ? 'no' : 'yes'));
+    const confirmSelected = () => closeConfirm(confirmChoice === 'yes');
+    const cancelConfirm = () => closeConfirm(false);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!confirmState.open) return;
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        toggleChoice();
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        confirmSelected();
+        return;
+      }
+      if (event.key === 'Escape' || event.key.toLowerCase() === 'x') {
+        event.preventDefault();
+        cancelConfirm();
+      }
+    };
+
+    const onMockButton = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: string }>).detail;
+      const action = String(detail?.action ?? '').toLowerCase();
+      if (!action) return;
+      if (action === 'up' || action === 'down') {
+        toggleChoice();
+        return;
+      }
+      if (action === 'enter') {
+        confirmSelected();
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('mirror:button', onMockButton as EventListener);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('mirror:button', onMockButton as EventListener);
+    };
+  }, [closeConfirm, confirmChoice, confirmState.open]);
 
   useControlEvents({
     onCameraLoadingStarted: () => {
@@ -646,19 +695,30 @@ export function VirtualTryOnPage() {
             <div className="mt-5 flex gap-3">
               <button
                 type="button"
-                className="flex-1 rounded-lg border border-cyan-300/60 bg-cyan-500/20 px-3 py-2 text-xs uppercase tracking-[0.2em] text-cyan-100"
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs uppercase tracking-[0.2em] ${
+                  confirmChoice === 'yes'
+                    ? 'border-cyan-300/90 bg-cyan-500/35 text-cyan-50'
+                    : 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100'
+                }`}
                 onClick={() => closeConfirm(true)}
               >
                 {confirmState.yesLabel}
               </button>
               <button
                 type="button"
-                className="flex-1 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs uppercase tracking-[0.2em] text-white/85"
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs uppercase tracking-[0.2em] ${
+                  confirmChoice === 'no'
+                    ? 'border-white/70 bg-white/25 text-white'
+                    : 'border-white/20 bg-white/10 text-white/85'
+                }`}
                 onClick={() => closeConfirm(false)}
               >
                 {confirmState.noLabel}
               </button>
             </div>
+            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-white/55">
+              Use Up/Down to switch, Enter to select
+            </p>
           </div>
         </div>
       )}
