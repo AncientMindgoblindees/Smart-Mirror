@@ -40,6 +40,35 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function normalizeImageToTryOnFrame(sourceUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = TRYON_FRAME_WIDTH;
+      canvas.height = TRYON_FRAME_HEIGHT;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(sourceUrl);
+        return;
+      }
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const scale = Math.max(canvas.width / img.width, canvas.height / img.height);
+      const drawW = img.width * scale;
+      const drawH = img.height * scale;
+      const drawX = (canvas.width - drawW) / 2;
+      const drawY = (canvas.height - drawH) / 2;
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      resolve(dataUrl || sourceUrl);
+    };
+    img.onerror = () => resolve(sourceUrl);
+    img.src = sourceUrl;
+  });
+}
+
 function readFavoritesInitial(): Record<string, FashionItem | null>[] {
   try {
     const raw = localStorage.getItem(FAVORITES_KEY);
@@ -112,7 +141,9 @@ async function captureLocalWebcamBlob(): Promise<Blob> {
   if (!ctx) throw new Error('Canvas context unavailable');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(Math.PI);
+  ctx.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
   if (!blob) throw new Error('Failed to capture webcam frame');
   return blob;
@@ -329,19 +360,23 @@ export function VirtualTryOnPage() {
       const detail = (event as CustomEvent<{ image_url?: string }>).detail;
       const imageUrl = detail?.image_url;
       if (!imageUrl) return;
-      setTryOnHistory((prev) => [imageUrl, ...prev.filter((url) => url !== imageUrl)].slice(0, TRYON_HISTORY_LIMIT));
-      setTryOnHistoryIndex(0);
-      setResultImageUrl(imageUrl);
-      setStatusText('Try-on ready');
+      void normalizeImageToTryOnFrame(imageUrl).then((normalizedUrl) => {
+        setTryOnHistory((prev) => [imageUrl, ...prev.filter((url) => url !== imageUrl)].slice(0, TRYON_HISTORY_LIMIT));
+        setTryOnHistoryIndex(0);
+        setResultImageUrl(normalizedUrl);
+        setStatusText('Try-on ready');
+      });
     };
 
     const onOpenResult = (event: Event) => {
       const detail = (event as CustomEvent<{ image_url?: string }>).detail;
       const imageUrl = detail?.image_url;
       if (!imageUrl) return;
-      setResultImageUrl(imageUrl);
-      setShowResult(true);
-      setStatusText('Viewing queued try-on result');
+      void normalizeImageToTryOnFrame(imageUrl).then((normalizedUrl) => {
+        setResultImageUrl(normalizedUrl);
+        setShowResult(true);
+        setStatusText('Viewing queued try-on result');
+      });
     };
 
     window.addEventListener('mirror:tryon_result', onReady as EventListener);
@@ -487,7 +522,10 @@ export function VirtualTryOnPage() {
       const blob = await captureLocalWebcamBlob();
       await uploadPersonImage(blob, `virtual-tryon-${Date.now()}.jpg`);
       if (capturedImageUrl?.startsWith('blob:')) URL.revokeObjectURL(capturedImageUrl);
-      setCapturedImageUrl(URL.createObjectURL(blob));
+      const capturedUrl = URL.createObjectURL(blob);
+      const normalizedCaptured = await normalizeImageToTryOnFrame(capturedUrl);
+      if (capturedUrl.startsWith('blob:')) URL.revokeObjectURL(capturedUrl);
+      setCapturedImageUrl(normalizedCaptured);
       setStatusText('Picture captured');
       setCameraPhase('captured');
     } catch (error: unknown) {
@@ -516,9 +554,11 @@ export function VirtualTryOnPage() {
       return;
     }
     setTryOnHistoryIndex(0);
-    setResultImageUrl(tryOnHistory[0]);
-    setShowResult(true);
-    setStatusText(`Viewing try-on 1/${tryOnHistory.length}`);
+    void normalizeImageToTryOnFrame(tryOnHistory[0]).then((normalizedUrl) => {
+      setResultImageUrl(normalizedUrl);
+      setShowResult(true);
+      setStatusText(`Viewing try-on 1/${tryOnHistory.length}`);
+    });
   }, [tryOnHistory]);
 
   const handleNextTryOn = useCallback(() => {
@@ -528,9 +568,11 @@ export function VirtualTryOnPage() {
     }
     const next = (tryOnHistoryIndex + 1 + tryOnHistory.length) % tryOnHistory.length;
     setTryOnHistoryIndex(next);
-    setResultImageUrl(tryOnHistory[next]);
-    setShowResult(true);
-    setStatusText(`Viewing try-on ${next + 1}/${tryOnHistory.length}`);
+    void normalizeImageToTryOnFrame(tryOnHistory[next]).then((normalizedUrl) => {
+      setResultImageUrl(normalizedUrl);
+      setShowResult(true);
+      setStatusText(`Viewing try-on ${next + 1}/${tryOnHistory.length}`);
+    });
   }, [tryOnHistory, tryOnHistoryIndex]);
 
   const fallbackImage = (Object.values(selectedItems).find((item) => item !== null) as FashionItem | undefined)?.image ?? null;
@@ -548,7 +590,7 @@ export function VirtualTryOnPage() {
                 src={resultImage}
                 width={TRYON_FRAME_WIDTH}
                 height={TRYON_FRAME_HEIGHT}
-                className="max-w-full max-h-full object-contain grayscale-[20%] brightness-75"
+                className="w-[1440px] h-[2560px] max-w-full max-h-full object-cover grayscale-[20%] brightness-75"
                 alt="Synthesis Result"
               />
               <div className="absolute inset-0 shadow-[inset_0_0_150px_rgba(0,0,0,0.8)]" />
