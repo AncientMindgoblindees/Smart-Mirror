@@ -15,6 +15,8 @@ const TRYON_HISTORY_KEY = 'mirror:tryon-history';
 const CAPTURE_COUNTDOWN_SECONDS = 8;
 const TRYON_HISTORY_LIMIT = 10;
 const CATALOG_REFRESH_INTERVAL_MS = 8000;
+const TRYON_FRAME_WIDTH = 1440;
+const TRYON_FRAME_HEIGHT = 2560;
 
 type ConfirmKind = 'use_saved' | 'use_new';
 
@@ -104,10 +106,12 @@ async function captureLocalWebcamBlob(): Promise<Blob> {
     throw new Error('Local webcam feed not ready');
   }
   const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width = TRYON_FRAME_WIDTH;
+  canvas.height = TRYON_FRAME_HEIGHT;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas context unavailable');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
   if (!blob) throw new Error('Failed to capture webcam frame');
@@ -539,8 +543,14 @@ export function VirtualTryOnPage() {
 
         <AnimatePresence>
           {showResult && resultImage && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-10">
-              <img src={resultImage} className="w-full h-full object-cover grayscale-[20%] brightness-75" alt="Synthesis Result" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-10 flex items-center justify-center">
+              <img
+                src={resultImage}
+                width={TRYON_FRAME_WIDTH}
+                height={TRYON_FRAME_HEIGHT}
+                className="max-w-full max-h-full object-contain grayscale-[20%] brightness-75"
+                alt="Synthesis Result"
+              />
               <div className="absolute inset-0 shadow-[inset_0_0_150px_rgba(0,0,0,0.8)]" />
               <div className="absolute top-12 left-1/2 -translate-x-1/2 px-6 py-2 glass-morphism rounded-full border border-blue-500/30">
                 <span className="font-mono text-[10px] uppercase tracking-[0.6em] text-blue-400">Synthesized Environment</span>

@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { CameraOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+const TRYON_FRAME_WIDTH = 1440;
+const TRYON_FRAME_HEIGHT = 2560;
+
 interface CameraViewProps {
   hidden?: boolean;
 }
@@ -27,8 +30,8 @@ export default function CameraView({ hidden }: CameraViewProps) {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 1440 },
-            height: { ideal: 2560 },
+            width: { ideal: TRYON_FRAME_WIDTH },
+            height: { ideal: TRYON_FRAME_HEIGHT },
             aspectRatio: { ideal: 9 / 16 },
           } as MediaTrackConstraints,
         });
@@ -95,15 +98,19 @@ export default function CameraView({ hidden }: CameraViewProps) {
       </AnimatePresence>
 
       {!hidden ? (
-        <video
-          id="virtual-tryon-local-feed"
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className={`w-full h-full object-contain bg-black transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1]' : 'opacity-0'}`}
-          aria-label="Local webcam feed"
-        />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <video
+            id="virtual-tryon-local-feed"
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            width={TRYON_FRAME_WIDTH}
+            height={TRYON_FRAME_HEIGHT}
+            className={`max-w-full max-h-full object-contain bg-black transition-opacity duration-1000 ${isReady ? 'opacity-100 scale-x-[-1]' : 'opacity-0'}`}
+            aria-label="Local webcam feed"
+          />
+        </div>
       ) : null}
     </div>
   );
