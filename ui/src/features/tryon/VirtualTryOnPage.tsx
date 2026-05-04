@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { cacheTryOnClothing, getClothingItems, getPersonImages, updateClothingItem, uploadPersonImage } from '@/api/mirrorApi';
 import type { ClothingItemRead, TryOnRequest } from '@/api/backendTypes';
+import { getWebSocketUrl } from '@/config/backendOrigin';
 import { useControlEvents } from '@/hooks/useControlEvents';
 import { enqueueTryOnGeneration, subscribeTryOnQueue, type TryOnQueueSnapshot } from '@/features/tryon/tryonQueue';
 import CameraView from './CameraView';
@@ -259,6 +260,85 @@ export function VirtualTryOnPage() {
       window.removeEventListener('mirror:button', onMockButton as EventListener);
     };
   }, [closeConfirm, confirmChoice, confirmState.open]);
+
+  useEffect(() => {
+    const wsUrl = getWebSocketUrl('/ws/buttons');
+    let ws: WebSocket | null = null;
+    let closed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    const BACKOFF_INITIAL = 1000;
+    const BACKOFF_MAX = 30_000;
+    let backoff = BACKOFF_INITIAL;
+
+    const dispatchMenuKey = (key: 'ArrowUp' | 'ArrowDown' | 'Enter') => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    };
+
+    const connect = () => {
+      if (closed) return;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch {
+        reconnectTimer = setTimeout(connect, backoff);
+        backoff = Math.min(backoff * 2, BACKOFF_MAX);
+        return;
+      }
+
+      ws.onopen = () => {
+        backoff = BACKOFF_INITIAL;
+      };
+
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data as string) as { effect?: string };
+          switch (data.effect) {
+            case 'menu_up':
+              dispatchMenuKey('ArrowUp');
+              break;
+            case 'menu_down':
+              dispatchMenuKey('ArrowDown');
+              break;
+            case 'menu_select':
+              dispatchMenuKey('Enter');
+              break;
+            case 'dismiss_tryon':
+              navigate('/');
+              break;
+            default:
+              break;
+          }
+        } catch {
+          // ignore parse errors from malformed frames
+        }
+      };
+
+      ws.onclose = () => {
+        if (!closed) {
+          reconnectTimer = setTimeout(connect, backoff);
+          backoff = Math.min(backoff * 2, BACKOFF_MAX);
+        }
+      };
+
+      ws.onerror = () => {
+        try {
+          ws?.close();
+        } catch {
+          // ignore websocket close failures
+        }
+      };
+    };
+
+    connect();
+    return () => {
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      try {
+        ws?.close();
+      } catch {
+        // ignore websocket close failures
+      }
+    };
+  }, [navigate]);
 
   useControlEvents({
     onCameraLoadingStarted: () => {
