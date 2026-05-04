@@ -7,7 +7,7 @@ class ButtonId(str, Enum):
     DOWN = "DOWN"
 
 
-DEBOUNCE_MS = 30
+DEBOUNCE_MS = 200
 LONG_PRESS_MS = 1800
 
 def _load_pin_map() -> dict[ButtonId, int]:
