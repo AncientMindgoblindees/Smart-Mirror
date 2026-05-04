@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
@@ -11,6 +12,8 @@ from hardware.gpio.config import (
     PIN_MAP,
 )
 from hardware.gpio.events import ButtonAction, ButtonEvent
+
+logger = logging.getLogger(__name__)
 
 Callback = Callable[[ButtonEvent], None]
 
@@ -83,11 +86,13 @@ def _load_gpio_backend(on_edge: Callable[[int, bool], None]) -> Any:
     switched to gpiozero or RPi.GPIO integration in a follow-up.
     """
     if os.getenv("ENABLE_GPIO", "false").lower() != "true":
+        logger.info("gpio_backend=mock reason=ENABLE_GPIO_false")
         return _MockGPIO()
     try:
         return _RPiInterruptGPIO(on_edge=on_edge)
-    except Exception:
+    except Exception as exc:
         # Keep service running in mock mode if GPIO backend is unavailable.
+        logger.warning("gpio_backend=mock reason=rpi_gpio_unavailable error=%s", exc)
         return _MockGPIO()
 
 

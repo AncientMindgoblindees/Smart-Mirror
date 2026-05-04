@@ -17,6 +17,11 @@ _task: Optional[asyncio.Task] = None
 
 
 def _on_event(evt: ButtonEvent) -> None:
+    logger.info(
+        "gpio_button_event button_id=%s action=%s",
+        evt.button_id.value,
+        evt.action.value,
+    )
     _queue.append(evt)
 
 
