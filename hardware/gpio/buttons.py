@@ -203,7 +203,11 @@ class Buttons:
         """
         now = self._now_ms()
         for bid, s in self._state.items():
-            if s["pressed"] and not s["long_emitted"] and s["last_change_ms"]:
+            if (
+                s["pressed"]
+                and not s["long_emitted"]
+                and s["last_change_ms"] is not None
+            ):
                 if now - s["last_change_ms"] >= LONG_PRESS_MS:
                     s["long_emitted"] = True
                     self._emit(bid, ButtonAction.LONG_PRESS)
