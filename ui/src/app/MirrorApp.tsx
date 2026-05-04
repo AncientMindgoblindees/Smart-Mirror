@@ -1764,6 +1764,7 @@ export default function MirrorApp() {
     toggleDim,
     toggleSleep,
     toggleDevPanel,
+    openMenu: menuNavigation.open,
     dismissTryOnOverlay: () => setFullScreenTryOnUrl(null),
     dismissAuthOverlay: () => {
       if (pendingAuth) {
@@ -1771,6 +1772,7 @@ export default function MirrorApp() {
       }
     },
     getSleepMode: () => sleepModeRef.current,
+    isMenuOpen: () => menuNavigation.isOpen,
     isInputBlocked: () => menuNavigation.isOpen,
   });
 

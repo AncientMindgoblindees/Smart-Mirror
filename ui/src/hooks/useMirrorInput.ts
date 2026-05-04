@@ -17,9 +17,11 @@ export type MirrorInputActions = {
   toggleDim: () => void;
   toggleSleep: () => void;
   toggleDevPanel: () => void;
+  openMenu: () => void;
   dismissTryOnOverlay: () => void;
   dismissAuthOverlay: () => void;
   getSleepMode: () => boolean;
+  isMenuOpen: () => boolean;
   isInputBlocked?: () => boolean;
 };
 
@@ -104,7 +106,11 @@ export function useMirrorInput(actions: MirrorInputActions) {
               dispatchMenuKey('ArrowDown');
               break;
             case 'menu_select':
-              dispatchMenuKey('Enter');
+              if (ref.current.isMenuOpen()) {
+                dispatchMenuKey('Enter');
+              } else {
+                ref.current.openMenu();
+              }
               break;
             case 'toggle_dim':
               ref.current.toggleDim();
