@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections import deque
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Deque, Optional
@@ -6,6 +7,8 @@ from typing import AsyncGenerator, Deque, Optional
 from hardware.gpio.buttons import Buttons
 from hardware.gpio.config import ButtonId
 from hardware.gpio.events import ButtonAction, ButtonEvent
+
+logger = logging.getLogger(__name__)
 
 
 _queue: Deque[ButtonEvent] = deque()
@@ -26,9 +29,11 @@ def start_button_service() -> None:
     """
     global _buttons, _task
     if _buttons is not None:
+        logger.info("gpio_button_service_already_running")
         return
 
     _buttons = Buttons(on_event=_on_event)
+    logger.info("gpio_button_service_started")
 
     async def loop() -> None:
         while True:
@@ -43,6 +48,7 @@ def stop_button_service() -> None:
     global _buttons, _task
     if _buttons is not None:
         _buttons.close()
+        logger.info("gpio_button_service_stopped")
     _buttons = None
     if _task is not None:
         _task.cancel()
@@ -66,5 +72,6 @@ def emit_dev_event(button_id: ButtonId, action: ButtonAction) -> None:
     Helper for local development on non-Pi machines:
     push a synthetic event into the same queue used by GPIO.
     """
+    logger.info("gpio_dev_event button_id=%s action=%s", button_id.value, action.value)
     _on_event(ButtonEvent(button_id=button_id, action=action, ts=datetime.now(timezone.utc)))
 

@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Iterable
+import logging
 
 from dotenv import load_dotenv
 
@@ -36,6 +37,7 @@ from backend.services.runtime_singleton import acquire_single_instance_or_raise,
 from hardware.gpio import service as gpio_service
 
 UI_DIST = BASE_DIR / "ui" / "dist"
+logger = logging.getLogger(__name__)
 
 
 def _cors_origins() -> list[str]:
@@ -111,7 +113,10 @@ def create_app() -> FastAPI:
         await camera_state.reset_person_image_state()
 
         if os.getenv("ENABLE_GPIO", "false").lower() == "true":
+            logger.info("gpio_buttons_enabled=true starting_button_service")
             gpio_service.start_button_service()
+        else:
+            logger.info("gpio_buttons_enabled=false button_service_not_started")
 
         from backend.services.sync_service import sync_manager
         await sync_manager.start_all()

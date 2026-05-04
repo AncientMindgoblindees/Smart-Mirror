@@ -55,6 +55,17 @@ Requires:
 ENABLE_DEV_ENDPOINTS=true
 ```
 
+### Backend log lines to expect
+
+When backend starts:
+- `gpio_buttons_enabled=true starting_button_service`
+- `gpio_button_service_started`
+
+When buttons are pressed:
+- `button_event button_id=UP action=CLICK effect=menu_up`
+- `button_event button_id=DOWN action=CLICK effect=menu_down`
+- `button_event button_id=LAYOUT action=CLICK effect=menu_select`
+
 ## 5) Google auth persistence after power off/on
 
 Google auth should persist across reboots if these are stable:

@@ -1,3 +1,4 @@
+import logging
 from typing import AsyncGenerator, Dict
 
 from sqlalchemy.orm import Session
@@ -5,6 +6,8 @@ from sqlalchemy.orm import Session
 from hardware.gpio.config import ButtonId
 from hardware.gpio.events import ButtonAction, ButtonEvent
 from hardware.gpio import service as gpio_service
+
+logger = logging.getLogger(__name__)
 
 
 async def iter_button_events() -> AsyncGenerator[ButtonEvent, None]:
@@ -29,6 +32,13 @@ def handle_button_event(event: ButtonEvent, db: Session) -> Dict[str, str]:
     elif event.button_id == ButtonId.DOWN and event.action == ButtonAction.LONG_PRESS:
         effect = "dismiss_tryon"
 
+    logger.info(
+        "button_event button_id=%s action=%s effect=%s",
+        event.button_id.value,
+        event.action.value,
+        effect,
+    )
+
     return {
         "button_id": event.button_id.value,
         "action": event.action.value,
@@ -40,5 +50,6 @@ def emit_dev_event(button_id: ButtonId, action: ButtonAction) -> None:
     """
     Local development hook: inject synthetic events without GPIO.
     """
+    logger.info("button_dev_event_injected button_id=%s action=%s", button_id.value, action.value)
     gpio_service.emit_dev_event(button_id, action)
 
