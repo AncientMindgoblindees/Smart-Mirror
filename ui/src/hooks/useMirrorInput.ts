@@ -5,7 +5,8 @@ import { getWebSocketUrl } from '@/config/backendOrigin';
 /**
  * Keyboard (dev / kiosk testing) + WebSocket `/ws/buttons` (physical GPIO buttons).
  *
- * Keys (when focus is not in an input):
+ * Keys (when focus is not in an input, and menu/overlay hooks consume these):
+ * - ArrowUp / ArrowDown / Enter: menu + mock GPIO navigation
  * - d: toggle tools / dev panel
  * - 2: toggle dim (matches GPIO DISPLAY click → toggle_dim)
  * - 3: toggle screen off / sleep (matches GPIO DISPLAY long-press → toggle_sleep)
@@ -25,6 +26,10 @@ export type MirrorInputActions = {
 export function useMirrorInput(actions: MirrorInputActions) {
   const ref = useRef(actions);
   ref.current = actions;
+
+  const dispatchMenuKey = (key: 'ArrowUp' | 'ArrowDown' | 'Enter') => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -92,6 +97,15 @@ export function useMirrorInput(actions: MirrorInputActions) {
         try {
           const data = JSON.parse(ev.data as string) as { effect?: string };
           switch (data.effect) {
+            case 'menu_up':
+              dispatchMenuKey('ArrowUp');
+              break;
+            case 'menu_down':
+              dispatchMenuKey('ArrowDown');
+              break;
+            case 'menu_select':
+              dispatchMenuKey('Enter');
+              break;
             case 'toggle_dim':
               ref.current.toggleDim();
               break;

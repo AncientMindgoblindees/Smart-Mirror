@@ -53,7 +53,6 @@ PI_CAMERA_MAX_DIM = int(os.getenv("PI_CAMERA_MAX_DIM", "1280"))
 # Long-edge cap for Picamera2 lores frames used for MJPEG live view only (/api/camera/live).
 PI_CAMERA_PREVIEW_LORES_MAX = int(os.getenv("PI_CAMERA_PREVIEW_LORES_MAX", "640"))
 PI_CAMERA_JPEG_QUALITY = int(os.getenv("PI_CAMERA_JPEG_QUALITY", "82"))
-CAMERA_CAPTURE_BUTTON = os.getenv("CAMERA_CAPTURE_BUTTON", "UP").upper()
 CAMERA_CAPTURE_COUNTDOWN_SEC = int(os.getenv("CAMERA_CAPTURE_COUNTDOWN_SEC", "3"))
 # Minimum time from capture start (after LOADING_STARTED) before countdown WebSocket events, so the mirror can show boot + live preview without losing countdown seconds.
 CAMERA_MIN_BOOT_BEFORE_COUNTDOWN_SEC = float(

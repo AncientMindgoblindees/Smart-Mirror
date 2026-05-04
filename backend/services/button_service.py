@@ -1,11 +1,7 @@
-import asyncio
 from typing import AsyncGenerator, Dict
 
 from sqlalchemy.orm import Session
 
-from backend import config
-from backend.services.camera_service import camera_state
-from backend.services.system_power import request_pi_shutdown
 from hardware.gpio.config import ButtonId
 from hardware.gpio.events import ButtonAction, ButtonEvent
 from hardware.gpio import service as gpio_service
@@ -24,30 +20,13 @@ def handle_button_event(event: ButtonEvent, db: Session) -> Dict[str, str]:
     """
     effect = "none"
 
-    if event.button_id == ButtonId.LAYOUT and event.action == ButtonAction.CLICK:
-        effect = "cycle_layout"
-    elif (
-        event.button_id.value == config.CAMERA_CAPTURE_BUTTON
-        and event.action == ButtonAction.CLICK
-    ):
-        effect = "capture_photo"
-        asyncio.create_task(
-            camera_state.start_capture(
-                countdown_seconds=config.CAMERA_CAPTURE_COUNTDOWN_SEC,
-                source="gpio-button",
-                session_id=None,
-            )
-        )
-    elif event.button_id == ButtonId.DISPLAY and event.action == ButtonAction.CLICK:
-        effect = "toggle_dim"
-    elif event.button_id == ButtonId.DISPLAY and event.action == ButtonAction.LONG_PRESS:
-        effect = "toggle_sleep"
-    elif event.button_id == ButtonId.SLEEP and event.action == ButtonAction.CLICK:
-        effect = "toggle_sleep"
-    elif event.button_id == ButtonId.POWER and event.action == ButtonAction.CLICK:
-        effect = "system_shutdown"
-        request_pi_shutdown(source="gpio-power-button")
+    if event.button_id == ButtonId.UP and event.action == ButtonAction.CLICK:
+        effect = "menu_up"
     elif event.button_id == ButtonId.DOWN and event.action == ButtonAction.CLICK:
+        effect = "menu_down"
+    elif event.button_id == ButtonId.LAYOUT and event.action == ButtonAction.CLICK:
+        effect = "menu_select"
+    elif event.button_id == ButtonId.DOWN and event.action == ButtonAction.LONG_PRESS:
         effect = "dismiss_tryon"
 
     return {

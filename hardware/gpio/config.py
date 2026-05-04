@@ -1,13 +1,10 @@
-from enum import Enum, auto
+from enum import Enum
 
 
 class ButtonId(str, Enum):
     LAYOUT = "LAYOUT"
     UP = "UP"
     DOWN = "DOWN"
-    DISPLAY = "DISPLAY"
-    SLEEP = "SLEEP"
-    POWER = "POWER"
 
 
 DEBOUNCE_MS = 30
@@ -20,12 +17,9 @@ def _load_pin_map() -> dict[ButtonId, int]:
         PI_BCM_PIN_MAP = {}
 
     defaults = {
-        ButtonId.LAYOUT: 17,
-        ButtonId.UP: 27,
-        ButtonId.DOWN: 22,
-        ButtonId.DISPLAY: 23,
-        ButtonId.SLEEP: 24,
-        ButtonId.POWER: 25,
+        ButtonId.UP: 17,
+        ButtonId.DOWN: 27,
+        ButtonId.LAYOUT: 22,
     }
 
     out: dict[ButtonId, int] = {}
