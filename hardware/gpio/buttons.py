@@ -30,9 +30,11 @@ class _MockGPIO:
 
     def setup(self, pin: int) -> None:
         self._pins[pin] = 1
+        logger.info("gpio_mock_setup pin=%s", pin)
 
     def close(self) -> None:
         self._pins.clear()
+        logger.info("gpio_mock_closed")
 
 
 class _RPiInterruptGPIO:
@@ -49,10 +51,12 @@ class _RPiInterruptGPIO:
         self._bid_by_pin: Dict[int, ButtonId] = {}
         self._gpio.setwarnings(False)
         self._gpio.setmode(self._gpio.BCM)
+        logger.info("gpio_backend=rpi_gpio mode=BCM")
 
     def setup(self, pin: int, button_id: ButtonId) -> None:
         self._bid_by_pin[pin] = button_id
         self._gpio.setup(pin, self._gpio.IN, pull_up_down=self._gpio.PUD_UP)
+        logger.info("gpio_rpi_setup pin=%s button_id=%s pull_up=1", pin, button_id.value)
 
         def _callback(channel: int) -> None:
             try:
@@ -89,6 +93,7 @@ def _load_gpio_backend(on_edge: Callable[[int, bool], None]) -> Any:
         logger.info("gpio_backend=mock reason=ENABLE_GPIO_false")
         return _MockGPIO()
     try:
+        logger.info("gpio_backend=rpi_gpio requested")
         return _RPiInterruptGPIO(on_edge=on_edge)
     except Exception as exc:
         # Keep service running in mock mode if GPIO backend is unavailable.
@@ -110,6 +115,12 @@ class Buttons:
         self._on_event = on_event
         self._state: Dict[ButtonId, Dict[str, Optional[float]]] = {}
         self._pin_to_button: Dict[int, ButtonId] = {}
+        logger.info(
+            "gpio_buttons_init debounce_ms=%s long_press_ms=%s pin_map=%s",
+            DEBOUNCE_MS,
+            LONG_PRESS_MS,
+            {bid.value: pin for bid, pin in PIN_MAP.items()},
+        )
 
         for bid, pin in PIN_MAP.items():
             self._pin_to_button[pin] = bid
@@ -126,7 +137,9 @@ class Buttons:
     def _on_gpio_edge(self, pin: int, pressed: bool) -> None:
         bid = self._pin_to_button.get(pin)
         if bid is None:
+            logger.warning("gpio_edge_ignored reason=unknown_pin pin=%s pressed=%s", pin, pressed)
             return
+        logger.info("gpio_edge pin=%s button_id=%s pressed=%s", pin, bid.value, pressed)
         self.process_edge(bid, pressed)
 
     def _now_ms(self) -> int:
@@ -138,9 +151,22 @@ class Buttons:
         """
         s = self._state[button_id]
         now = self._now_ms()
+        if pressed == s["pressed"]:
+            logger.info(
+                "gpio_edge_ignored reason=state_unchanged button_id=%s pressed=%s",
+                button_id.value,
+                pressed,
+            )
+            return
 
         last_change = s["last_change_ms"]
         if last_change is not None and now - last_change < DEBOUNCE_MS:
+            logger.info(
+                "gpio_edge_ignored reason=debounce button_id=%s pressed=%s delta_ms=%s",
+                button_id.value,
+                pressed,
+                now - last_change,
+            )
             return
 
         s["last_change_ms"] = now
@@ -159,6 +185,16 @@ class Buttons:
             if was_pressed and not long_emitted:
                 # treat as click
                 self._emit(button_id, ButtonAction.CLICK)
+            elif not was_pressed:
+                logger.info(
+                    "gpio_click_suppressed reason=release_without_press button_id=%s",
+                    button_id.value,
+                )
+            else:
+                logger.info(
+                    "gpio_click_suppressed reason=long_press_emitted button_id=%s",
+                    button_id.value,
+                )
 
     def tick(self) -> None:
         """
@@ -178,6 +214,7 @@ class Buttons:
             action=action,
             ts=datetime.now(timezone.utc),
         )
+        logger.info("gpio_emit button_id=%s action=%s", button_id.value, action.value)
         self._on_event(evt)
 
     def close(self) -> None:
