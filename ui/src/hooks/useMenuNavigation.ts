@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest('input, textarea, select, [contenteditable="true"]');
+}
+
 export type MenuNavigationLayer =
   | 'main'
   | 'widget_list'
@@ -123,8 +127,7 @@ export function useMenuNavigation(options: UseMenuNavigationOptions): UseMenuNav
   useEffect(() => {
     // TODO: Replace keyboard listeners with GPIO input.
     const onKeyDown = (event: KeyboardEvent) => {
-      const el = event.target as HTMLElement | null;
-      if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (isEditableTarget(event.target)) return;
 
       if (!isOpenRef.current) {
         if (event.key === 'Enter') {

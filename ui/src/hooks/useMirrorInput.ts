@@ -2,6 +2,10 @@ import { useEffect, useRef } from 'react';
 
 import { getWebSocketUrl } from '@/config/backendOrigin';
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest('input, textarea, select, [contenteditable="true"]');
+}
+
 /**
  * Keyboard (dev / kiosk testing) + WebSocket `/ws/buttons` (physical GPIO buttons).
  *
@@ -35,8 +39,7 @@ export function useMirrorInput(actions: MirrorInputActions) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (isEditableTarget(e.target)) return;
       if (ref.current.isInputBlocked?.()) return;
 
       if (ref.current.getSleepMode()) {
