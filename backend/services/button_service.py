@@ -27,7 +27,10 @@ def handle_button_event(event: ButtonEvent, db: Session) -> Dict[str, str]:
         effect = "menu_up"
     elif event.button_id == ButtonId.DOWN and event.action == ButtonAction.CLICK:
         effect = "menu_down"
-    elif event.button_id == ButtonId.LAYOUT and event.action == ButtonAction.CLICK:
+    elif event.button_id == ButtonId.LAYOUT and event.action in (
+        ButtonAction.CLICK,
+        ButtonAction.LONG_PRESS,
+    ):
         effect = "menu_select"
     elif event.button_id == ButtonId.DOWN and event.action == ButtonAction.LONG_PRESS:
         effect = "dismiss_tryon"

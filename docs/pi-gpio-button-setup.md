@@ -29,7 +29,11 @@ Set in `.env`:
 
 ```env
 ENABLE_GPIO=true
+GPIO_DEBOUNCE_MS=80
+GPIO_LONG_PRESS_MS=1800
 ```
+
+`GPIO_DEBOUNCE_MS` should stay low (around `50-100`) so normal taps are not dropped.
 
 ## 4) Verify interrupts
 
@@ -39,6 +43,7 @@ Expected `/ws/buttons` effects:
 - `UP` click -> `menu_up`
 - `DOWN` click -> `menu_down`
 - `LAYOUT` click -> `menu_select`
+- `LAYOUT` long press -> `menu_select`
 - `DOWN` long press -> `dismiss_tryon`
 
 For local non-GPIO testing, use dev endpoint:
