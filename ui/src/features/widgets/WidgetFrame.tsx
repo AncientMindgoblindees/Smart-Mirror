@@ -9,9 +9,10 @@ import './widget-frame.css';
 interface Props {
   config: WidgetConfig;
   canvasRect: DOMRect | null;
+  disableAnimations?: boolean;
 }
 
-export const WidgetFrame: React.FC<Props> = React.memo(({ config, canvasRect }) => {
+export const WidgetFrame: React.FC<Props> = React.memo(({ config, canvasRect, disableAnimations = false }) => {
   const metadata = getWidgetMetadata(config.type);
   const Body = metadata?.Component ?? UnknownWidget;
 
@@ -34,6 +35,7 @@ export const WidgetFrame: React.FC<Props> = React.memo(({ config, canvasRect }) 
       <TooltipTrigger asChild>
         <motion.div
           className={`widget-frame widget-frame-freeform widget-size-${sizePreset}`}
+          data-performance-lite={disableAnimations ? 'true' : 'false'}
           data-size={sizePreset}
           style={{
             position: 'absolute',
@@ -44,12 +46,12 @@ export const WidgetFrame: React.FC<Props> = React.memo(({ config, canvasRect }) 
             zIndex: 10,
             ['--widget-scale' as string]: clampedScale,
           }}
-          initial={{
+          initial={disableAnimations ? false : {
             opacity: 0,
             y: enterFromTop ? -24 : 24,
             scale: 0.96,
           }}
-          animate={{
+          animate={disableAnimations ? undefined : {
             opacity: 1,
             y: 0,
             scale: 1,
@@ -59,17 +61,17 @@ export const WidgetFrame: React.FC<Props> = React.memo(({ config, canvasRect }) 
             scale: 0.95,
             transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
           }}
-          transition={{
+          transition={disableAnimations ? undefined : {
             type: 'spring',
             stiffness: 260,
             damping: 28,
             delay: staggerDelay,
           }}
-          whileHover={{
+          whileHover={disableAnimations ? undefined : {
             scale: 1.018,
             transition: { type: 'spring', stiffness: 400, damping: 25 },
           }}
-          whileTap={{ scale: 0.98 }}
+          whileTap={disableAnimations ? undefined : { scale: 0.98 }}
         >
           <div className="widget-glass-highlight" aria-hidden="true" />
           <div className="widget-body">

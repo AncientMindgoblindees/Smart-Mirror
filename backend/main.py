@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Iterable
+import logging
 
 from dotenv import load_dotenv
 
@@ -8,6 +9,9 @@ from dotenv import load_dotenv
 # MIRROR_SYNC_TOKEN / D1_WORKER_URL at import time while they are still unset.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+
+_log_level = os.getenv("MIRROR_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, _log_level, logging.INFO))
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +40,7 @@ from backend.services.runtime_singleton import acquire_single_instance_or_raise,
 from hardware.gpio import service as gpio_service
 
 UI_DIST = BASE_DIR / "ui" / "dist"
+logger = logging.getLogger(__name__)
 
 
 def _cors_origins() -> list[str]:
@@ -88,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(events.router)
     app.include_router(clothing.router, prefix="/api", dependencies=secure_api)
     app.include_router(tryon.router, prefix="/api", dependencies=secure_api)
+    app.include_router(tryon.public_router, prefix="/api")
     app.include_router(d1_checkpoint.router, prefix="/api", dependencies=secure_api)
 
     # Serve built React UI under /ui (run: cd ui && npm install && npm run build)
@@ -110,7 +116,10 @@ def create_app() -> FastAPI:
         await camera_state.reset_person_image_state()
 
         if os.getenv("ENABLE_GPIO", "false").lower() == "true":
+            logger.info("gpio_buttons_enabled=true starting_button_service")
             gpio_service.start_button_service()
+        else:
+            logger.info("gpio_buttons_enabled=false button_service_not_started")
 
         from backend.services.sync_service import sync_manager
         await sync_manager.start_all()

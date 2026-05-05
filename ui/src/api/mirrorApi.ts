@@ -85,6 +85,20 @@ export function getTryOnGeneration(generationId: number): Promise<TryOnGeneratio
   return jsonRequest<TryOnGenerationRead>(`/tryon/generations/${generationId}`);
 }
 
+export type TryOnCacheResult = {
+  cached_image_ids: number[];
+  cache_hit_image_ids: number[];
+  cloudinary_fetch_image_ids: number[];
+  cache_failed_image_ids: number[];
+};
+
+export function cacheTryOnClothing(imageIds: number[]): Promise<TryOnCacheResult> {
+  return jsonRequest<TryOnCacheResult>('/tryon/cache-clothing', {
+    method: 'POST',
+    body: JSON.stringify({ image_ids: imageIds }),
+  });
+}
+
 export function getPersonImages(): Promise<PersonImageRead[]> {
   return jsonRequest<PersonImageRead[]>('/tryon/person-image');
 }

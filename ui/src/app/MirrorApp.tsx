@@ -3,14 +3,17 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, ChevronUp, Heart, Moon, Palette, Power, QrCode, Shirt, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
+  cacheTryOnClothing,
   generateTryOn,
   getClothingItems,
   getPersonImages,
+  getTryOnGeneration,
   getUserSettings,
   putUserSettings,
   triggerCameraCapture,
   updateClothingItem,
 } from '@/api/mirrorApi';
+import { withApiTokenIfProtectedMedia } from '@/api/authMediaUrl';
 import type { ClothingItemRead } from '@/api/backendTypes';
 import { applyUserSettings } from '@/userSettings';
 import {
@@ -31,6 +34,7 @@ import { useMirrorInput } from '@/hooks/useMirrorInput';
 import { useMenuNavigation } from '@/hooks/useMenuNavigation';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
 import { useParallax } from '@/hooks/useParallax';
+import { shouldUsePerformanceLiteMode } from './performanceMode';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { MenuOverlay, type MenuMainItem, type MenuOverlayItem, type MenuPreviewState } from '@/components/MenuOverlay';
 import { useMirrorDisplayMode } from './hooks/useMirrorDisplayMode';
@@ -158,6 +162,8 @@ function mockClothingItems(): ClothingItemRead[] {
 const OUTFIT_FAVORITES_STORAGE_KEY = 'mirror:outfit-favorites';
 const THEME_CACHE_SESSION_KEY = 'mirror:theme-selection:session';
 const TRYON_MAX_GENERATE_ATTEMPTS = 2; // initial attempt + 1 retry
+const TRYON_POLL_INTERVAL_MS = 1500;
+const TRYON_POLL_TIMEOUT_MS = 8 * 60 * 1000;
 
 function readDevPanelInitial(): boolean {
   try {
@@ -381,6 +387,25 @@ export default function MirrorApp() {
   const [latestPersonImageUrl, setLatestPersonImageUrl] = useState<string | null>(null);
   const [tryOnBusy, setTryOnBusy] = useState(false);
   const [tryOnStatus, setTryOnStatus] = useState<string | null>(null);
+  const [tryOnReadyNotice, setTryOnReadyNotice] = useState<string | null>(null);
+  const cacheClothingAndReport = useCallback(async (imageIds: number[], context: string) => {
+    if (!imageIds.length) return;
+    try {
+      const result = await cacheTryOnClothing(imageIds);
+      const hits = result.cache_hit_image_ids.length;
+      const misses = result.cloudinary_fetch_image_ids.length;
+      const failed = result.cache_failed_image_ids.length;
+      if (failed > 0) {
+        setTryOnStatus(`${context}: cache failed for ${failed}; will use Cloudinary at generation`);
+      } else if (misses > 0) {
+        setTryOnStatus(`${context}: cache miss ${misses}, fetched from Cloudinary`);
+      } else if (hits > 0) {
+        setTryOnStatus(`${context}: cache hit ${hits}`);
+      }
+    } catch {
+      setTryOnStatus(`${context}: cache request failed; will use Cloudinary at generation`);
+    }
+  }, []);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
@@ -415,7 +440,15 @@ export default function MirrorApp() {
   } = useAuthActions(initiateLogin, disconnectProvider);
 
   useTimeOfDay();
-  const parallax = useParallax();
+  const performanceLiteMode = useMemo(
+    () =>
+      shouldUsePerformanceLiteMode({
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+      }),
+    [],
+  );
+  const parallax = useParallax(!performanceLiteMode);
   const logMenu = useCallback(
     (
       event: string,
@@ -532,6 +565,18 @@ export default function MirrorApp() {
       .map((item) => item.imageId);
     setSelectedClothingImageIds(ids);
   }, [selectedSlotItems]);
+  useEffect(() => {
+    if (!selectedClothingImageIds.length) return;
+    void cacheClothingAndReport(selectedClothingImageIds, 'Selection');
+  }, [cacheClothingAndReport, selectedClothingImageIds]);
+  useEffect(() => {
+    const onReady = () => {
+      setTryOnReadyNotice('Try-on is ready. Open Virtual Try-On to view.');
+      window.setTimeout(() => setTryOnReadyNotice(null), 6000);
+    };
+    window.addEventListener('mirror:tryon_result', onReady);
+    return () => window.removeEventListener('mirror:tryon_result', onReady);
+  }, []);
   const selectedClothingCount = selectedClothingImageIds.length;
   const selectedFavorite = outfitFavorites[selectedFavoriteIndex] ?? null;
   const refreshLatestPersonImage = useCallback(async () => {
@@ -596,10 +641,12 @@ export default function MirrorApp() {
       setSlotIndices((prev) => {
         const current = prev[slot] ?? 0;
         const next = direction === 1 ? (current + 1) % total : (current - 1 + total) % total;
+        const nextOption = slotOptions[slot][next];
+        if (nextOption?.imageId) void cacheClothingAndReport([nextOption.imageId], 'Slot');
         return { ...prev, [slot]: next };
       });
     },
-    [slotOptions],
+    [cacheClothingAndReport, slotOptions],
   );
   const loadFavoriteSnapshot = useCallback(
     (favorite: OutfitFavoriteSnapshot) => {
@@ -662,43 +709,66 @@ export default function MirrorApp() {
       return;
     }
     setTryOnBusy(true);
-    setTryOnStatus('Capturing image...');
+    setTryOnStatus('Preparing image...');
     try {
-      let baselineLatestId: number | null = null;
+      let capturedLatestId: number | null = null;
       try {
         const existing = await getPersonImages();
-        baselineLatestId = existing[0]?.id ?? null;
-      } catch {
-        baselineLatestId = null;
-      }
-      captureFlowActiveRef.current = true;
-      setShowCamera(true);
-      setCameraError(null);
-      await triggerCameraCapture({
-        countdown_seconds: 3,
-        source: 'virtual-try-on-menu',
-        session_id: `virtual-tryon-${Date.now()}`,
-      });
-      const deadline = Date.now() + 45000;
-      let captureDetected = false;
-      let capturedLatestId: number | null = null;
-      while (Date.now() < deadline) {
-        const rows = await getPersonImages();
-        const latestId = rows[0]?.id ?? null;
-        if (latestId !== null && (baselineLatestId === null || latestId > baselineLatestId)) {
-          captureDetected = true;
-          capturedLatestId = latestId;
-          break;
+        const savedLatestId = existing[0]?.id ?? null;
+        if (savedLatestId !== null) {
+          const useSaved = window.confirm('Would you like to use the saved image (Yes)/(No: Take a New Picture)');
+          if (useSaved) {
+            capturedLatestId = savedLatestId;
+            setTryOnStatus('Using saved image');
+          }
         }
-        await sleep(1000);
+      } catch {
+        // ignore; fallback to taking a new picture
       }
-      if (!captureDetected) {
-        throw new Error('Camera capture did not complete in time');
+
+      if (capturedLatestId === null) {
+        let baselineLatestId: number | null = null;
+        try {
+          const existing = await getPersonImages();
+          baselineLatestId = existing[0]?.id ?? null;
+        } catch {
+          baselineLatestId = null;
+        }
+        setTryOnStatus('Capturing image...');
+        captureFlowActiveRef.current = true;
+        setShowCamera(true);
+        setCameraError(null);
+        await triggerCameraCapture({
+          countdown_seconds: 3,
+          source: 'virtual-try-on-menu',
+          session_id: `virtual-tryon-${Date.now()}`,
+        });
+        const deadline = Date.now() + 45000;
+        let captureDetected = false;
+        while (Date.now() < deadline) {
+          const rows = await getPersonImages();
+          const latestId = rows[0]?.id ?? null;
+          if (latestId !== null && (baselineLatestId === null || latestId > baselineLatestId)) {
+            captureDetected = true;
+            capturedLatestId = latestId;
+            break;
+          }
+          await sleep(1000);
+        }
+        if (!captureDetected || capturedLatestId === null) {
+          throw new Error('Camera capture did not complete in time');
+        }
+        const useNew = window.confirm('Want to use this picture? (Yes/No)');
+        if (!useNew) {
+          setTryOnStatus('Generation cancelled');
+          return;
+        }
       }
       if (capturedLatestId !== null) {
         setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${capturedLatestId}?t=${Date.now()}`);
       }
       setTryOnStatus('Generating virtual try-on...');
+      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_started'));
       let lastError: unknown = null;
       let result: Awaited<ReturnType<typeof generateTryOn>> | null = null;
       for (let attempt = 1; attempt <= TRYON_MAX_GENERATE_ATTEMPTS; attempt += 1) {
@@ -719,7 +789,16 @@ export default function MirrorApp() {
             const key = categoryToTryOnPayloadKey(option.category, option.itemName);
             if (key) payload[key] = imageId;
           }
-          result = await generateTryOn(payload);
+          const queued = await generateTryOn(payload);
+          const pollStartedAt = Date.now();
+          while (true) {
+            if (Date.now() - pollStartedAt > TRYON_POLL_TIMEOUT_MS) {
+              throw new Error('Try-on generation timed out');
+            }
+            result = await getTryOnGeneration(queued.id);
+            if (result.status === 'completed' || result.status === 'failed') break;
+            await sleep(TRYON_POLL_INTERVAL_MS);
+          }
           break;
         } catch (error: unknown) {
           lastError = error;
@@ -737,16 +816,21 @@ export default function MirrorApp() {
             : `Virtual try-on failed after ${TRYON_MAX_GENERATE_ATTEMPTS} attempts`;
         throw new Error(message);
       }
+      if (result.status !== 'completed') {
+        throw new Error(result.error_message ?? 'Try-on generation failed');
+      }
       if (!result.result_image_url) {
         throw new Error(result.error_message ?? 'Try-on generation did not return an image');
       }
-      setFullScreenTryOnUrl(result.result_image_url);
+      const authedResultUrl = withApiTokenIfProtectedMedia(result.result_image_url);
+      setFullScreenTryOnUrl(authedResultUrl);
       window.dispatchEvent(
         new CustomEvent('mirror:tryon_result', {
-          detail: { generation_id: String(result.id), image_url: result.result_image_url },
+          detail: { generation_id: String(result.id), image_url: authedResultUrl },
         }),
       );
       setTryOnStatus('Virtual try-on ready');
+      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_completed'));
       logMenu('outfit_tryon_generated', {
         generationId: result.id,
         selectedCount: selectedClothingImageIds.length,
@@ -754,6 +838,7 @@ export default function MirrorApp() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Try-on generation failed';
       setTryOnStatus(message);
+      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_completed'));
       logMenu('outfit_tryon_failed', { message }, 'error');
     } finally {
       setTryOnBusy(false);
@@ -1287,7 +1372,8 @@ export default function MirrorApp() {
               if (latestId !== null) {
                 setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${latestId}?t=${Date.now()}`);
               }
-              setTryOnStatus('Picture captured');
+              const useNew = window.confirm('Want to use this picture? (Yes/No)');
+              setTryOnStatus(useNew ? 'Picture captured and selected' : 'Picture captured (not selected)');
               setTryOnBusy(false);
             })
             .catch((error: unknown) => {
@@ -1678,6 +1764,7 @@ export default function MirrorApp() {
     toggleDim,
     toggleSleep,
     toggleDevPanel,
+    openMenu: menuNavigation.open,
     dismissTryOnOverlay: () => setFullScreenTryOnUrl(null),
     dismissAuthOverlay: () => {
       if (pendingAuth) {
@@ -1685,6 +1772,7 @@ export default function MirrorApp() {
       }
     },
     getSleepMode: () => sleepModeRef.current,
+    isMenuOpen: () => menuNavigation.isOpen,
     isInputBlocked: () => menuNavigation.isOpen,
   });
 
@@ -1719,7 +1807,7 @@ export default function MirrorApp() {
       setShowCamera(false);
     },
     onTryOnResult: (payload) => {
-      if (payload.image_url) setFullScreenTryOnUrl(payload.image_url);
+      if (payload.image_url) setFullScreenTryOnUrl(withApiTokenIfProtectedMedia(payload.image_url));
     },
     ...deviceHandlers,
     onAuthStateChanged: () => {
@@ -1727,13 +1815,23 @@ export default function MirrorApp() {
     },
   });
 
+  useEffect(() => {
+    const onOpenResult = (event: Event) => {
+      const detail = (event as CustomEvent<{ image_url?: string }>).detail;
+      if (!detail?.image_url) return;
+      setFullScreenTryOnUrl(withApiTokenIfProtectedMedia(detail.image_url));
+    };
+    window.addEventListener('mirror:tryon_open_result', onOpenResult as EventListener);
+    return () => window.removeEventListener('mirror:tryon_open_result', onOpenResult as EventListener);
+  }, []);
+
   const toggleWidget = (id: string) => {
     setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)));
   };
 
   return (
     <TooltipProvider delayDuration={400}>
-      <div className="mirror-shell">
+      <div className={`mirror-shell${performanceLiteMode ? ' performance-lite' : ''}`}>
         <div className="mirror-ambient-layer" aria-hidden="true" />
 
       <motion.div
@@ -1748,7 +1846,7 @@ export default function MirrorApp() {
       >
         <AnimatePresence mode="popLayout">
           {activeWidgets.map((w) => (
-            <WidgetFrame key={w.id} config={w} canvasRect={canvasRect} />
+            <WidgetFrame key={w.id} config={w} canvasRect={canvasRect} disableAnimations={performanceLiteMode} />
           ))}
         </AnimatePresence>
       </motion.div>
@@ -1794,6 +1892,34 @@ export default function MirrorApp() {
       )}
 
       <AnimatePresence>
+        {tryOnBusy && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="fixed top-5 right-5 z-[110] bg-black/70 border border-cyan-400/45 rounded-xl px-4 py-3 pointer-events-none"
+          >
+            <div className="w-44 h-1 bg-white/15 rounded-full overflow-hidden mb-2">
+              <motion.div
+                initial={{ x: '-100%' }}
+                animate={{ x: '100%' }}
+                transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
+                className="w-1/2 h-full bg-cyan-400"
+              />
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-100">Try-On Running</div>
+          </motion.div>
+        )}
+        {tryOnReadyNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="fixed top-20 right-5 z-[110] bg-emerald-500/20 border border-emerald-400/50 rounded-lg px-4 py-2 text-emerald-100 text-xs"
+          >
+            {tryOnReadyNotice}
+          </motion.div>
+        )}
         {fullScreenTryOnUrl && (
           <motion.div
             className="camera-overlay"
@@ -1916,6 +2042,7 @@ export default function MirrorApp() {
             menuNavigation.layer === 'theme_widget_list' ||
             menuNavigation.layer === 'theme_background_list'
           }
+          performanceLiteMode={performanceLiteMode}
         />
       )}
 
