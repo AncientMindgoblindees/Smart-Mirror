@@ -20,9 +20,9 @@ describe('shouldUsePerformanceLiteMode', () => {
 });
 
 describe('shouldShowMenuPreviewInLiteMode', () => {
-  it('hides preview for non-main layers in lite mode', () => {
-    expect(shouldShowMenuPreviewInLiteMode('widget_list')).toBe(false);
-    expect(shouldShowMenuPreviewInLiteMode('parameter_editor')).toBe(false);
+  it('allows preview for widget list and parameter editor in lite mode', () => {
+    expect(shouldShowMenuPreviewInLiteMode('widget_list')).toBe(true);
+    expect(shouldShowMenuPreviewInLiteMode('parameter_editor')).toBe(true);
   });
 
   it('allows main layer in lite mode', () => {
