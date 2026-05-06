@@ -354,6 +354,14 @@ const OUTFIT_SELECTION_BACK_ID = 'outfit_selection:back';
 const OUTFIT_SELECTION_EXIT_ID = 'outfit_selection:exit';
 const OUTFIT_FAVORITES_BACK_ID = 'outfit_favorites:back';
 const OUTFIT_FAVORITES_EXIT_ID = 'outfit_favorites:exit';
+const OUTFIT_CONFIRM_SAVED_YES_ID = 'outfit_confirm_saved:yes';
+const OUTFIT_CONFIRM_SAVED_NO_ID = 'outfit_confirm_saved:no';
+const OUTFIT_CONFIRM_SAVED_BACK_ID = 'outfit_confirm_saved:back';
+const OUTFIT_CONFIRM_SAVED_EXIT_ID = 'outfit_confirm_saved:exit';
+const OUTFIT_CONFIRM_NEW_YES_ID = 'outfit_confirm_new:yes';
+const OUTFIT_CONFIRM_NEW_NO_ID = 'outfit_confirm_new:no';
+const OUTFIT_CONFIRM_NEW_BACK_ID = 'outfit_confirm_new:back';
+const OUTFIT_CONFIRM_NEW_EXIT_ID = 'outfit_confirm_new:exit';
 
 export default function MirrorApp() {
   const navigate = useNavigate();
@@ -366,6 +374,8 @@ export default function MirrorApp() {
   } =
     useOverlayState();
   const captureFlowActiveRef = useRef(false);
+  const tryOnPendingSavedIdRef = useRef<number | null>(null);
+  const tryOnPendingCapturedIdRef = useRef<number | null>(null);
   const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
   const [fullScreenTryOnUrl, setFullScreenTryOnUrl] = useState<string | null>(null);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
@@ -706,81 +716,17 @@ export default function MirrorApp() {
       logMenu('outfit_favorite_save_failed', { message }, 'error');
     }
   }, [clothingOptionByImageId, selectedClothingImageIds, logMenu]);
-  const runSelectedOutfitTryOn = useCallback(async () => {
-    if (!selectedClothingImageIds.length) {
-      setTryOnStatus('Select clothing before generating try-on');
-      return;
-    }
+  const generateWithPersonImageId = useCallback(async (personImageId: number) => {
     setTryOnBusy(true);
-    setTryOnStatus('Preparing image...');
+    setTryOnStatus('Generating virtual try-on...');
+    window.dispatchEvent(new CustomEvent('mirror:tryon_generation_started'));
+    let lastError: unknown = null;
+    let result: Awaited<ReturnType<typeof generateTryOn>> | null = null;
     try {
-      let capturedLatestId: number | null = null;
-      try {
-        const existing = await getPersonImages();
-        const savedLatestId = existing[0]?.id ?? null;
-        if (savedLatestId !== null) {
-          const useSaved = window.confirm('Would you like to use the saved image (Yes)/(No: Take a New Picture)');
-          if (useSaved) {
-            capturedLatestId = savedLatestId;
-            setTryOnStatus('Using saved image');
-          }
-        }
-      } catch {
-        // ignore; fallback to taking a new picture
-      }
-
-      if (capturedLatestId === null) {
-        let baselineLatestId: number | null = null;
-        try {
-          const existing = await getPersonImages();
-          baselineLatestId = existing[0]?.id ?? null;
-        } catch {
-          baselineLatestId = null;
-        }
-        setTryOnStatus('Capturing image...');
-        captureFlowActiveRef.current = true;
-        setShowCamera(true);
-        setCameraError(null);
-        await triggerCameraCapture({
-          countdown_seconds: 3,
-          source: 'virtual-try-on-menu',
-          session_id: `virtual-tryon-${Date.now()}`,
-        });
-        const deadline = Date.now() + 45000;
-        let captureDetected = false;
-        while (Date.now() < deadline) {
-          const rows = await getPersonImages();
-          const latestId = rows[0]?.id ?? null;
-          if (latestId !== null && (baselineLatestId === null || latestId > baselineLatestId)) {
-            captureDetected = true;
-            capturedLatestId = latestId;
-            break;
-          }
-          await sleep(1000);
-        }
-        if (!captureDetected || capturedLatestId === null) {
-          throw new Error('Camera capture did not complete in time');
-        }
-        const useNew = window.confirm('Want to use this picture? (Yes/No)');
-        if (!useNew) {
-          setTryOnStatus('Generation cancelled');
-          return;
-        }
-      }
-      if (capturedLatestId !== null) {
-        setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${capturedLatestId}?t=${Date.now()}`);
-      }
-      setTryOnStatus('Generating virtual try-on...');
-      window.dispatchEvent(new CustomEvent('mirror:tryon_generation_started'));
-      let lastError: unknown = null;
-      let result: Awaited<ReturnType<typeof generateTryOn>> | null = null;
       for (let attempt = 1; attempt <= TRYON_MAX_GENERATE_ATTEMPTS; attempt += 1) {
         try {
-          if (capturedLatestId === null) {
-            throw new Error('No captured person image id was available');
-          }
           const payload = {
-            person_image_id: capturedLatestId,
+            person_image_id: personImageId,
             pants_image_id: null as number | null,
             shirt_image_id: null as number | null,
             shoes_image_id: null as number | null,
@@ -846,7 +792,78 @@ export default function MirrorApp() {
     } finally {
       setTryOnBusy(false);
     }
-  }, [clothingOptionByImageId, logMenu, selectedClothingImageIds, setCameraError, setShowCamera]);
+  }, [clothingOptionByImageId, logMenu, selectedClothingImageIds]);
+  const captureNewPictureForTryOn = useCallback(async () => {
+    tryOnPendingSavedIdRef.current = null;
+    setTryOnBusy(true);
+    setTryOnStatus('Capturing image...');
+    let baselineLatestId: number | null = null;
+    try {
+      const existing = await getPersonImages();
+      baselineLatestId = existing[0]?.id ?? null;
+    } catch {
+      baselineLatestId = null;
+    }
+    captureFlowActiveRef.current = true;
+    setShowCamera(true);
+    setCameraError(null);
+    try {
+      await triggerCameraCapture({
+        countdown_seconds: 3,
+        source: 'virtual-try-on-menu',
+        session_id: `virtual-tryon-${Date.now()}`,
+      });
+      const deadline = Date.now() + 45000;
+      let captureDetected = false;
+      let capturedLatestId: number | null = null;
+      while (Date.now() < deadline) {
+        const rows = await getPersonImages();
+        const latestId = rows[0]?.id ?? null;
+        if (latestId !== null && (baselineLatestId === null || latestId > baselineLatestId)) {
+          captureDetected = true;
+          capturedLatestId = latestId;
+          break;
+        }
+        await sleep(1000);
+      }
+      if (!captureDetected || capturedLatestId === null) {
+        throw new Error('Camera capture did not complete in time');
+      }
+      setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${capturedLatestId}?t=${Date.now()}`);
+      tryOnPendingCapturedIdRef.current = capturedLatestId;
+      setTryOnBusy(false);
+      setLayerRef.current('outfit_confirm_new', { resetIndex: true });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Camera capture failed';
+      setTryOnStatus(message);
+      setTryOnBusy(false);
+      logMenu('outfit_capture_failed', { message }, 'error');
+      setLayerRef.current('outfit_panel', { resetIndex: false });
+    }
+  }, [logMenu, setCameraError, setShowCamera]);
+  const startTryOnFlow = useCallback(async () => {
+    if (!selectedClothingImageIds.length) {
+      setTryOnStatus('Select clothing before generating try-on');
+      return;
+    }
+    setTryOnBusy(true);
+    setTryOnStatus('Preparing image...');
+    let savedLatestId: number | null = null;
+    try {
+      const existing = await getPersonImages();
+      savedLatestId = existing[0]?.id ?? null;
+    } catch {
+      savedLatestId = null;
+    }
+    if (savedLatestId !== null) {
+      tryOnPendingSavedIdRef.current = savedLatestId;
+      setTryOnBusy(false);
+      setLayerRef.current('outfit_confirm_saved', { resetIndex: true });
+      return;
+    }
+    setTryOnBusy(false);
+    void captureNewPictureForTryOn();
+  }, [captureNewPictureForTryOn, selectedClothingImageIds]);
   const randomizeWidgets = useCallback(() => {
     let summary:
       | {
@@ -1070,6 +1087,24 @@ export default function MirrorApp() {
       { id: OUTFIT_FAVORITES_EXIT_ID, label: 'Exit' },
     ];
   }, [outfitFavorites]);
+  const outfitConfirmSavedItems = useMemo<MenuOverlayItem[]>(
+    () => [
+      { id: OUTFIT_CONFIRM_SAVED_YES_ID, label: 'Use Saved Image', hint: 'Use your last captured photo' },
+      { id: OUTFIT_CONFIRM_SAVED_NO_ID, label: 'Take New Picture', hint: 'Capture a new photo now' },
+      { id: OUTFIT_CONFIRM_SAVED_BACK_ID, label: 'Back', kind: 'back' },
+      { id: OUTFIT_CONFIRM_SAVED_EXIT_ID, label: 'Exit' },
+    ],
+    [],
+  );
+  const outfitConfirmNewItems = useMemo<MenuOverlayItem[]>(
+    () => [
+      { id: OUTFIT_CONFIRM_NEW_YES_ID, label: 'Yes, Generate Try-On', hint: 'Use this picture' },
+      { id: OUTFIT_CONFIRM_NEW_NO_ID, label: 'Retake Picture', hint: 'Take another photo' },
+      { id: OUTFIT_CONFIRM_NEW_BACK_ID, label: 'Back', kind: 'back' },
+      { id: OUTFIT_CONFIRM_NEW_EXIT_ID, label: 'Exit' },
+    ],
+    [],
+  );
   const getActionIds = useCallback(
     (
       layer:
@@ -1082,7 +1117,9 @@ export default function MirrorApp() {
         | 'theme_background_list'
         | 'outfit_panel'
         | 'outfit_selection'
-        | 'outfit_favorites',
+        | 'outfit_favorites'
+        | 'outfit_confirm_saved'
+        | 'outfit_confirm_new',
     ) => {
       if (layer === 'widget_list') return widgetListItems.map((item) => item.id);
       if (layer === 'parameter_editor') return parameterEditorItems.map((item) => item.id);
@@ -1093,9 +1130,13 @@ export default function MirrorApp() {
       if (layer === 'outfit_panel') return outfitPanelItems.map((item) => item.id);
       if (layer === 'outfit_selection') return outfitSelectionItems.map((item) => item.id);
       if (layer === 'outfit_favorites') return outfitFavoritesItems.map((item) => item.id);
+      if (layer === 'outfit_confirm_saved') return outfitConfirmSavedItems.map((item) => item.id);
+      if (layer === 'outfit_confirm_new') return outfitConfirmNewItems.map((item) => item.id);
       return MENU_ACTION_IDS;
     },
     [
+      outfitConfirmNewItems,
+      outfitConfirmSavedItems,
       outfitFavoritesItems,
       outfitPanelItems,
       outfitSelectionItems,
@@ -1118,7 +1159,9 @@ export default function MirrorApp() {
       | 'theme_background_list'
       | 'outfit_panel'
       | 'outfit_selection'
-      | 'outfit_favorites',
+      | 'outfit_favorites'
+      | 'outfit_confirm_saved'
+      | 'outfit_confirm_new',
     options?: { resetIndex?: boolean },
   ) => void>(() => {});
   const handleMenuAction = useCallback(
@@ -1134,7 +1177,9 @@ export default function MirrorApp() {
         | 'theme_background_list'
         | 'outfit_panel'
         | 'outfit_selection'
-        | 'outfit_favorites',
+        | 'outfit_favorites'
+        | 'outfit_confirm_saved'
+        | 'outfit_confirm_new',
     ) => {
       logMenu('action_invoked', { layer, actionId });
       if (layer === 'widget_list') {
@@ -1396,7 +1441,7 @@ export default function MirrorApp() {
           return;
         }
         if (actionId === OUTFIT_PANEL_GENERATE_ID) {
-          void runSelectedOutfitTryOn();
+          void startTryOnFlow();
           return;
         }
         if (actionId === OUTFIT_PANEL_SAVE_FAVORITE_ID) {
@@ -1424,6 +1469,71 @@ export default function MirrorApp() {
           return;
         }
         if (actionId === OUTFIT_PANEL_EXIT_ID) {
+          closeMenuRef.current();
+          return;
+        }
+        return;
+      }
+
+      if (layer === 'outfit_confirm_saved') {
+        if (actionId === OUTFIT_CONFIRM_SAVED_YES_ID) {
+          const savedId = tryOnPendingSavedIdRef.current;
+          tryOnPendingSavedIdRef.current = null;
+          if (savedId !== null) {
+            setTryOnStatus('Using saved image');
+            setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${savedId}?t=${Date.now()}`);
+            setLayerRef.current('outfit_panel', { resetIndex: false });
+            void generateWithPersonImageId(savedId);
+          } else {
+            setLayerRef.current('outfit_panel', { resetIndex: false });
+          }
+          return;
+        }
+        if (actionId === OUTFIT_CONFIRM_SAVED_NO_ID) {
+          void captureNewPictureForTryOn();
+          return;
+        }
+        if (actionId === OUTFIT_CONFIRM_SAVED_BACK_ID) {
+          tryOnPendingSavedIdRef.current = null;
+          setTryOnBusy(false);
+          setLayerRef.current('outfit_panel', { resetIndex: false });
+          return;
+        }
+        if (actionId === OUTFIT_CONFIRM_SAVED_EXIT_ID) {
+          tryOnPendingSavedIdRef.current = null;
+          setTryOnBusy(false);
+          closeMenuRef.current();
+          return;
+        }
+        return;
+      }
+
+      if (layer === 'outfit_confirm_new') {
+        if (actionId === OUTFIT_CONFIRM_NEW_YES_ID) {
+          const newId = tryOnPendingCapturedIdRef.current;
+          tryOnPendingCapturedIdRef.current = null;
+          if (newId !== null) {
+            setLayerRef.current('outfit_panel', { resetIndex: false });
+            void generateWithPersonImageId(newId);
+          } else {
+            setLayerRef.current('outfit_panel', { resetIndex: false });
+          }
+          return;
+        }
+        if (actionId === OUTFIT_CONFIRM_NEW_NO_ID) {
+          tryOnPendingCapturedIdRef.current = null;
+          void captureNewPictureForTryOn();
+          return;
+        }
+        if (actionId === OUTFIT_CONFIRM_NEW_BACK_ID) {
+          tryOnPendingCapturedIdRef.current = null;
+          setTryOnBusy(false);
+          setLayerRef.current('outfit_panel', { resetIndex: false });
+          return;
+        }
+        if (actionId === OUTFIT_CONFIRM_NEW_EXIT_ID) {
+          tryOnPendingCapturedIdRef.current = null;
+          setTryOnBusy(false);
           closeMenuRef.current();
           return;
         }
@@ -1574,7 +1684,9 @@ export default function MirrorApp() {
       selectedFavorite,
       loadFavoriteSnapshot,
       randomizeWidgets,
-      runSelectedOutfitTryOn,
+      captureNewPictureForTryOn,
+      generateWithPersonImageId,
+      startTryOnFlow,
       saveSelectedOutfitAsFavorite,
       shuffleOutfitSelection,
       navigate,
@@ -1610,9 +1722,13 @@ export default function MirrorApp() {
     if (menuNavigation.layer === 'outfit_panel') return outfitPanelItems;
     if (menuNavigation.layer === 'outfit_selection') return outfitSelectionItems;
     if (menuNavigation.layer === 'outfit_favorites') return outfitFavoritesItems;
+    if (menuNavigation.layer === 'outfit_confirm_saved') return outfitConfirmSavedItems;
+    if (menuNavigation.layer === 'outfit_confirm_new') return outfitConfirmNewItems;
     return MENU_ITEMS;
   }, [
     menuNavigation.layer,
+    outfitConfirmNewItems,
+    outfitConfirmSavedItems,
     outfitFavoritesItems,
     outfitPanelItems,
     outfitSelectionItems,
@@ -1645,7 +1761,9 @@ export default function MirrorApp() {
       menuNavigation.layer === 'theme_background_list' ||
       menuNavigation.layer === 'outfit_panel' ||
       menuNavigation.layer === 'outfit_selection' ||
-      menuNavigation.layer === 'outfit_favorites'
+      menuNavigation.layer === 'outfit_favorites' ||
+      menuNavigation.layer === 'outfit_confirm_saved' ||
+      menuNavigation.layer === 'outfit_confirm_new'
     ) {
       return null;
     }
@@ -1685,7 +1803,11 @@ export default function MirrorApp() {
                     ? 'SELECT CLOTHING'
                     : menuNavigation.layer === 'outfit_favorites'
                       ? 'OUTFIT FAVORITES'
-                      : 'RANDOMIZE';
+                      : menuNavigation.layer === 'outfit_confirm_saved'
+                        ? 'USE SAVED OR TAKE NEW'
+                        : menuNavigation.layer === 'outfit_confirm_new'
+                          ? 'CONFIRM PICTURE'
+                          : 'RANDOMIZE';
   const prevMenuOpenRef = useRef<boolean>(false);
   useEffect(() => {
     if (prevMenuOpenRef.current !== menuNavigation.isOpen) {

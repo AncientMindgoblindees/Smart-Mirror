@@ -14,7 +14,9 @@ export type MenuNavigationLayer =
   | 'theme_background_list'
   | 'outfit_panel'
   | 'outfit_selection'
-  | 'outfit_favorites';
+  | 'outfit_favorites'
+  | 'outfit_confirm_saved'
+  | 'outfit_confirm_new';
 
 type UseMenuNavigationOptions = {
   getActionIds: (layer: MenuNavigationLayer) => string[];
@@ -47,6 +49,8 @@ export function useMenuNavigation(options: UseMenuNavigationOptions): UseMenuNav
     outfit_panel: 0,
     outfit_selection: 0,
     outfit_favorites: 0,
+    outfit_confirm_saved: 0,
+    outfit_confirm_new: 0,
   });
   const activeIndex = activeByLayer[layer] ?? 0;
 
