@@ -14,7 +14,7 @@ import {
   updateClothingItem,
 } from '@/api/mirrorApi';
 import { withApiTokenIfProtectedMedia } from '@/api/authMediaUrl';
-import type { ClothingItemRead } from '@/api/backendTypes';
+import type { ClothingItemRead, UserSettingsOut } from '@/api/backendTypes';
 import { applyUserSettings } from '@/userSettings';
 import {
   WidgetFrame,
@@ -473,6 +473,14 @@ export default function MirrorApp() {
     },
     [],
   );
+  const applySyncedUserSettings = useCallback((settings: UserSettingsOut) => {
+    applyUserSettings(settings);
+    const parsed = parseThemeSelection(settings.theme);
+    setSelectedWidgetThemeId(parsed.widgetTheme);
+    setSelectedBackgroundThemeId(parsed.backgroundTheme);
+    writeThemeSessionCache(parsed.widgetTheme, parsed.backgroundTheme);
+  }, []);
+
   useEffect(() => {
     const cachedTheme = readThemeSessionCache();
     if (cachedTheme) {
@@ -480,19 +488,14 @@ export default function MirrorApp() {
       setSelectedBackgroundThemeId(cachedTheme.backgroundTheme);
     }
     void getUserSettings()
-      .then((settings) => {
-        const parsed = parseThemeSelection(settings.theme);
-        setSelectedWidgetThemeId(parsed.widgetTheme);
-        setSelectedBackgroundThemeId(parsed.backgroundTheme);
-        writeThemeSessionCache(parsed.widgetTheme, parsed.backgroundTheme);
-      })
+      .then(applySyncedUserSettings)
       .catch(() => {
         if (!cachedTheme) {
           setSelectedWidgetThemeId('glass-cyan');
           setSelectedBackgroundThemeId('noir');
         }
       });
-  }, []);
+  }, [applySyncedUserSettings]);
   useEffect(() => {
     try {
       localStorage.setItem(OUTFIT_FAVORITES_STORAGE_KEY, JSON.stringify(outfitFavorites.slice(0, 40)));
@@ -1809,6 +1812,7 @@ export default function MirrorApp() {
     onTryOnResult: (payload) => {
       if (payload.image_url) setFullScreenTryOnUrl(withApiTokenIfProtectedMedia(payload.image_url));
     },
+    onUserSettingsUpdated: applySyncedUserSettings,
     ...deviceHandlers,
     onAuthStateChanged: () => {
       refreshAuth();
