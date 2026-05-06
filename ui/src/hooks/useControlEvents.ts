@@ -7,6 +7,7 @@ import {
   type CalendarUpdatedPayload,
   type DeviceEventPayload,
   type TryOnResultPayload,
+  type UserSettingsPayload,
   parseControlEvent,
 } from './controlEventProtocol';
 
@@ -35,6 +36,7 @@ type ControlEventHandlers = {
 
   onAuthStateChanged?: (payload: AuthStatePayload) => void;
   onCalendarUpdated?: (payload: CalendarUpdatedPayload) => void;
+  onUserSettingsUpdated?: (payload: UserSettingsPayload) => void;
 };
 
 export function useControlEvents(handlers: ControlEventHandlers): void {
@@ -96,6 +98,10 @@ export function useControlEvents(handlers: ControlEventHandlers): void {
         case 'TRYON_RESULT':
           ref.current.onTryOnResult?.(parsed.payload);
           window.dispatchEvent(new CustomEvent('mirror:tryon_result', { detail: parsed.payload }));
+          break;
+        case 'USER_SETTINGS_UPDATED':
+          ref.current.onUserSettingsUpdated?.(parsed.payload);
+          window.dispatchEvent(new CustomEvent('mirror:user_settings_updated', { detail: parsed.payload }));
           break;
         default:
           break;
