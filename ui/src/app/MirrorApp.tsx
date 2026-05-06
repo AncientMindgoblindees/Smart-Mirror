@@ -596,13 +596,26 @@ export default function MirrorApp() {
     if (!selectedClothingImageIds.length) return;
     void cacheClothingAndReport(selectedClothingImageIds, 'Selection');
   }, [cacheClothingAndReport, selectedClothingImageIds]);
+  const tryOnReadyNoticeTimeoutRef = useRef<number | null>(null);
   useEffect(() => {
     const onReady = () => {
       setTryOnReadyNotice('Try-on is ready. Open Virtual Try-On to view.');
-      window.setTimeout(() => setTryOnReadyNotice(null), 6000);
+      if (tryOnReadyNoticeTimeoutRef.current !== null) {
+        window.clearTimeout(tryOnReadyNoticeTimeoutRef.current);
+      }
+      tryOnReadyNoticeTimeoutRef.current = window.setTimeout(() => {
+        setTryOnReadyNotice(null);
+        tryOnReadyNoticeTimeoutRef.current = null;
+      }, 6000);
     };
     window.addEventListener('mirror:tryon_result', onReady);
-    return () => window.removeEventListener('mirror:tryon_result', onReady);
+    return () => {
+      window.removeEventListener('mirror:tryon_result', onReady);
+      if (tryOnReadyNoticeTimeoutRef.current !== null) {
+        window.clearTimeout(tryOnReadyNoticeTimeoutRef.current);
+        tryOnReadyNoticeTimeoutRef.current = null;
+      }
+    };
   }, []);
   const selectedClothingCount = selectedClothingImageIds.length;
   const selectedFavorite = outfitFavorites[selectedFavoriteIndex] ?? null;
