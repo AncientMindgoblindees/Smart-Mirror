@@ -363,6 +363,20 @@ const OUTFIT_CONFIRM_NEW_NO_ID = 'outfit_confirm_new:no';
 const OUTFIT_CONFIRM_NEW_BACK_ID = 'outfit_confirm_new:back';
 const OUTFIT_CONFIRM_NEW_EXIT_ID = 'outfit_confirm_new:exit';
 
+const OUTFIT_CONFIRM_SAVED_ITEMS: MenuOverlayItem[] = [
+  { id: OUTFIT_CONFIRM_SAVED_YES_ID, label: 'Use Saved Image', hint: 'Use your last captured photo' },
+  { id: OUTFIT_CONFIRM_SAVED_NO_ID, label: 'Take New Picture', hint: 'Capture a new photo now' },
+  { id: OUTFIT_CONFIRM_SAVED_BACK_ID, label: 'Back', kind: 'back' },
+  { id: OUTFIT_CONFIRM_SAVED_EXIT_ID, label: 'Exit' },
+];
+
+const OUTFIT_CONFIRM_NEW_ITEMS: MenuOverlayItem[] = [
+  { id: OUTFIT_CONFIRM_NEW_YES_ID, label: 'Yes, Generate Try-On', hint: 'Use this picture' },
+  { id: OUTFIT_CONFIRM_NEW_NO_ID, label: 'Retake Picture', hint: 'Take another photo' },
+  { id: OUTFIT_CONFIRM_NEW_BACK_ID, label: 'Back', kind: 'back' },
+  { id: OUTFIT_CONFIRM_NEW_EXIT_ID, label: 'Exit' },
+];
+
 export default function MirrorApp() {
   const navigate = useNavigate();
   const { widgets, setWidgets } = useWidgetPersistence();
@@ -1087,24 +1101,6 @@ export default function MirrorApp() {
       { id: OUTFIT_FAVORITES_EXIT_ID, label: 'Exit' },
     ];
   }, [outfitFavorites]);
-  const outfitConfirmSavedItems = useMemo<MenuOverlayItem[]>(
-    () => [
-      { id: OUTFIT_CONFIRM_SAVED_YES_ID, label: 'Use Saved Image', hint: 'Use your last captured photo' },
-      { id: OUTFIT_CONFIRM_SAVED_NO_ID, label: 'Take New Picture', hint: 'Capture a new photo now' },
-      { id: OUTFIT_CONFIRM_SAVED_BACK_ID, label: 'Back', kind: 'back' },
-      { id: OUTFIT_CONFIRM_SAVED_EXIT_ID, label: 'Exit' },
-    ],
-    [],
-  );
-  const outfitConfirmNewItems = useMemo<MenuOverlayItem[]>(
-    () => [
-      { id: OUTFIT_CONFIRM_NEW_YES_ID, label: 'Yes, Generate Try-On', hint: 'Use this picture' },
-      { id: OUTFIT_CONFIRM_NEW_NO_ID, label: 'Retake Picture', hint: 'Take another photo' },
-      { id: OUTFIT_CONFIRM_NEW_BACK_ID, label: 'Back', kind: 'back' },
-      { id: OUTFIT_CONFIRM_NEW_EXIT_ID, label: 'Exit' },
-    ],
-    [],
-  );
   const getActionIds = useCallback(
     (
       layer:
@@ -1130,13 +1126,11 @@ export default function MirrorApp() {
       if (layer === 'outfit_panel') return outfitPanelItems.map((item) => item.id);
       if (layer === 'outfit_selection') return outfitSelectionItems.map((item) => item.id);
       if (layer === 'outfit_favorites') return outfitFavoritesItems.map((item) => item.id);
-      if (layer === 'outfit_confirm_saved') return outfitConfirmSavedItems.map((item) => item.id);
-      if (layer === 'outfit_confirm_new') return outfitConfirmNewItems.map((item) => item.id);
+      if (layer === 'outfit_confirm_saved') return OUTFIT_CONFIRM_SAVED_ITEMS.map((item) => item.id);
+      if (layer === 'outfit_confirm_new') return OUTFIT_CONFIRM_NEW_ITEMS.map((item) => item.id);
       return MENU_ACTION_IDS;
     },
     [
-      outfitConfirmNewItems,
-      outfitConfirmSavedItems,
       outfitFavoritesItems,
       outfitPanelItems,
       outfitSelectionItems,
@@ -1722,13 +1716,11 @@ export default function MirrorApp() {
     if (menuNavigation.layer === 'outfit_panel') return outfitPanelItems;
     if (menuNavigation.layer === 'outfit_selection') return outfitSelectionItems;
     if (menuNavigation.layer === 'outfit_favorites') return outfitFavoritesItems;
-    if (menuNavigation.layer === 'outfit_confirm_saved') return outfitConfirmSavedItems;
-    if (menuNavigation.layer === 'outfit_confirm_new') return outfitConfirmNewItems;
+    if (menuNavigation.layer === 'outfit_confirm_saved') return OUTFIT_CONFIRM_SAVED_ITEMS;
+    if (menuNavigation.layer === 'outfit_confirm_new') return OUTFIT_CONFIRM_NEW_ITEMS;
     return MENU_ITEMS;
   }, [
     menuNavigation.layer,
-    outfitConfirmNewItems,
-    outfitConfirmSavedItems,
     outfitFavoritesItems,
     outfitPanelItems,
     outfitSelectionItems,
