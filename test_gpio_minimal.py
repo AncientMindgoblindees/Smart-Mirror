@@ -4,7 +4,8 @@ import os
 import sys
 
 # Ensure we can import from the repo
-sys.path.insert(0, r'C:\Cursor_Projects\Smart-Mirror')
+REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
+sys.path.insert(0, REPO_ROOT)
 
 try:
     # Test 1: Import modules
