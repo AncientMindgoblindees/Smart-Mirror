@@ -1375,8 +1375,7 @@ export default function MirrorApp() {
               if (latestId !== null) {
                 setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${latestId}?t=${Date.now()}`);
               }
-              const useNew = window.confirm('Want to use this picture? (Yes/No)');
-              setTryOnStatus(useNew ? 'Picture captured and selected' : 'Picture captured (not selected)');
+              setTryOnStatus('Picture captured');
               setTryOnBusy(false);
             })
             .catch((error: unknown) => {
