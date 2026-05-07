@@ -3,13 +3,21 @@ import ReactDOM from 'react-dom/client';
 import { AppRouter } from '@/app/AppRouter';
 import '@/index.css';
 
-// Hide cursor immediately, multiple times to ensure it sticks
+// Hide cursor immediately
 document.documentElement.style.cursor = "none";
 document.body.style.cursor = "none";
 const root = document.getElementById('root');
 if (root) root.style.cursor = "none";
 
-// Force it again right before React renders
+// Trigger a mouse move event to force cursor state application
+const mouseMove = new MouseEvent('mousemove', {
+  bubbles: true,
+  cancelable: true,
+  view: window
+});
+document.dispatchEvent(mouseMove);
+
+// Force it again after event
 setTimeout(() => {
   document.documentElement.style.cursor = "none";
   document.body.style.cursor = "none";
