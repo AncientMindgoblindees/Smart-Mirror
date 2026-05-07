@@ -20,9 +20,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export type MirrorInputActions = {
   toggleDim: () => void;
   toggleSleep: () => void;
-  toggleDevPanel: () => void;
   openMenu: () => void;
-  dismissTryOnOverlay: () => void;
   dismissAuthOverlay: () => void;
   getSleepMode: () => boolean;
   isMenuOpen: () => boolean;
@@ -49,11 +47,6 @@ export function useMirrorInput(actions: MirrorInputActions) {
       }
 
       const k = e.key;
-      if (k === 'd' || k === 'D') {
-        e.preventDefault();
-        ref.current.toggleDevPanel();
-        return;
-      }
       if (k === '2') {
         e.preventDefault();
         ref.current.toggleDim();
@@ -66,7 +59,6 @@ export function useMirrorInput(actions: MirrorInputActions) {
       }
       if (k === 'x' || k === 'X') {
         e.preventDefault();
-        ref.current.dismissTryOnOverlay();
         ref.current.dismissAuthOverlay();
       }
     };
@@ -122,7 +114,6 @@ export function useMirrorInput(actions: MirrorInputActions) {
               ref.current.toggleSleep();
               break;
             case 'dismiss_tryon':
-              ref.current.dismissTryOnOverlay();
               ref.current.dismissAuthOverlay();
               break;
             default:

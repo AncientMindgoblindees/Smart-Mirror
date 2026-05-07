@@ -29,6 +29,7 @@ from backend.api import (
     health,
     oauth_provider,
     oauth_web,
+    system,
     tryon,
     user,
     weather,
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(email.router, prefix="/api", dependencies=secure_api)
     app.include_router(events.router)
     app.include_router(clothing.router, prefix="/api", dependencies=secure_api)
+    app.include_router(system.router, prefix="/api", dependencies=secure_api)
     app.include_router(tryon.router, prefix="/api", dependencies=secure_api)
     app.include_router(tryon.public_router, prefix="/api")
     app.include_router(d1_checkpoint.router, prefix="/api", dependencies=secure_api)

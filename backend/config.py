@@ -77,5 +77,5 @@ ALLOW_PI_SHUTDOWN_BUTTON = os.getenv("ALLOW_PI_SHUTDOWN_BUTTON", "0").lower() in
     "true",
     "yes",
 )
-PI_SHUTDOWN_COMMAND = os.getenv("PI_SHUTDOWN_COMMAND", "sudo /sbin/shutdown -h now")
+PI_SHUTDOWN_COMMAND = os.getenv("PI_SHUTDOWN_COMMAND", "sudo poweroff")
 

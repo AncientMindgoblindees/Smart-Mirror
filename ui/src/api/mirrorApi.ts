@@ -127,6 +127,13 @@ export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ statu
   });
 }
 
+export function requestPowerOff(source = 'mirror-menu'): Promise<{ status: string; requested: boolean; source: string }> {
+  return jsonRequest<{ status: string; requested: boolean; source: string }>('/system/poweroff', {
+    method: 'POST',
+    body: JSON.stringify({ source }),
+  });
+}
+
 // ── Auth ────────────────────────────────────────────────────────────
 
 export function getAuthProviders(): Promise<AuthProviderStatus[]> {

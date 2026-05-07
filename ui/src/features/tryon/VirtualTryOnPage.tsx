@@ -497,22 +497,9 @@ export function VirtualTryOnPage() {
       });
     };
 
-    const onOpenResult = (event: Event) => {
-      const detail = (event as CustomEvent<{ image_url?: string }>).detail;
-      const imageUrl = detail?.image_url;
-      if (!imageUrl) return;
-      void normalizeImageToTryOnFrame(imageUrl).then((normalizedUrl) => {
-        setResultImageUrl(normalizedUrl);
-        setShowResult(true);
-        setStatusText('Viewing queued try-on result');
-      });
-    };
-
     window.addEventListener('mirror:tryon_result', onReady as EventListener);
-    window.addEventListener('mirror:tryon_open_result', onOpenResult as EventListener);
     return () => {
       window.removeEventListener('mirror:tryon_result', onReady as EventListener);
-      window.removeEventListener('mirror:tryon_open_result', onOpenResult as EventListener);
     };
   }, []);
 

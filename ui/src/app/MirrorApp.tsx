@@ -9,6 +9,7 @@ import {
   getPersonImages,
   getTryOnGeneration,
   getUserSettings,
+  requestPowerOff,
   putUserSettings,
   triggerCameraCapture,
   updateClothingItem,
@@ -19,10 +20,8 @@ import { applyUserSettings } from '@/userSettings';
 import {
   WidgetFrame,
   useWidgetPersistence,
-  DEV_PANEL_STORAGE_KEY,
   type WidgetConfig,
 } from '@/features/widgets';
-import { ToolsPanel } from '@/features/dev-panel';
 import { CameraOverlay } from '@/features/camera';
 import {
   DeviceConnectionOverlay,
@@ -164,16 +163,6 @@ const THEME_CACHE_SESSION_KEY = 'mirror:theme-selection:session';
 const TRYON_MAX_GENERATE_ATTEMPTS = 2; // initial attempt + 1 retry
 const TRYON_POLL_INTERVAL_MS = 1500;
 const TRYON_POLL_TIMEOUT_MS = 8 * 60 * 1000;
-
-function readDevPanelInitial(): boolean {
-  try {
-    const v = localStorage.getItem(DEV_PANEL_STORAGE_KEY);
-    if (v === 'false') return false;
-  } catch {
-    /* ignore */
-  }
-  return true;
-}
 
 function summarizeCameraError(message: string): string {
   const raw = (message || '').trim();
@@ -379,6 +368,9 @@ const OUTFIT_CONFIRM_NEW_ITEMS: MenuOverlayItem[] = [
 
 export default function MirrorApp() {
   const navigate = useNavigate();
+  const enterSleep = useCallback(() => {
+    navigate('/sleep');
+  }, [navigate]);
   const { widgets, setWidgets } = useWidgetPersistence();
   const {
     showCamera,
@@ -390,8 +382,6 @@ export default function MirrorApp() {
   const captureFlowActiveRef = useRef(false);
   const tryOnPendingSavedIdRef = useRef<number | null>(null);
   const tryOnPendingCapturedIdRef = useRef<number | null>(null);
-  const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
-  const [fullScreenTryOnUrl, setFullScreenTryOnUrl] = useState<string | null>(null);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
   const [pendingWidgetDraft, setPendingWidgetDraft] = useState<WidgetConfig | null>(null);
   const [selectedWidgetThemeId, setSelectedWidgetThemeId] = useState<string>('glass-cyan');
@@ -433,14 +423,7 @@ export default function MirrorApp() {
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
-  const {
-    displayDimmed,
-    sleepMode,
-    sleepModeRef,
-    toggleDim,
-    toggleSleep,
-    setSleepMode,
-  } = useMirrorDisplayMode();
+  const { toggleDim } = useMirrorDisplayMode();
 
   const {
     connectionState,
@@ -799,7 +782,6 @@ export default function MirrorApp() {
         throw new Error(result.error_message ?? 'Try-on generation did not return an image');
       }
       const authedResultUrl = withApiTokenIfProtectedMedia(result.result_image_url);
-      setFullScreenTryOnUrl(authedResultUrl);
       window.dispatchEvent(
         new CustomEvent('mirror:tryon_result', {
           detail: { generation_id: String(result.id), image_url: authedResultUrl },
@@ -1443,7 +1425,6 @@ export default function MirrorApp() {
             setTryOnStatus('No captured picture yet');
             return;
           }
-          setFullScreenTryOnUrl(latestPersonImageUrl);
           setTryOnStatus('Viewing captured picture');
           return;
         }
@@ -1655,29 +1636,26 @@ export default function MirrorApp() {
       }
       if (actionId === 'sleep') {
         closeMenuRef.current();
-        setSleepMode(true);
+        enterSleep();
         logMenu('sleep_enabled', { source: 'mirror-menu' });
         return;
       }
       if (actionId === 'power_down') {
         closeMenuRef.current();
-        if (!displayDimmed) toggleDim();
-        setSleepMode(true);
-        logMenu(
-          'power_down_requested',
-          {
-            mode: 'simulated',
-            behavior: 'display_dimmed_and_sleep_enabled',
-          },
-          'warn',
-        );
+        void requestPowerOff('mirror-menu')
+          .then(() => {
+            logMenu('power_down_requested', { source: 'mirror-menu', command: 'sudo poweroff' }, 'warn');
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : 'Power off request failed';
+            logMenu('power_down_failed', { message }, 'error');
+          });
         return;
       }
       logMenu('action_unhandled', { actionId }, 'warn');
     },
     [
       widgets.length,
-      displayDimmed,
       editingDefinition,
       editingWidget,
       clothingItems,
@@ -1707,9 +1685,9 @@ export default function MirrorApp() {
       setSelectedBackgroundThemeId,
       setSelectedWidgetThemeId,
       setShowCamera,
-      setSleepMode,
       toggleDim,
       widgets,
+      enterSleep,
     ],
   );
   const closeMenuRef = useRef<() => void>(() => {});
@@ -1857,18 +1835,6 @@ export default function MirrorApp() {
     return () => ro.disconnect();
   }, []);
 
-  const toggleDevPanel = useCallback(() => {
-    setShowDevPanel((v) => {
-      const next = !v;
-      try {
-        localStorage.setItem(DEV_PANEL_STORAGE_KEY, String(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
-
   const startDevNativePreview = useCallback(async () => {
     const res = await fetch(`${getApiBase()}/camera/preview/start`, {
       method: 'POST',
@@ -1891,16 +1857,14 @@ export default function MirrorApp() {
 
   useMirrorInput({
     toggleDim,
-    toggleSleep,
-    toggleDevPanel,
+    toggleSleep: enterSleep,
     openMenu: menuNavigation.open,
-    dismissTryOnOverlay: () => setFullScreenTryOnUrl(null),
     dismissAuthOverlay: () => {
       if (pendingAuth) {
         void cancelPendingAuth();
       }
     },
-    getSleepMode: () => sleepModeRef.current,
+    getSleepMode: () => false,
     isMenuOpen: () => menuNavigation.isOpen,
     isInputBlocked: () => menuNavigation.isOpen,
   });
@@ -1936,7 +1900,7 @@ export default function MirrorApp() {
       setShowCamera(false);
     },
     onTryOnResult: (payload) => {
-      if (payload.image_url) setFullScreenTryOnUrl(withApiTokenIfProtectedMedia(payload.image_url));
+      // Notification system handles result display
     },
     onUserSettingsUpdated: applySyncedUserSettings,
     ...deviceHandlers,
@@ -1944,16 +1908,6 @@ export default function MirrorApp() {
       refreshAuth();
     },
   });
-
-  useEffect(() => {
-    const onOpenResult = (event: Event) => {
-      const detail = (event as CustomEvent<{ image_url?: string }>).detail;
-      if (!detail?.image_url) return;
-      setFullScreenTryOnUrl(withApiTokenIfProtectedMedia(detail.image_url));
-    };
-    window.addEventListener('mirror:tryon_open_result', onOpenResult as EventListener);
-    return () => window.removeEventListener('mirror:tryon_open_result', onOpenResult as EventListener);
-  }, []);
 
   const toggleWidget = (id: string) => {
     setWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)));
@@ -1980,35 +1934,6 @@ export default function MirrorApp() {
           ))}
         </AnimatePresence>
       </motion.div>
-
-      {showDevPanel && (
-        <ToolsPanel
-          onToggleCamera={() => {
-            const shouldOpen = !showCamera;
-            if (shouldOpen) {
-              setShowCamera(true);
-              setCameraError(null);
-              void startDevNativePreview()
-                .catch((err: unknown) => {
-                  setCameraError(err instanceof Error ? err.message : 'Native preview failed to start');
-                });
-              return;
-            }
-            setCameraError(null);
-            setShowCamera(false);
-            void stopDevNativePreview();
-          }}
-          onToggleDim={toggleDim}
-          onToggleSleep={toggleSleep}
-          widgets={widgets}
-          onToggleWidget={toggleWidget}
-          authProviders={authProviders}
-          authPending={Boolean(pendingAuth)}
-          authError={authError}
-          onSignInGoogle={signInGoogle}
-          onDisconnectGoogle={disconnectGoogle}
-        />
-      )}
 
       {showCamera && (
         <CameraOverlay
@@ -2048,33 +1973,6 @@ export default function MirrorApp() {
             className="fixed top-20 right-5 z-[110] bg-emerald-500/20 border border-emerald-400/50 rounded-lg px-4 py-2 text-emerald-100 text-xs"
           >
             {tryOnReadyNotice}
-          </motion.div>
-        )}
-        {fullScreenTryOnUrl && (
-          <motion.div
-            className="camera-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="camera-stage">
-              <div className="camera-video-wrap">
-                <img
-                  src={fullScreenTryOnUrl}
-                  className="camera-video"
-                  aria-label="Full-screen virtual try-on result"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              <button
-                type="button"
-                className="camera-exit-btn"
-                onClick={() => setFullScreenTryOnUrl(null)}
-              >
-                <X size={20} /> Hide Try-On
-              </button>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -2176,27 +2074,6 @@ export default function MirrorApp() {
         />
       )}
 
-      <AnimatePresence>
-        {sleepMode && (
-          <motion.div
-            className="mirror-sleep-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
-            aria-hidden="true"
-          >
-            <motion.span
-              className="mirror-sleep-hint"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.8, duration: 1, ease: [0.16, 1, 0.3, 1] }}
-            >
-              Sleep - tap or press any key to wake
-            </motion.span>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
     </TooltipProvider>
   );

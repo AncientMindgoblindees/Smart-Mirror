@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import MirrorApp from '@/app/MirrorApp';
+import { SleepPage } from '@/app/SleepPage';
 import { VirtualTryOnPage } from '@/features/tryon/VirtualTryOnPage';
 import { TryOnNotificationHost } from '@/app/TryOnNotificationHost';
 
@@ -11,6 +12,7 @@ export function AppRouter() {
       <TryOnNotificationHost />
       <Routes>
         <Route path="/" element={<MirrorApp />} />
+        <Route path="/sleep" element={<SleepPage />} />
         <Route path="/virtual-try-on" element={<VirtualTryOnPage />} />
         <Route path="*" element={<MirrorApp />} />
       </Routes>
