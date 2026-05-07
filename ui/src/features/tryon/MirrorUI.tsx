@@ -27,7 +27,7 @@ interface MirrorUIProps {
 }
 
 type NavView = 'CATEGORIES' | 'ITEMS' | 'WARDROBE';
-const CATEGORIES = ['TOP', 'BOTTOM', 'ACCESSORIES'];
+const CATEGORIES = ['TOP', 'BOTTOM', 'HATS', 'SHOES'];
 
 export default function MirrorUI({
   items,
@@ -308,7 +308,7 @@ export default function MirrorUI({
                 <>
                   {favoriteOutfits.map((outfit, index) => (
                     <motion.div
-                      key={`${outfit.TOP?.id ?? 'none'}-${outfit.BOTTOM?.id ?? 'none'}-${outfit.ACCESSORIES?.id ?? 'none'}-${index}`}
+                      key={`${outfit.TOP?.id ?? 'none'}-${outfit.BOTTOM?.id ?? 'none'}-${outfit.HATS?.id ?? 'none'}-${outfit.SHOES?.id ?? 'none'}-${index}`}
                       animate={{ opacity: activeIndex === index ? 1 : 0.3, x: activeIndex === index ? -10 : 0 }}
                       transition={{ duration: 0.15 }}
                       className={`w-48 p-3 rounded-xl border-2 transition-all glass-morphism-dark ${activeIndex === index ? 'border-white text-white' : 'border-white/5 text-white/30'}`}

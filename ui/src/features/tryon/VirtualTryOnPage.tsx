@@ -29,6 +29,7 @@ type ConfirmState = {
   noLabel: string;
 };
 type ConfirmChoice = 'yes' | 'no';
+type SelectionState = Record<string, FashionItem | null>;
 
 const DEFAULT_CONFIRM: ConfirmState = {
   open: false,
@@ -71,13 +72,32 @@ async function normalizeImageToTryOnFrame(sourceUrl: string): Promise<string> {
   });
 }
 
-function readFavoritesInitial(): Record<string, FashionItem | null>[] {
+function normalizeSelectionKeys(selection: SelectionState): SelectionState {
+  const normalized: SelectionState = {
+    TOP: selection.TOP ?? null,
+    BOTTOM: selection.BOTTOM ?? null,
+    HATS: selection.HATS ?? null,
+    SHOES: selection.SHOES ?? null,
+  };
+  const legacyAccessory = selection.ACCESSORIES;
+  if (legacyAccessory?.tryOnSlot === 'hat' && !normalized.HATS) {
+    normalized.HATS = legacyAccessory;
+  }
+  if (legacyAccessory?.tryOnSlot === 'shoes' && !normalized.SHOES) {
+    normalized.SHOES = legacyAccessory;
+  }
+  return normalized;
+}
+
+function readFavoritesInitial(): SelectionState[] {
   try {
     const raw = localStorage.getItem(FAVORITES_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed as Record<string, FashionItem | null>[];
+    return parsed
+      .filter((v): v is SelectionState => typeof v === 'object' && v !== null)
+      .map((selection) => normalizeSelectionKeys(selection));
   } catch {
     return [];
   }
@@ -120,14 +140,15 @@ function tryOnPayloadFromSelection(selection: Record<string, FashionItem | null>
 }
 
 function reconcileSelectedItems(
-  prev: Record<string, FashionItem | null>,
+  prev: SelectionState,
   nextItems: FashionItem[],
-): Record<string, FashionItem | null> {
+): SelectionState {
   const byImageId = new Map<number, FashionItem>(nextItems.map((item) => [item.sourceImageId, item]));
   return {
     TOP: prev.TOP ? byImageId.get(prev.TOP.sourceImageId) ?? null : null,
     BOTTOM: prev.BOTTOM ? byImageId.get(prev.BOTTOM.sourceImageId) ?? null : null,
-    ACCESSORIES: prev.ACCESSORIES ? byImageId.get(prev.ACCESSORIES.sourceImageId) ?? null : null,
+    HATS: prev.HATS ? byImageId.get(prev.HATS.sourceImageId) ?? null : null,
+    SHOES: prev.SHOES ? byImageId.get(prev.SHOES.sourceImageId) ?? null : null,
   };
 }
 
@@ -169,12 +190,13 @@ export function VirtualTryOnPage() {
 
   const navigate = useNavigate();
   const [catalogRows, setCatalogRows] = useState<ClothingItemRead[]>([]);
-  const [selectedItems, setSelectedItems] = useState<Record<string, FashionItem | null>>({
+  const [selectedItems, setSelectedItems] = useState<SelectionState>({
     TOP: null,
     BOTTOM: null,
-    ACCESSORIES: null,
+    HATS: null,
+    SHOES: null,
   });
-  const [favoriteOutfits, setFavoriteOutfits] = useState<Record<string, FashionItem | null>[]>(readFavoritesInitial);
+  const [favoriteOutfits, setFavoriteOutfits] = useState<SelectionState[]>(readFavoritesInitial);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
@@ -521,8 +543,8 @@ export function VirtualTryOnPage() {
     }
   }, [selectedItems]);
 
-  const handleLoadFavorite = useCallback((outfit: Record<string, FashionItem | null>) => {
-    setSelectedItems(outfit);
+  const handleLoadFavorite = useCallback((outfit: SelectionState) => {
+    setSelectedItems(normalizeSelectionKeys(outfit));
     setStatusText('Loaded saved look');
   }, []);
 
