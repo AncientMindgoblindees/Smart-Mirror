@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+xdotool mousemove 0 0
 set -euo pipefail
 
 LOCKFILE="/tmp/smart_mirror.lock"
