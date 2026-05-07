@@ -8,7 +8,7 @@ import subprocess
 from backend import config
 
 logger = logging.getLogger(__name__)
-_DEFAULT_SHUTDOWN_CMD = "sudo /sbin/shutdown -h now"
+_DEFAULT_SHUTDOWN_CMD = "sudo poweroff"
 
 
 def _allowed_shutdown_commands() -> set[str]:

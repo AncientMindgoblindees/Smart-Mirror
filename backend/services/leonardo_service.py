@@ -154,9 +154,15 @@ async def execute_blueprint(node_inputs: list[dict]) -> str:
         message = first_error.get("message", "Leonardo blueprint execution failed")
         details = first_error.get("extensions", {}).get("details", [])
         if details:
-            detail_text = "; ".join(
-                f"{d.get('nodeId')}: {d.get('message')}" for d in details
-            )
+            detail_parts = []
+            for d in details:
+                if isinstance(d, dict):
+                    node_id = d.get("nodeId", "unknown")
+                    node_msg = d.get("message", "no message")
+                    detail_parts.append(f"{node_id}: {node_msg}")
+                else:
+                    detail_parts.append(str(d))
+            detail_text = "; ".join(detail_parts)
             raise HTTPException(status_code=400, detail=f"{message}: {detail_text}")
         raise HTTPException(status_code=400, detail=message)
 
