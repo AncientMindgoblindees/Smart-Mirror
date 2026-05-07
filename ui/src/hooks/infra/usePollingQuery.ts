@@ -51,5 +51,7 @@ export function usePollingQuery<T>(opts: UsePollingQueryOpts<T>): { loading: boo
     return () => window.removeEventListener(eventName, handler);
   }, [opts.refreshEventName, run]);
 
-  return { loading, refresh: () => void run() };
+  const refresh = useCallback(() => void run(), [run]);
+
+  return { loading, refresh };
 }

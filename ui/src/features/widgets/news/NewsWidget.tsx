@@ -6,6 +6,26 @@ import type { NewsHeadlineOut } from '@/api/backendTypes';
 import { estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
 import './news-widget.css';
 
+const DEFAULT_FEED_CATEGORIES = ['general', 'tech', 'business'];
+const CATEGORY_LABELS: Record<string, string> = {
+  business: 'Business',
+  entertainment: 'Entertainment',
+  food: 'Food',
+  general: 'General',
+  health: 'Health',
+  politics: 'Politics',
+  science: 'Science',
+  sports: 'Sports',
+  tech: 'Technology',
+  travel: 'Travel',
+};
+
+type NewsFeedView = {
+  id: string;
+  label: string;
+  headlines: NewsHeadlineOut[];
+};
+
 function formatRelativeMinutes(iso: string): string {
   const ts = Date.parse(iso);
   if (!Number.isFinite(ts)) return 'recently';
@@ -44,8 +64,34 @@ const CATEGORY_COLORS: Record<string, string> = {
   Local: '#fbbf24',
 };
 
+function parseCsv(value: string): string[] {
+  return value
+    .split(',')
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function labelForFeed(category: string, search: string): string {
+  if (category) {
+    return CATEGORY_LABELS[category] ?? category.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  if (search) return 'Search';
+  return 'Top Stories';
+}
+
+function buildFeedRequests(categories: string, search: string): Array<{ id: string; label: string; categories: string }> {
+  const categoryList = parseCsv(categories);
+  const feedCategories = categoryList.length > 0 ? categoryList : search ? [''] : DEFAULT_FEED_CATEGORIES;
+  return feedCategories.map((category, index) => ({
+    id: category || `top-${index}`,
+    label: labelForFeed(category, search),
+    categories: category,
+  }));
+}
+
 export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
-  const [headlines, setHeadlines] = useState<NewsHeadlineOut[]>([]);
+  const [feeds, setFeeds] = useState<NewsFeedView[]>([]);
+  const [feedIndex, setFeedIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,29 +101,51 @@ export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ conf
   const categories = config.categories?.trim() || '';
   const search = config.search?.trim() || '';
   const pageSize = estimatePageSize(config.freeform.width, config.freeform.height);
-  const { pageItems, pageIndex, pageCount } = useDisplayPagination(headlines, pageSize, 8000);
+  const activeFeedIndex = feeds.length > 0 ? feedIndex % feeds.length : 0;
+  const activeFeed = feeds.length > 0 ? feeds[activeFeedIndex] : null;
+  const { pageItems, pageIndex, pageCount } = useDisplayPagination(activeFeed?.headlines ?? [], pageSize, 8000);
 
   const loadNews = useCallback(async () => {
     setError(null);
     try {
-      const feed = await getNews({
-        limit: itemLimit,
-        locale,
-        language,
-        categories,
-        search,
-      });
-      if (!feed.configured) {
-        setHeadlines([]);
+      const settled = await Promise.all(
+        buildFeedRequests(categories, search).map(async (request) => {
+          const feed = await getNews({
+            limit: itemLimit,
+            locale,
+            language,
+            categories: request.categories,
+            search,
+          });
+          return { request, feed };
+        }),
+      );
+
+      if (settled.some((item) => !item.feed.configured)) {
+        setFeeds([]);
         setError('News API is not configured.');
         return;
       }
-      if (!feed.live) {
-        setHeadlines([]);
-        setError(feed.error?.trim() || 'News data is unavailable.');
+
+      const liveFeeds = settled
+        .filter((item) => item.feed.live)
+        .map(
+          (item): NewsFeedView => ({
+            id: item.request.id,
+            label: item.request.label,
+            headlines: item.feed.headlines,
+          }),
+        )
+        .filter((item) => item.headlines.length > 0);
+
+      if (liveFeeds.length === 0) {
+        setFeeds([]);
+        const firstError = settled.find((item) => item.feed.error?.trim())?.feed.error?.trim();
+        setError(firstError || 'News data is unavailable.');
         return;
       }
-      setHeadlines(feed.headlines);
+
+      setFeeds(liveFeeds);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load headlines');
     } finally {
@@ -99,10 +167,23 @@ export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ conf
     return () => window.clearInterval(id);
   }, [loadNews]);
 
+  useEffect(() => {
+    setFeedIndex(0);
+  }, [categories, feeds.length, search]);
+
+  useEffect(() => {
+    if (feeds.length <= 1) return;
+    const id = window.setInterval(() => {
+      setFeedIndex((current) => (current + 1) % feeds.length);
+    }, 10000);
+    return () => window.clearInterval(id);
+  }, [feeds.length]);
+
   return (
     <div className="widget-content news-widget">
       <div className="news-header">
-        <span className="news-header-label">Live Briefing</span>
+        <span className="news-header-label">{activeFeed ? `${activeFeed.label} Briefing` : 'Live Briefing'}</span>
+        {feeds.length > 1 && <span className="news-header-count">{activeFeedIndex + 1}/{feeds.length}</span>}
         <span className="news-header-pulse" aria-hidden="true" />
       </div>
 
@@ -110,12 +191,12 @@ export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ conf
         <SkeletonLoader />
       ) : error ? (
         <div className="news-state">{error}</div>
-      ) : headlines.length === 0 ? (
+      ) : !activeFeed || activeFeed.headlines.length === 0 ? (
         <div className="news-state">No headlines available right now.</div>
       ) : (
         <AnimatePresence mode="wait">
           <motion.ul
-            key={pageIndex}
+            key={`${activeFeed.id}-${pageIndex}`}
             className="news-list"
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}

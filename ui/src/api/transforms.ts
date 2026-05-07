@@ -138,6 +138,15 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
   const format = cj.format === '12h' || cj.format === '24h' ? (cj.format as '12h' | '24h') : undefined;
   const timeFormat =
     cj.timeFormat === '12h' || cj.timeFormat === '24h' ? (cj.timeFormat as '12h' | '24h') : undefined;
+  const view =
+    cj.view === 'day' || cj.view === 'week' || cj.view === 'month'
+      ? (cj.view as 'day' | 'week' | 'month')
+      : undefined;
+  const limit = typeof cj.limit === 'number' && Number.isFinite(cj.limit) ? cj.limit : undefined;
+  const locale = typeof cj.locale === 'string' ? cj.locale : undefined;
+  const language = typeof cj.language === 'string' ? cj.language : undefined;
+  const categories = typeof cj.categories === 'string' ? cj.categories : undefined;
+  const search = typeof cj.search === 'string' ? cj.search : undefined;
   const normalizedType = normalizeWidgetTypeId(w.widget_id);
   return {
     id: `w-${w.id}`,
@@ -159,6 +168,12 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
     ...(unit !== undefined ? { unit } : {}),
     ...(format !== undefined ? { format } : {}),
     ...(timeFormat !== undefined ? { timeFormat } : {}),
+    ...(view !== undefined ? { view } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+    ...(locale !== undefined ? { locale } : {}),
+    ...(language !== undefined ? { language } : {}),
+    ...(categories !== undefined ? { categories } : {}),
+    ...(search !== undefined ? { search } : {}),
   };
 }
 
@@ -187,6 +202,12 @@ export function widgetToBackend(w: WidgetConfig): WidgetConfigUpdate {
   if (w.unit !== undefined) config_json.unit = w.unit;
   if (w.format !== undefined) config_json.format = w.format;
   if (w.timeFormat !== undefined) config_json.timeFormat = w.timeFormat;
+  if (w.view !== undefined) config_json.view = w.view;
+  if (w.limit !== undefined) config_json.limit = w.limit;
+  if (w.locale !== undefined) config_json.locale = w.locale;
+  if (w.language !== undefined) config_json.language = w.language;
+  if (w.categories !== undefined) config_json.categories = w.categories;
+  if (w.search !== undefined) config_json.search = w.search;
   return {
     id: w.backendId ?? undefined,
     widget_id: widgetId,

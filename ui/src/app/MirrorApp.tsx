@@ -77,6 +77,7 @@ function withPreviewMockData(widget: WidgetConfig): WidgetConfig {
     unit: widget.unit ?? 'imperial',
     format: widget.format ?? '12h',
     timeFormat: widget.timeFormat ?? '12h',
+    view: widget.view ?? 'week',
   };
   return {
     ...widget,

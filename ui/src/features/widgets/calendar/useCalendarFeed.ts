@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { usePollingQuery } from '@/hooks/infra/usePollingQuery';
 
@@ -9,6 +9,7 @@ type FeedResponse = {
 type UseCalendarFeedOpts<TResp extends FeedResponse, TItem> = {
   fetcher: () => Promise<TResp>;
   mapItems: (resp: TResp) => TItem[];
+  refreshKey?: string;
 };
 
 export function useCalendarFeed<TResp extends FeedResponse, TItem>(
@@ -20,7 +21,7 @@ export function useCalendarFeed<TResp extends FeedResponse, TItem>(
 } {
   const [items, setItems] = useState<TItem[]>([]);
   const [hasProviders, setHasProviders] = useState(false);
-  const { loading } = usePollingQuery({
+  const { loading, refresh } = usePollingQuery({
     fetcher: opts.fetcher,
     pollMs: 15_000,
     refreshEventName: 'mirror:calendar_updated',
@@ -32,5 +33,11 @@ export function useCalendarFeed<TResp extends FeedResponse, TItem>(
       // keep stale data
     },
   });
+  const previousRefreshKey = useRef(opts.refreshKey);
+  useEffect(() => {
+    if (previousRefreshKey.current === opts.refreshKey) return;
+    previousRefreshKey.current = opts.refreshKey;
+    refresh();
+  }, [opts.refreshKey, refresh]);
   return { items, hasProviders, loading };
 }

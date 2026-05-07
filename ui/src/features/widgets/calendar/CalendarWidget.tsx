@@ -22,6 +22,12 @@ function resolveCalendarPageSize(config: WidgetConfig): number {
   return Math.min(base, cap);
 }
 
+function daysForCalendarView(view: WidgetConfig['view']): number {
+  if (view === 'day') return 1;
+  if (view === 'month') return 30;
+  return 7;
+}
+
 function getRelativeLabel(event: CalendarEventDisplay): string | null {
   if (event.allDay || event.startMs === null) return null;
   const diffMin = Math.round((event.startMs - Date.now()) / 60000);
@@ -39,7 +45,7 @@ const EmptyState: React.FC = () => (
 
 export const CalendarWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
   const timeFormat: CalendarTimeFormat = config.timeFormat === '12h' ? '12h' : '24h';
-  const { events, loading } = useCalendarEvents(timeFormat);
+  const { events, loading } = useCalendarEvents(timeFormat, daysForCalendarView(config.view));
   const pageSize = resolveCalendarPageSize(config);
   const { pageItems, pageIndex, pageCount } = useDisplayPagination<CalendarEventDisplay>(
     events,

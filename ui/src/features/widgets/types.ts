@@ -50,6 +50,8 @@ export interface WidgetConfig {
   format?: '12h' | '24h';
   /** Calendar widget: event time display format persisted in `config_json`. */
   timeFormat?: '12h' | '24h';
+  /** Calendar widget: companion/mirror selectable range. */
+  view?: 'day' | 'week' | 'month';
 }
 
 export interface WidgetMetadata {

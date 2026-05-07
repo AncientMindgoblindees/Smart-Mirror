@@ -9,7 +9,7 @@ export type WidgetParameterOption = {
 
 export type WidgetParameterDefinition = {
   name: string;
-  key: 'enabled' | 'format' | 'sizePreset' | 'unit';
+  key: 'enabled' | 'format' | 'sizePreset' | 'unit' | 'timeFormat' | 'view';
   options: WidgetParameterOption[];
 };
 
@@ -87,9 +87,36 @@ const WEATHER_PARAMETERS: WidgetParametersDefinition = {
   ],
 };
 
+const CALENDAR_PARAMETERS: WidgetParametersDefinition = {
+  id: 'calendar',
+  displayName: 'Calendar',
+  parameters: [
+    DISPLAY_PARAMETER,
+    {
+      name: 'View Mode',
+      key: 'view',
+      options: [
+        { label: 'Day', value: 'day' },
+        { label: 'Week', value: 'week' },
+        { label: 'Month', value: 'month' },
+      ],
+    },
+    {
+      name: 'Time Format',
+      key: 'timeFormat',
+      options: [
+        { label: '12hr', value: '12h' },
+        { label: '24hr', value: '24h' },
+      ],
+    },
+    SIZE_PARAMETER,
+  ],
+};
+
 export const WIDGET_PARAMETERS_MAP: Record<string, WidgetParametersDefinition> = {
   clock: CLOCK_PARAMETERS,
   weather: WEATHER_PARAMETERS,
+  calendar: CALENDAR_PARAMETERS,
 };
 
 function widgetBaseType(type: string): string {
@@ -127,7 +154,12 @@ export function getWidgetDisplayName(type: string): string {
 export function readWidgetParameterValue(widget: WidgetConfig, key: WidgetParameterDefinition['key']): string {
   if (key === 'enabled') return widget.enabled ? 'enabled' : 'disabled';
   if (key === 'format') return widget.format === '12h' ? '12h' : '24h';
+  if (key === 'timeFormat') return widget.timeFormat === '12h' ? '12h' : '24h';
   if (key === 'unit') return widget.unit === 'metric' ? 'metric' : 'imperial';
+  if (key === 'view') {
+    if (widget.view === 'day' || widget.view === 'month') return widget.view;
+    return 'week';
+  }
   const preset = widget.freeform.sizePreset ?? 'medium';
   return preset;
 }
@@ -159,9 +191,26 @@ export function cycleWidgetParameter(
       nextValue,
     };
   }
+  if (parameter.key === 'timeFormat') {
+    return {
+      widget: { ...widget, timeFormat: nextValue === '12h' ? '12h' : '24h' },
+      previousValue,
+      nextValue,
+    };
+  }
   if (parameter.key === 'unit') {
     return {
       widget: { ...widget, unit: nextValue === 'metric' ? 'metric' : 'imperial' },
+      previousValue,
+      nextValue,
+    };
+  }
+  if (parameter.key === 'view') {
+    return {
+      widget: {
+        ...widget,
+        view: nextValue === 'day' || nextValue === 'month' ? nextValue : 'week',
+      },
       previousValue,
       nextValue,
     };

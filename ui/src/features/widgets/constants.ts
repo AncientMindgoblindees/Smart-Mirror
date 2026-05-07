@@ -33,6 +33,10 @@ export const INITIAL_WIDGETS: WidgetConfig[] = [
       model: 'gemini-3-flash',
       endpoint: '/api/integrations/news',
     },
+    limit: 5,
+    locale: 'us',
+    language: 'en',
+    categories: 'general,tech,business',
   },
   {
     id: 'w4',
@@ -40,6 +44,8 @@ export const INITIAL_WIDGETS: WidgetConfig[] = [
     enabled: true,
     grid: { row: 3, col: 3, rowSpan: 2, colSpan: 2 },
     freeform: { x: 56, y: 68, ...WIDGET_SIZE_PRESETS.large, sizePreset: 'large' },
+    view: 'month',
+    timeFormat: '24h',
   },
   {
     id: 'w6',

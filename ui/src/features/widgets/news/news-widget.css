@@ -29,6 +29,13 @@
   animation: livePulse 2s ease-in-out infinite;
 }
 
+.news-header-count {
+  margin-left: auto;
+  color: var(--color-text-label);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+}
+
 @keyframes livePulse {
   0%, 100% { opacity: 0.4; box-shadow: 0 0 0 0 var(--color-accent-glow); }
   50% { opacity: 1; box-shadow: 0 0 8px 2px var(--color-accent-glow); }
