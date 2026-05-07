@@ -1,26 +1,19 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, ChevronUp, Heart, Moon, Palette, Power, QrCode, Shirt, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { Moon, Palette, Power, QrCode, Shirt, Shuffle, SlidersHorizontal, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
-  generateTryOn,
-  getClothingItems,
-  getPersonImages,
   getUserSettings,
+  requestPowerOff,
   putUserSettings,
-  triggerCameraCapture,
-  updateClothingItem,
 } from '@/api/mirrorApi';
-import type { ClothingItemRead } from '@/api/backendTypes';
+import type { UserSettingsOut } from '@/api/backendTypes';
 import { applyUserSettings } from '@/userSettings';
 import {
   WidgetFrame,
   useWidgetPersistence,
-  DEV_PANEL_STORAGE_KEY,
   type WidgetConfig,
 } from '@/features/widgets';
-import { ToolsPanel } from '@/features/dev-panel';
-import { CameraOverlay } from '@/features/camera';
 import {
   DeviceConnectionOverlay,
   useDeviceConnectionState,
@@ -28,15 +21,14 @@ import {
 import { AuthQROverlay, useAuthState } from '@/features/auth';
 import { useControlEvents } from '@/hooks/useControlEvents';
 import { useMirrorInput } from '@/hooks/useMirrorInput';
-import { useMenuNavigation } from '@/hooks/useMenuNavigation';
+import { useMenuNavigation, type MenuNavigationLayer } from '@/hooks/useMenuNavigation';
 import { useTimeOfDay } from '@/hooks/useTimeOfDay';
 import { useParallax } from '@/hooks/useParallax';
+import { shouldUsePerformanceLiteMode } from './performanceMode';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { MenuOverlay, type MenuMainItem, type MenuOverlayItem, type MenuPreviewState } from '@/components/MenuOverlay';
 import { useMirrorDisplayMode } from './hooks/useMirrorDisplayMode';
 import { useAuthActions } from './hooks/useAuthActions';
-import { useOverlayState } from './hooks/useOverlayState';
-import { getApiBase } from '@/config/backendOrigin';
 import {
   cycleWidgetParameter,
   formatWidgetParameterValue,
@@ -55,137 +47,7 @@ import {
 import { randomizeWidgetsOnGrid } from '@/utils/widgetGrid';
 import './mirror-app.css';
 
-type OutfitFavoriteSnapshot = {
-  id: string;
-  name: string;
-  clothingImageIds: number[];
-  createdAt: string;
-};
-
-type ClothingSelectionOption = {
-  imageId: number;
-  itemId: number;
-  itemName: string;
-  category: string;
-  imageUrl: string;
-  favorite: boolean;
-};
-
-type TryOnSlotKey = 'top' | 'bottom' | 'accessories';
-
-function makeMockImage(label: string, color: string): string {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='600' height='400'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='${color}'/><stop offset='100%' stop-color='#111827'/></linearGradient></defs><rect width='100%' height='100%' fill='url(#g)'/><text x='50%' y='52%' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='Arial, sans-serif' font-size='48' font-weight='700'>${label}</text></svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-function mockClothingItems(): ClothingItemRead[] {
-  return [
-    {
-      id: -101,
-      name: 'Mock Hoodie',
-      category: 'top',
-      color: 'charcoal',
-      season: 'all',
-      notes: 'mock',
-      favorite: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      images: [{ id: -1001, clothing_item_id: -101, storage_provider: 'mock', storage_key: 'mock-top-1', image_url: makeMockImage('Top 1', '#0ea5e9'), created_at: new Date().toISOString() }],
-    },
-    {
-      id: -102,
-      name: 'Mock Jacket',
-      category: 'top',
-      color: 'navy',
-      season: 'fall',
-      notes: 'mock',
-      favorite: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      images: [{ id: -1002, clothing_item_id: -102, storage_provider: 'mock', storage_key: 'mock-top-2', image_url: makeMockImage('Top 2', '#2563eb'), created_at: new Date().toISOString() }],
-    },
-    {
-      id: -201,
-      name: 'Mock Jeans',
-      category: 'bottom',
-      color: 'indigo',
-      season: 'all',
-      notes: 'mock',
-      favorite: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      images: [{ id: -2001, clothing_item_id: -201, storage_provider: 'mock', storage_key: 'mock-bottom-1', image_url: makeMockImage('Bottom 1', '#4f46e5'), created_at: new Date().toISOString() }],
-    },
-    {
-      id: -202,
-      name: 'Mock Trousers',
-      category: 'bottom',
-      color: 'black',
-      season: 'all',
-      notes: 'mock',
-      favorite: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      images: [{ id: -2002, clothing_item_id: -202, storage_provider: 'mock', storage_key: 'mock-bottom-2', image_url: makeMockImage('Bottom 2', '#7c3aed'), created_at: new Date().toISOString() }],
-    },
-    {
-      id: -301,
-      name: 'Mock Cap',
-      category: 'accessories',
-      color: 'red',
-      season: 'all',
-      notes: 'mock',
-      favorite: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      images: [{ id: -3001, clothing_item_id: -301, storage_provider: 'mock', storage_key: 'mock-acc-1', image_url: makeMockImage('Accessory 1', '#f43f5e'), created_at: new Date().toISOString() }],
-    },
-    {
-      id: -302,
-      name: 'Mock Bag',
-      category: 'accessories',
-      color: 'tan',
-      season: 'all',
-      notes: 'mock',
-      favorite: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      images: [{ id: -3002, clothing_item_id: -302, storage_provider: 'mock', storage_key: 'mock-acc-2', image_url: makeMockImage('Accessory 2', '#f59e0b'), created_at: new Date().toISOString() }],
-    },
-  ];
-}
-
-const OUTFIT_FAVORITES_STORAGE_KEY = 'mirror:outfit-favorites';
 const THEME_CACHE_SESSION_KEY = 'mirror:theme-selection:session';
-const TRYON_MAX_GENERATE_ATTEMPTS = 2; // initial attempt + 1 retry
-
-function readDevPanelInitial(): boolean {
-  try {
-    const v = localStorage.getItem(DEV_PANEL_STORAGE_KEY);
-    if (v === 'false') return false;
-  } catch {
-    /* ignore */
-  }
-  return true;
-}
-
-function summarizeCameraError(message: string): string {
-  const raw = (message || '').trim();
-  if (!raw) return 'Camera error';
-  const busyHint = /resource busy|pipeline handler in use|failed to acquire camera/i.test(raw);
-  if (!busyHint) {
-    return raw.slice(0, 280);
-  }
-  const mediaMatch = raw.match(/holders-[a-z]+\.holders_media=([^|]+)/i);
-  const backendMatch = raw.match(/holders-[a-z]+\.holders_backend=([^|]+)/i);
-  const media = mediaMatch?.[1]?.trim();
-  const backend = backendMatch?.[1]?.trim();
-  const mediaText = media && media !== 'none' ? `media: ${media.slice(0, 180)}` : '';
-  const backendText = backend && backend !== 'none' ? `backend: ${backend.slice(0, 180)}` : '';
-  const details = [mediaText, backendText].filter(Boolean).join(' | ');
-  if (details) return `Camera busy (${details})`;
-  return 'Camera busy (owned by another process)';
-}
 
 function readThemeSessionCache(): { widgetTheme: string; backgroundTheme: string } | null {
   try {
@@ -205,79 +67,6 @@ function writeThemeSessionCache(widgetTheme: string, backgroundTheme: string): v
   } catch {
     /* ignore */
   }
-}
-
-function readOutfitFavoritesInitial(): OutfitFavoriteSnapshot[] {
-  try {
-    const raw = localStorage.getItem(OUTFIT_FAVORITES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((entry): entry is OutfitFavoriteSnapshot => {
-        if (!entry || typeof entry !== 'object') return false;
-        const candidate = entry as OutfitFavoriteSnapshot;
-        return (
-          typeof candidate.id === 'string' &&
-          typeof candidate.name === 'string' &&
-          Array.isArray(candidate.clothingImageIds) &&
-          typeof candidate.createdAt === 'string'
-        );
-      })
-      .slice(0, 40);
-  } catch {
-    return [];
-  }
-}
-
-function categoryToSlot(category: string): TryOnSlotKey | null {
-  const c = category.trim().toLowerCase();
-  if (!c) return null;
-  if (c.includes('top') || c.includes('shirt') || c.includes('jacket') || c.includes('hoodie') || c.includes('coat')) {
-    return 'top';
-  }
-  if (c.includes('bottom') || c.includes('pants') || c.includes('short') || c.includes('skirt') || c.includes('jean')) {
-    return 'bottom';
-  }
-  if (c.includes('accessor') || c.includes('hat') || c.includes('shoe') || c.includes('bag') || c.includes('glass')) {
-    return 'accessories';
-  }
-  return null;
-}
-
-function categoryToTryOnPayloadKey(category: string, name: string): 'pants_image_id' | 'shirt_image_id' | 'shoes_image_id' | 'hat_image_id' | null {
-  const text = `${category} ${name}`.trim().toLowerCase();
-  if (!text) return null;
-  if (text.includes('shoe') || text.includes('sneaker') || text.includes('boot')) return 'shoes_image_id';
-  if (text.includes('hat') || text.includes('cap') || text.includes('beanie')) return 'hat_image_id';
-  if (text.includes('bottom') || text.includes('pants') || text.includes('short') || text.includes('skirt') || text.includes('jean')) {
-    return 'pants_image_id';
-  }
-  if (text.includes('top') || text.includes('shirt') || text.includes('jacket') || text.includes('hoodie') || text.includes('coat')) {
-    return 'shirt_image_id';
-  }
-  return null;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function prefetchImageUrls(urls: string[]): Promise<void> {
-  const unique = Array.from(new Set(urls.filter((url) => url.trim().length > 0)));
-  await Promise.allSettled(
-    unique.map(
-      (url) =>
-        new Promise<void>((resolve) => {
-          const img = new Image();
-          img.decoding = 'async';
-          img.referrerPolicy = 'no-referrer';
-          img.onload = () => resolve();
-          img.onerror = () => resolve();
-          img.src = url;
-        }),
-    ),
-  );
 }
 
 function withPreviewMockData(widget: WidgetConfig): WidgetConfig {
@@ -329,69 +118,21 @@ const THEME_WIDGET_BACK_ID = 'theme_widget_list:back';
 const THEME_WIDGET_EXIT_ID = 'theme_widget_list:exit';
 const THEME_BACKGROUND_BACK_ID = 'theme_background_list:back';
 const THEME_BACKGROUND_EXIT_ID = 'theme_background_list:exit';
-const OUTFIT_PANEL_TOP_UP_ID = 'outfit_panel:top_up';
-const OUTFIT_PANEL_TOP_DOWN_ID = 'outfit_panel:top_down';
-const OUTFIT_PANEL_BOTTOM_UP_ID = 'outfit_panel:bottom_up';
-const OUTFIT_PANEL_BOTTOM_DOWN_ID = 'outfit_panel:bottom_down';
-const OUTFIT_PANEL_ACCESSORIES_UP_ID = 'outfit_panel:accessories_up';
-const OUTFIT_PANEL_ACCESSORIES_DOWN_ID = 'outfit_panel:accessories_down';
-const OUTFIT_PANEL_FAVORITE_NEXT_ID = 'outfit_panel:favorite_next';
-const OUTFIT_PANEL_LOAD_FAVORITE_ID = 'outfit_panel:favorite_load';
-const OUTFIT_PANEL_SHUFFLE_ID = 'outfit_panel:shuffle';
-const OUTFIT_PANEL_TAKE_PICTURE_ID = 'outfit_panel:take_picture';
-const OUTFIT_PANEL_VIEW_PICTURE_ID = 'outfit_panel:view_picture';
-const OUTFIT_PANEL_GENERATE_ID = 'outfit_panel:generate';
-const OUTFIT_PANEL_SAVE_FAVORITE_ID = 'outfit_panel:save_favorite';
-const OUTFIT_PANEL_BACK_ID = 'outfit_panel:back';
-const OUTFIT_PANEL_EXIT_ID = 'outfit_panel:exit';
-const OUTFIT_SELECTION_BACK_ID = 'outfit_selection:back';
-const OUTFIT_SELECTION_EXIT_ID = 'outfit_selection:exit';
-const OUTFIT_FAVORITES_BACK_ID = 'outfit_favorites:back';
-const OUTFIT_FAVORITES_EXIT_ID = 'outfit_favorites:exit';
 
 export default function MirrorApp() {
   const navigate = useNavigate();
+  const enterSleep = useCallback(() => {
+    navigate('/sleep');
+  }, [navigate]);
   const { widgets, setWidgets } = useWidgetPersistence();
-  const {
-    showCamera,
-    setShowCamera,
-    cameraError,
-    setCameraError,
-  } =
-    useOverlayState();
-  const captureFlowActiveRef = useRef(false);
-  const [showDevPanel, setShowDevPanel] = useState(readDevPanelInitial);
-  const [fullScreenTryOnUrl, setFullScreenTryOnUrl] = useState<string | null>(null);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
   const [pendingWidgetDraft, setPendingWidgetDraft] = useState<WidgetConfig | null>(null);
   const [selectedWidgetThemeId, setSelectedWidgetThemeId] = useState<string>('glass-cyan');
   const [selectedBackgroundThemeId, setSelectedBackgroundThemeId] = useState<string>('noir');
-  const [clothingItems, setClothingItems] = useState<ClothingItemRead[]>([]);
-  const [clothingLoading, setClothingLoading] = useState(false);
-  const [clothingCacheReady, setClothingCacheReady] = useState(false);
-  const [clothingError, setClothingError] = useState<string | null>(null);
-  const [selectedClothingImageIds, setSelectedClothingImageIds] = useState<number[]>([]);
-  const [slotIndices, setSlotIndices] = useState<Record<TryOnSlotKey, number>>({
-    top: 0,
-    bottom: 0,
-    accessories: 0,
-  });
-  const [outfitFavorites, setOutfitFavorites] = useState<OutfitFavoriteSnapshot[]>(readOutfitFavoritesInitial);
-  const [selectedFavoriteIndex, setSelectedFavoriteIndex] = useState(0);
-  const [latestPersonImageUrl, setLatestPersonImageUrl] = useState<string | null>(null);
-  const [tryOnBusy, setTryOnBusy] = useState(false);
-  const [tryOnStatus, setTryOnStatus] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
-  const {
-    displayDimmed,
-    sleepMode,
-    sleepModeRef,
-    toggleDim,
-    toggleSleep,
-    setSleepMode,
-  } = useMirrorDisplayMode();
+  const { toggleDim } = useMirrorDisplayMode();
 
   const {
     connectionState,
@@ -415,7 +156,15 @@ export default function MirrorApp() {
   } = useAuthActions(initiateLogin, disconnectProvider);
 
   useTimeOfDay();
-  const parallax = useParallax();
+  const performanceLiteMode = useMemo(
+    () =>
+      shouldUsePerformanceLiteMode({
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+      }),
+    [],
+  );
+  const parallax = useParallax(!performanceLiteMode);
   const logMenu = useCallback(
     (
       event: string,
@@ -440,6 +189,14 @@ export default function MirrorApp() {
     },
     [],
   );
+  const applySyncedUserSettings = useCallback((settings: UserSettingsOut) => {
+    applyUserSettings(settings);
+    const parsed = parseThemeSelection(settings.theme);
+    setSelectedWidgetThemeId(parsed.widgetTheme);
+    setSelectedBackgroundThemeId(parsed.backgroundTheme);
+    writeThemeSessionCache(parsed.widgetTheme, parsed.backgroundTheme);
+  }, []);
+
   useEffect(() => {
     const cachedTheme = readThemeSessionCache();
     if (cachedTheme) {
@@ -447,318 +204,14 @@ export default function MirrorApp() {
       setSelectedBackgroundThemeId(cachedTheme.backgroundTheme);
     }
     void getUserSettings()
-      .then((settings) => {
-        const parsed = parseThemeSelection(settings.theme);
-        setSelectedWidgetThemeId(parsed.widgetTheme);
-        setSelectedBackgroundThemeId(parsed.backgroundTheme);
-        writeThemeSessionCache(parsed.widgetTheme, parsed.backgroundTheme);
-      })
+      .then(applySyncedUserSettings)
       .catch(() => {
         if (!cachedTheme) {
           setSelectedWidgetThemeId('glass-cyan');
           setSelectedBackgroundThemeId('noir');
         }
       });
-  }, []);
-  useEffect(() => {
-    try {
-      localStorage.setItem(OUTFIT_FAVORITES_STORAGE_KEY, JSON.stringify(outfitFavorites.slice(0, 40)));
-    } catch {
-      /* ignore */
-    }
-  }, [outfitFavorites]);
-  useEffect(() => {
-    setSelectedFavoriteIndex((prev) => {
-      if (outfitFavorites.length <= 0) return 0;
-      return Math.min(prev, outfitFavorites.length - 1);
-    });
-  }, [outfitFavorites]);
-  const clothingOptions = useMemo<ClothingSelectionOption[]>(() => {
-    const out: ClothingSelectionOption[] = [];
-    for (const item of clothingItems) {
-      for (const image of item.images ?? []) {
-        out.push({
-          imageId: image.id,
-          itemId: item.id,
-          itemName: item.name,
-          category: item.category,
-          imageUrl: image.image_url,
-          favorite: item.favorite,
-        });
-      }
-    }
-    return out;
-  }, [clothingItems]);
-  const clothingOptionByImageId = useMemo(() => {
-    const map = new Map<number, ClothingSelectionOption>();
-    for (const option of clothingOptions) {
-      map.set(option.imageId, option);
-    }
-    return map;
-  }, [clothingOptions]);
-  const slotOptions = useMemo<Record<TryOnSlotKey, ClothingSelectionOption[]>>(() => {
-    const grouped: Record<TryOnSlotKey, ClothingSelectionOption[]> = {
-      top: [],
-      bottom: [],
-      accessories: [],
-    };
-    for (const option of clothingOptions) {
-      const slot = categoryToSlot(option.category);
-      if (!slot) continue;
-      grouped[slot].push(option);
-    }
-    return grouped;
-  }, [clothingOptions]);
-  useEffect(() => {
-    setSlotIndices((prev) => ({
-      top: Math.min(prev.top, Math.max(slotOptions.top.length - 1, 0)),
-      bottom: Math.min(prev.bottom, Math.max(slotOptions.bottom.length - 1, 0)),
-      accessories: Math.min(prev.accessories, Math.max(slotOptions.accessories.length - 1, 0)),
-    }));
-  }, [slotOptions]);
-  const selectedSlotItems = useMemo(() => {
-    const selectedTop = slotOptions.top[slotIndices.top] ?? null;
-    const selectedBottom = slotOptions.bottom[slotIndices.bottom] ?? null;
-    const selectedAccessories = slotOptions.accessories[slotIndices.accessories] ?? null;
-    return {
-      top: selectedTop,
-      bottom: selectedBottom,
-      accessories: selectedAccessories,
-    };
-  }, [slotIndices, slotOptions]);
-  useEffect(() => {
-    const ids = [selectedSlotItems.top, selectedSlotItems.bottom, selectedSlotItems.accessories]
-      .filter((item): item is ClothingSelectionOption => item !== null)
-      .map((item) => item.imageId);
-    setSelectedClothingImageIds(ids);
-  }, [selectedSlotItems]);
-  const selectedClothingCount = selectedClothingImageIds.length;
-  const selectedFavorite = outfitFavorites[selectedFavoriteIndex] ?? null;
-  const refreshLatestPersonImage = useCallback(async () => {
-    try {
-      const rows = await getPersonImages();
-      const latest = rows[0];
-      if (!latest) {
-        setLatestPersonImageUrl(null);
-        return;
-      }
-      setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${latest.id}?t=${Date.now()}`);
-    } catch {
-      setLatestPersonImageUrl(null);
-    }
-  }, []);
-  const loadClothingCatalog = useCallback(async () => {
-    setClothingLoading(true);
-    setClothingError(null);
-    setClothingCacheReady(false);
-    try {
-      let rows = await getClothingItems({ includeImages: true });
-      const hasImages = rows.some((item) => (item.images?.length ?? 0) > 0);
-      if (!hasImages) {
-        rows = mockClothingItems();
-        setTryOnStatus('Using mock clothing catalog (Cloudinary empty)');
-      }
-      const imageUrls = rows.flatMap((item) => (item.images ?? []).map((image) => image.image_url));
-      await prefetchImageUrls(imageUrls);
-      setClothingItems(rows);
-      setClothingCacheReady(true);
-      setTryOnStatus((prev) => prev ?? `Loaded ${rows.length} clothing items`);
-    } catch (error: unknown) {
-      const rows = mockClothingItems();
-      const imageUrls = rows.flatMap((item) => (item.images ?? []).map((image) => image.image_url));
-      await prefetchImageUrls(imageUrls);
-      setClothingItems(rows);
-      setTryOnStatus('Using mock clothing catalog (Cloudinary unavailable)');
-      setClothingError(null);
-      setClothingCacheReady(true);
-    } finally {
-      setClothingLoading(false);
-    }
-  }, []);
-  const shuffleOutfitSelection = useCallback(() => {
-    const hasAny = slotOptions.top.length || slotOptions.bottom.length || slotOptions.accessories.length;
-    if (!hasAny) {
-      setTryOnStatus('No clothing images available to shuffle');
-      return;
-    }
-    setSlotIndices({
-      top: slotOptions.top.length ? Math.floor(Math.random() * slotOptions.top.length) : 0,
-      bottom: slotOptions.bottom.length ? Math.floor(Math.random() * slotOptions.bottom.length) : 0,
-      accessories: slotOptions.accessories.length ? Math.floor(Math.random() * slotOptions.accessories.length) : 0,
-    });
-    setTryOnStatus('Shuffled outfit slots');
-    logMenu('outfit_shuffled');
-  }, [logMenu, slotOptions]);
-  const cycleSlot = useCallback(
-    (slot: TryOnSlotKey, direction: -1 | 1) => {
-      const total = slotOptions[slot].length;
-      if (total <= 0) return;
-      setSlotIndices((prev) => {
-        const current = prev[slot] ?? 0;
-        const next = direction === 1 ? (current + 1) % total : (current - 1 + total) % total;
-        return { ...prev, [slot]: next };
-      });
-    },
-    [slotOptions],
-  );
-  const loadFavoriteSnapshot = useCallback(
-    (favorite: OutfitFavoriteSnapshot) => {
-      setSlotIndices((prev) => {
-        const next = { ...prev };
-        for (const imageId of favorite.clothingImageIds) {
-          const option = clothingOptionByImageId.get(imageId);
-          if (!option) continue;
-          const slot = categoryToSlot(option.category);
-          if (!slot) continue;
-          const idx = slotOptions[slot].findIndex((entry) => entry.imageId === imageId);
-          if (idx >= 0) {
-            next[slot] = idx;
-          }
-        }
-        return next;
-      });
-      setTryOnStatus(`Loaded favorite: ${favorite.name}`);
-    },
-    [clothingOptionByImageId, slotOptions],
-  );
-  const saveSelectedOutfitAsFavorite = useCallback(async () => {
-    if (!selectedClothingImageIds.length) {
-      setTryOnStatus('Select clothing before saving favorite');
-      return;
-    }
-    const now = new Date();
-    const snapshot: OutfitFavoriteSnapshot = {
-      id: `fav-${now.getTime()}`,
-      name: `Favorite ${now.toLocaleString()}`,
-      clothingImageIds: [...selectedClothingImageIds],
-      createdAt: now.toISOString(),
-    };
-    setOutfitFavorites((prev) => [snapshot, ...prev].slice(0, 40));
-    const itemIds = Array.from(
-      new Set(
-        selectedClothingImageIds
-          .map((imageId) => clothingOptionByImageId.get(imageId)?.itemId)
-          .filter((value): value is number => typeof value === 'number'),
-      ),
-    );
-    try {
-      if (itemIds.length > 0) {
-        await Promise.all(itemIds.map((itemId) => updateClothingItem(itemId, { favorite: true })));
-        setClothingItems((prev) =>
-          prev.map((item) => (itemIds.includes(item.id) ? { ...item, favorite: true } : item)),
-        );
-      }
-      setTryOnStatus(`Saved favorite outfit (${selectedClothingImageIds.length} items)`);
-      logMenu('outfit_favorite_saved', { imageCount: selectedClothingImageIds.length, itemCount: itemIds.length });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Could not save favorite flag';
-      setTryOnStatus(message);
-      logMenu('outfit_favorite_save_failed', { message }, 'error');
-    }
-  }, [clothingOptionByImageId, selectedClothingImageIds, logMenu]);
-  const runSelectedOutfitTryOn = useCallback(async () => {
-    if (!selectedClothingImageIds.length) {
-      setTryOnStatus('Select clothing before generating try-on');
-      return;
-    }
-    setTryOnBusy(true);
-    setTryOnStatus('Capturing image...');
-    try {
-      let baselineLatestId: number | null = null;
-      try {
-        const existing = await getPersonImages();
-        baselineLatestId = existing[0]?.id ?? null;
-      } catch {
-        baselineLatestId = null;
-      }
-      captureFlowActiveRef.current = true;
-      setShowCamera(true);
-      setCameraError(null);
-      await triggerCameraCapture({
-        countdown_seconds: 3,
-        source: 'virtual-try-on-menu',
-        session_id: `virtual-tryon-${Date.now()}`,
-      });
-      const deadline = Date.now() + 45000;
-      let captureDetected = false;
-      let capturedLatestId: number | null = null;
-      while (Date.now() < deadline) {
-        const rows = await getPersonImages();
-        const latestId = rows[0]?.id ?? null;
-        if (latestId !== null && (baselineLatestId === null || latestId > baselineLatestId)) {
-          captureDetected = true;
-          capturedLatestId = latestId;
-          break;
-        }
-        await sleep(1000);
-      }
-      if (!captureDetected) {
-        throw new Error('Camera capture did not complete in time');
-      }
-      if (capturedLatestId !== null) {
-        setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${capturedLatestId}?t=${Date.now()}`);
-      }
-      setTryOnStatus('Generating virtual try-on...');
-      let lastError: unknown = null;
-      let result: Awaited<ReturnType<typeof generateTryOn>> | null = null;
-      for (let attempt = 1; attempt <= TRYON_MAX_GENERATE_ATTEMPTS; attempt += 1) {
-        try {
-          if (capturedLatestId === null) {
-            throw new Error('No captured person image id was available');
-          }
-          const payload = {
-            person_image_id: capturedLatestId,
-            pants_image_id: null as number | null,
-            shirt_image_id: null as number | null,
-            shoes_image_id: null as number | null,
-            hat_image_id: null as number | null,
-          };
-          for (const imageId of selectedClothingImageIds) {
-            const option = clothingOptionByImageId.get(imageId);
-            if (!option) continue;
-            const key = categoryToTryOnPayloadKey(option.category, option.itemName);
-            if (key) payload[key] = imageId;
-          }
-          result = await generateTryOn(payload);
-          break;
-        } catch (error: unknown) {
-          lastError = error;
-          if (attempt >= TRYON_MAX_GENERATE_ATTEMPTS) {
-            break;
-          }
-          setTryOnStatus(`Try-on failed (attempt ${attempt}). Retrying once...`);
-          await sleep(1500);
-        }
-      }
-      if (!result) {
-        const message =
-          lastError instanceof Error
-            ? `Virtual try-on failed after ${TRYON_MAX_GENERATE_ATTEMPTS} attempts: ${lastError.message}`
-            : `Virtual try-on failed after ${TRYON_MAX_GENERATE_ATTEMPTS} attempts`;
-        throw new Error(message);
-      }
-      if (!result.result_image_url) {
-        throw new Error(result.error_message ?? 'Try-on generation did not return an image');
-      }
-      setFullScreenTryOnUrl(result.result_image_url);
-      window.dispatchEvent(
-        new CustomEvent('mirror:tryon_result', {
-          detail: { generation_id: String(result.id), image_url: result.result_image_url },
-        }),
-      );
-      setTryOnStatus('Virtual try-on ready');
-      logMenu('outfit_tryon_generated', {
-        generationId: result.id,
-        selectedCount: selectedClothingImageIds.length,
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Try-on generation failed';
-      setTryOnStatus(message);
-      logMenu('outfit_tryon_failed', { message }, 'error');
-    } finally {
-      setTryOnBusy(false);
-    }
-  }, [clothingOptionByImageId, logMenu, selectedClothingImageIds, setCameraError, setShowCamera]);
+  }, [applySyncedUserSettings]);
   const randomizeWidgets = useCallback(() => {
     let summary:
       | {
@@ -867,150 +320,17 @@ export default function MirrorApp() {
     ],
     [selectedBackgroundThemeId],
   );
-  const outfitPanelItems = useMemo<MenuOverlayItem[]>(
-    () => [
-      {
-        id: OUTFIT_PANEL_TOP_UP_ID,
-        label: 'Top Up',
-        hint: clothingError
-          ? `Load error: ${clothingError}`
-          : clothingLoading
-            ? 'Loading + caching...'
-            : !clothingCacheReady && clothingOptions.length > 0
-              ? 'Caching images...'
-              : selectedSlotItems.top?.itemName ?? 'No top item',
-      },
-      { id: OUTFIT_PANEL_TOP_DOWN_ID, label: 'Top Down', hint: 'Cycle top items' },
-      { id: OUTFIT_PANEL_BOTTOM_UP_ID, label: 'Bottom Up', hint: selectedSlotItems.bottom?.itemName ?? 'No bottom item' },
-      { id: OUTFIT_PANEL_BOTTOM_DOWN_ID, label: 'Bottom Down', hint: 'Cycle bottom items' },
-      { id: OUTFIT_PANEL_ACCESSORIES_UP_ID, label: 'Accessories Up', hint: selectedSlotItems.accessories?.itemName ?? 'No accessory item' },
-      { id: OUTFIT_PANEL_ACCESSORIES_DOWN_ID, label: 'Accessories Down', hint: 'Cycle accessories' },
-      { id: OUTFIT_PANEL_SAVE_FAVORITE_ID, label: 'Favorite', icon: Heart, hint: `${outfitFavorites.length} saved` },
-      {
-        id: OUTFIT_PANEL_FAVORITE_NEXT_ID,
-        label: 'Favorite Selector',
-        hint: selectedFavorite ? selectedFavorite.name : 'No favorites',
-      },
-      {
-        id: OUTFIT_PANEL_LOAD_FAVORITE_ID,
-        label: 'Load Favorite',
-        hint: selectedFavorite ? `${selectedFavorite.clothingImageIds.length} items` : 'Save first',
-      },
-      { id: OUTFIT_PANEL_SHUFFLE_ID, label: 'Randomize', icon: Shuffle, hint: 'Random by slot' },
-      { id: OUTFIT_PANEL_TAKE_PICTURE_ID, label: 'Take Picture', hint: 'Capture person image only' },
-      {
-        id: OUTFIT_PANEL_VIEW_PICTURE_ID,
-        label: 'View Picture',
-        hint: latestPersonImageUrl ? 'Show captured picture overlay' : 'Take picture first',
-      },
-      {
-        id: OUTFIT_PANEL_GENERATE_ID,
-        label: tryOnBusy ? 'Generating...' : 'Generate',
-        icon: Sparkles,
-        hint: tryOnStatus ?? `${selectedClothingCount} selected`,
-      },
-      { id: OUTFIT_PANEL_BACK_ID, label: 'Back', kind: 'back' },
-      { id: OUTFIT_PANEL_EXIT_ID, label: 'Exit' },
-    ],
-    [
-      clothingCacheReady,
-      clothingError,
-      clothingLoading,
-      clothingOptions.length,
-      outfitFavorites.length,
-      latestPersonImageUrl,
-      selectedFavorite,
-      selectedClothingCount,
-      selectedSlotItems.accessories,
-      selectedSlotItems.bottom,
-      selectedSlotItems.top,
-      tryOnBusy,
-      tryOnStatus,
-    ],
-  );
-  const outfitSelectionItems = useMemo<MenuOverlayItem[]>(() => {
-    if (!clothingCacheReady) {
-      return [
-        {
-          id: 'outfit_selection:caching',
-          label: clothingLoading ? 'Preparing clothing preview...' : 'Load clothing to start',
-          hint: clothingLoading ? 'Caching cloud images' : 'Open Select Clothing again after load',
-        },
-        { id: OUTFIT_SELECTION_BACK_ID, label: 'Back', kind: 'back' },
-        { id: OUTFIT_SELECTION_EXIT_ID, label: 'Exit' },
-      ];
-    }
-    const options: MenuOverlayItem[] = clothingOptions.map((option) => {
-      const selected = selectedClothingImageIds.includes(option.imageId);
-      return {
-        id: `outfit_selection:image:${option.imageId}`,
-        label: `${option.itemName} (${option.category})`,
-        hint: selected ? 'Selected' : option.favorite ? 'Favorited in closet' : `Image ${option.imageId}`,
-        imageUrl: option.imageUrl,
-        selected,
-      };
-    });
-    if (options.length === 0) {
-      options.push({
-        id: 'outfit_selection:empty',
-        label: clothingLoading ? 'Loading clothing...' : 'No clothing images found',
-        hint: 'Add clothing images to continue',
-      });
-    }
-    return [
-      ...options,
-      { id: OUTFIT_SELECTION_BACK_ID, label: 'Back', kind: 'back' },
-      { id: OUTFIT_SELECTION_EXIT_ID, label: 'Exit' },
-    ];
-  }, [clothingCacheReady, clothingLoading, clothingOptions, selectedClothingImageIds]);
-  const outfitFavoritesItems = useMemo<MenuOverlayItem[]>(() => {
-    const options = outfitFavorites.map((favorite) => ({
-      id: `outfit_favorites:load:${favorite.id}`,
-      label: favorite.name,
-      hint: `${favorite.clothingImageIds.length} items`,
-    }));
-    if (options.length === 0) {
-      options.push({
-        id: 'outfit_favorites:empty',
-        label: 'No saved outfit favorites',
-        hint: 'Save an outfit first',
-      });
-    }
-    return [
-      ...options,
-      { id: OUTFIT_FAVORITES_BACK_ID, label: 'Back', kind: 'back' },
-      { id: OUTFIT_FAVORITES_EXIT_ID, label: 'Exit' },
-    ];
-  }, [outfitFavorites]);
   const getActionIds = useCallback(
-    (
-      layer:
-        | 'main'
-        | 'widget_list'
-        | 'parameter_editor'
-        | 'randomize_panel'
-        | 'theme_panel'
-        | 'theme_widget_list'
-        | 'theme_background_list'
-        | 'outfit_panel'
-        | 'outfit_selection'
-        | 'outfit_favorites',
-    ) => {
+    (layer: MenuNavigationLayer) => {
       if (layer === 'widget_list') return widgetListItems.map((item) => item.id);
       if (layer === 'parameter_editor') return parameterEditorItems.map((item) => item.id);
       if (layer === 'randomize_panel') return randomizePanelItems.map((item) => item.id);
       if (layer === 'theme_panel') return themePanelItems.map((item) => item.id);
       if (layer === 'theme_widget_list') return themeWidgetItems.map((item) => item.id);
       if (layer === 'theme_background_list') return themeBackgroundItems.map((item) => item.id);
-      if (layer === 'outfit_panel') return outfitPanelItems.map((item) => item.id);
-      if (layer === 'outfit_selection') return outfitSelectionItems.map((item) => item.id);
-      if (layer === 'outfit_favorites') return outfitFavoritesItems.map((item) => item.id);
       return MENU_ACTION_IDS;
     },
     [
-      outfitFavoritesItems,
-      outfitPanelItems,
-      outfitSelectionItems,
       parameterEditorItems,
       randomizePanelItems,
       themeBackgroundItems,
@@ -1020,34 +340,11 @@ export default function MirrorApp() {
     ],
   );
   const setLayerRef = useRef<(
-    layer:
-      | 'main'
-      | 'widget_list'
-      | 'parameter_editor'
-      | 'randomize_panel'
-      | 'theme_panel'
-      | 'theme_widget_list'
-      | 'theme_background_list'
-      | 'outfit_panel'
-      | 'outfit_selection'
-      | 'outfit_favorites',
+    layer: MenuNavigationLayer,
     options?: { resetIndex?: boolean },
   ) => void>(() => {});
   const handleMenuAction = useCallback(
-    (
-      actionId: string,
-      layer:
-        | 'main'
-        | 'widget_list'
-        | 'parameter_editor'
-        | 'randomize_panel'
-        | 'theme_panel'
-        | 'theme_widget_list'
-        | 'theme_background_list'
-        | 'outfit_panel'
-        | 'outfit_selection'
-        | 'outfit_favorites',
-    ) => {
+    (actionId: string, layer: MenuNavigationLayer) => {
       logMenu('action_invoked', { layer, actionId });
       if (layer === 'widget_list') {
         if (actionId === WIDGET_LIST_BACK_ID) {
@@ -1241,151 +538,6 @@ export default function MirrorApp() {
         return;
       }
 
-      if (layer === 'outfit_panel') {
-        if (actionId === OUTFIT_PANEL_TOP_UP_ID) {
-          cycleSlot('top', -1);
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_TOP_DOWN_ID) {
-          cycleSlot('top', 1);
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_BOTTOM_UP_ID) {
-          cycleSlot('bottom', -1);
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_BOTTOM_DOWN_ID) {
-          cycleSlot('bottom', 1);
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_ACCESSORIES_UP_ID) {
-          cycleSlot('accessories', -1);
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_ACCESSORIES_DOWN_ID) {
-          cycleSlot('accessories', 1);
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_SHUFFLE_ID) {
-          shuffleOutfitSelection();
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_TAKE_PICTURE_ID) {
-          setTryOnBusy(true);
-          setTryOnStatus('Capturing image...');
-          captureFlowActiveRef.current = true;
-          setShowCamera(true);
-          setCameraError(null);
-          void triggerCameraCapture({
-            countdown_seconds: 3,
-            source: 'virtual-try-on-menu',
-            session_id: `virtual-tryon-${Date.now()}`,
-          })
-            .then(async () => {
-              const rows = await getPersonImages().catch(() => []);
-              const latestId = rows[0]?.id ?? null;
-              if (latestId !== null) {
-                setLatestPersonImageUrl(`${getApiBase()}/tryon/person-image/${latestId}?t=${Date.now()}`);
-              }
-              setTryOnStatus('Picture captured');
-              setTryOnBusy(false);
-            })
-            .catch((error: unknown) => {
-              const message = error instanceof Error ? error.message : 'Take picture failed';
-              setTryOnStatus(message);
-              setTryOnBusy(false);
-              logMenu('outfit_take_picture_failed', { message }, 'error');
-            });
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_VIEW_PICTURE_ID) {
-          if (!latestPersonImageUrl) {
-            setTryOnStatus('No captured picture yet');
-            return;
-          }
-          setFullScreenTryOnUrl(latestPersonImageUrl);
-          setTryOnStatus('Viewing captured picture');
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_GENERATE_ID) {
-          void runSelectedOutfitTryOn();
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_SAVE_FAVORITE_ID) {
-          void saveSelectedOutfitAsFavorite();
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_FAVORITE_NEXT_ID) {
-          if (!outfitFavorites.length) {
-            setTryOnStatus('No favorites saved yet');
-            return;
-          }
-          setSelectedFavoriteIndex((prev) => (prev + 1) % outfitFavorites.length);
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_LOAD_FAVORITE_ID) {
-          if (!selectedFavorite) {
-            setTryOnStatus('No favorite selected');
-            return;
-          }
-          loadFavoriteSnapshot(selectedFavorite);
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_BACK_ID) {
-          setLayerRef.current('main', { resetIndex: false });
-          return;
-        }
-        if (actionId === OUTFIT_PANEL_EXIT_ID) {
-          closeMenuRef.current();
-          return;
-        }
-        return;
-      }
-
-      if (layer === 'outfit_selection') {
-        if (actionId === OUTFIT_SELECTION_BACK_ID) {
-          setLayerRef.current('outfit_panel', { resetIndex: false });
-          return;
-        }
-        if (actionId === OUTFIT_SELECTION_EXIT_ID) {
-          closeMenuRef.current();
-          return;
-        }
-        if (actionId.startsWith('outfit_selection:image:')) {
-          const imageId = Number(actionId.replace('outfit_selection:image:', ''));
-          if (!Number.isFinite(imageId)) return;
-          setSelectedClothingImageIds((prev) => {
-            if (prev.includes(imageId)) {
-              return prev.filter((id) => id !== imageId);
-            }
-            return [...prev, imageId];
-          });
-          return;
-        }
-        return;
-      }
-
-      if (layer === 'outfit_favorites') {
-        if (actionId === OUTFIT_FAVORITES_BACK_ID) {
-          setLayerRef.current('outfit_panel', { resetIndex: false });
-          return;
-        }
-        if (actionId === OUTFIT_FAVORITES_EXIT_ID) {
-          closeMenuRef.current();
-          return;
-        }
-        if (actionId.startsWith('outfit_favorites:load:')) {
-          const favoriteId = actionId.replace('outfit_favorites:load:', '');
-          const found = outfitFavorites.find((entry) => entry.id === favoriteId);
-          if (!found) return;
-          setSelectedClothingImageIds(found.clothingImageIds);
-          setTryOnStatus(`Loaded ${found.name}`);
-          setLayerRef.current('outfit_panel', { resetIndex: false });
-          return;
-        }
-        return;
-      }
-
       if (actionId === 'exit') {
         setEditingWidgetId(null);
         setPendingWidgetDraft(null);
@@ -1450,45 +602,31 @@ export default function MirrorApp() {
       }
       if (actionId === 'sleep') {
         closeMenuRef.current();
-        setSleepMode(true);
+        enterSleep();
         logMenu('sleep_enabled', { source: 'mirror-menu' });
         return;
       }
       if (actionId === 'power_down') {
         closeMenuRef.current();
-        if (!displayDimmed) toggleDim();
-        setSleepMode(true);
-        logMenu(
-          'power_down_requested',
-          {
-            mode: 'simulated',
-            behavior: 'display_dimmed_and_sleep_enabled',
-          },
-          'warn',
-        );
+        void requestPowerOff('mirror-menu')
+          .then(() => {
+            logMenu('power_down_requested', { source: 'mirror-menu', command: 'sudo poweroff' }, 'warn');
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : 'Power off request failed';
+            logMenu('power_down_failed', { message }, 'error');
+          });
         return;
       }
       logMenu('action_unhandled', { actionId }, 'warn');
     },
     [
       widgets.length,
-      displayDimmed,
       editingDefinition,
       editingWidget,
-      clothingItems,
-      clothingLoading,
-      loadClothingCatalog,
-      refreshLatestPersonImage,
       pendingWidgetDraft,
       logMenu,
-      outfitFavorites,
-      latestPersonImageUrl,
-      selectedFavorite,
-      loadFavoriteSnapshot,
       randomizeWidgets,
-      runSelectedOutfitTryOn,
-      saveSelectedOutfitAsFavorite,
-      shuffleOutfitSelection,
       navigate,
       initiateLogin,
       disconnectGoogle,
@@ -1496,13 +634,11 @@ export default function MirrorApp() {
       selectedBackgroundThemeId,
       selectedWidgetThemeId,
       setAuthError,
-      setCameraError,
       setSelectedBackgroundThemeId,
       setSelectedWidgetThemeId,
-      setShowCamera,
-      setSleepMode,
       toggleDim,
       widgets,
+      enterSleep,
     ],
   );
   const closeMenuRef = useRef<() => void>(() => {});
@@ -1519,15 +655,9 @@ export default function MirrorApp() {
     if (menuNavigation.layer === 'theme_panel') return themePanelItems;
     if (menuNavigation.layer === 'theme_widget_list') return themeWidgetItems;
     if (menuNavigation.layer === 'theme_background_list') return themeBackgroundItems;
-    if (menuNavigation.layer === 'outfit_panel') return outfitPanelItems;
-    if (menuNavigation.layer === 'outfit_selection') return outfitSelectionItems;
-    if (menuNavigation.layer === 'outfit_favorites') return outfitFavoritesItems;
     return MENU_ITEMS;
   }, [
     menuNavigation.layer,
-    outfitFavoritesItems,
-    outfitPanelItems,
-    outfitSelectionItems,
     parameterEditorItems,
     randomizePanelItems,
     themeBackgroundItems,
@@ -1554,10 +684,7 @@ export default function MirrorApp() {
       menuNavigation.layer === 'randomize_panel' ||
       menuNavigation.layer === 'theme_panel' ||
       menuNavigation.layer === 'theme_widget_list' ||
-      menuNavigation.layer === 'theme_background_list' ||
-      menuNavigation.layer === 'outfit_panel' ||
-      menuNavigation.layer === 'outfit_selection' ||
-      menuNavigation.layer === 'outfit_favorites'
+      menuNavigation.layer === 'theme_background_list'
     ) {
       return null;
     }
@@ -1591,13 +718,7 @@ export default function MirrorApp() {
               ? 'WIDGET THEMES'
               : menuNavigation.layer === 'theme_background_list'
                 ? 'BACKGROUND THEMES'
-                : menuNavigation.layer === 'outfit_panel'
-                  ? 'VIRTUAL TRY-ON'
-                  : menuNavigation.layer === 'outfit_selection'
-                    ? 'SELECT CLOTHING'
-                    : menuNavigation.layer === 'outfit_favorites'
-                      ? 'OUTFIT FAVORITES'
-                      : 'RANDOMIZE';
+                : 'RANDOMIZE';
   const prevMenuOpenRef = useRef<boolean>(false);
   useEffect(() => {
     if (prevMenuOpenRef.current !== menuNavigation.isOpen) {
@@ -1642,85 +763,25 @@ export default function MirrorApp() {
     return () => ro.disconnect();
   }, []);
 
-  const toggleDevPanel = useCallback(() => {
-    setShowDevPanel((v) => {
-      const next = !v;
-      try {
-        localStorage.setItem(DEV_PANEL_STORAGE_KEY, String(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
-
-  const startDevNativePreview = useCallback(async () => {
-    const res = await fetch(`${getApiBase()}/camera/preview/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: 'mirror-dev-panel' }),
-    });
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => ({}))) as { detail?: string };
-      throw new Error(payload.detail || `Preview start failed (${res.status})`);
-    }
-  }, []);
-
-  const stopDevNativePreview = useCallback(async () => {
-    await fetch(`${getApiBase()}/camera/preview/stop`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: 'mirror-dev-panel' }),
-    }).catch(() => {});
-  }, []);
-
   useMirrorInput({
     toggleDim,
-    toggleSleep,
-    toggleDevPanel,
-    dismissTryOnOverlay: () => setFullScreenTryOnUrl(null),
+    toggleSleep: enterSleep,
+    openMenu: menuNavigation.open,
     dismissAuthOverlay: () => {
       if (pendingAuth) {
         void cancelPendingAuth();
       }
     },
-    getSleepMode: () => sleepModeRef.current,
+    getSleepMode: () => false,
+    isMenuOpen: () => menuNavigation.isOpen,
     isInputBlocked: () => menuNavigation.isOpen,
   });
 
   useControlEvents({
     onCameraLoadingStarted: () => {
-      captureFlowActiveRef.current = false;
-      setShowCamera(false);
-      setCameraError(null);
       navigate('/virtual-try-on');
     },
-    onCameraLoadingReady: () => {
-      setShowCamera(false);
-      setCameraError(null);
-    },
-    onCameraCountdownStarted: () => {
-      captureFlowActiveRef.current = false;
-      setShowCamera(false);
-      setCameraError(null);
-    },
-    onCameraCountdownTick: () => {
-      captureFlowActiveRef.current = false;
-      setShowCamera(false);
-    },
-    onCameraCaptured: () => {
-      captureFlowActiveRef.current = false;
-      setCameraError(null);
-      setShowCamera(false);
-    },
-    onCameraError: (message) => {
-      captureFlowActiveRef.current = false;
-      setCameraError(summarizeCameraError(message));
-      setShowCamera(false);
-    },
-    onTryOnResult: (payload) => {
-      if (payload.image_url) setFullScreenTryOnUrl(payload.image_url);
-    },
+    onUserSettingsUpdated: applySyncedUserSettings,
     ...deviceHandlers,
     onAuthStateChanged: () => {
       refreshAuth();
@@ -1733,7 +794,7 @@ export default function MirrorApp() {
 
   return (
     <TooltipProvider delayDuration={400}>
-      <div className="mirror-shell">
+      <div className={`mirror-shell${performanceLiteMode ? ' performance-lite' : ''}`}>
         <div className="mirror-ambient-layer" aria-hidden="true" />
 
       <motion.div
@@ -1748,80 +809,10 @@ export default function MirrorApp() {
       >
         <AnimatePresence mode="popLayout">
           {activeWidgets.map((w) => (
-            <WidgetFrame key={w.id} config={w} canvasRect={canvasRect} />
+            <WidgetFrame key={w.id} config={w} canvasRect={canvasRect} disableAnimations={performanceLiteMode} />
           ))}
         </AnimatePresence>
       </motion.div>
-
-      {showDevPanel && (
-        <ToolsPanel
-          onToggleCamera={() => {
-            const shouldOpen = !showCamera;
-            if (shouldOpen) {
-              setShowCamera(true);
-              setCameraError(null);
-              void startDevNativePreview()
-                .catch((err: unknown) => {
-                  setCameraError(err instanceof Error ? err.message : 'Native preview failed to start');
-                });
-              return;
-            }
-            setCameraError(null);
-            setShowCamera(false);
-            void stopDevNativePreview();
-          }}
-          onToggleDim={toggleDim}
-          onToggleSleep={toggleSleep}
-          widgets={widgets}
-          onToggleWidget={toggleWidget}
-          authProviders={authProviders}
-          authPending={Boolean(pendingAuth)}
-          authError={authError}
-          onSignInGoogle={signInGoogle}
-          onDisconnectGoogle={disconnectGoogle}
-        />
-      )}
-
-      {showCamera && (
-        <CameraOverlay
-          errorMessage={cameraError}
-          onClose={() => {
-            setCameraError(null);
-            setShowCamera(false);
-            void stopDevNativePreview();
-          }}
-        />
-      )}
-
-      <AnimatePresence>
-        {fullScreenTryOnUrl && (
-          <motion.div
-            className="camera-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="camera-stage">
-              <div className="camera-video-wrap">
-                <img
-                  src={fullScreenTryOnUrl}
-                  className="camera-video"
-                  aria-label="Full-screen virtual try-on result"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              <button
-                type="button"
-                className="camera-exit-btn"
-                onClick={() => setFullScreenTryOnUrl(null)}
-              >
-                <X size={20} /> Hide Try-On
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <DeviceConnectionOverlay
         state={connectionState}
@@ -1835,111 +826,24 @@ export default function MirrorApp() {
         }}
       />
 
-      {menuNavigation.isOpen && menuNavigation.layer === 'outfit_panel' ? (
-        <div className="virtual-tryon-overlay" role="dialog" aria-modal="true" aria-label="Virtual try-on menu">
-          <div className="virtual-tryon-panel">
-            <header className="virtual-tryon-title">Virtual Try-On Menu</header>
-            <div className="virtual-tryon-layout">
-              <div className="virtual-tryon-camera-col">
-                <div className="virtual-tryon-camera-preview">
-                  {latestPersonImageUrl ? (
-                    <img src={latestPersonImageUrl} alt="Stored camera photo" referrerPolicy="no-referrer" />
-                  ) : (
-                    <span>Stored camera photo</span>
-                  )}
-                </div>
-                <div className="virtual-tryon-actions">
-                  <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_SAVE_FAVORITE_ID ? ' is-active' : ''}`}>Favorite</button>
-                  <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_SHUFFLE_ID ? ' is-active' : ''}`}>Randomize</button>
-                  <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_TAKE_PICTURE_ID ? ' is-active' : ''}`}>Take Picture</button>
-                  <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_VIEW_PICTURE_ID ? ' is-active' : ''}`}>View Picture</button>
-                  <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_GENERATE_ID ? ' is-active' : ''}`}>Generate</button>
-                </div>
-                <div className="virtual-tryon-favorite-picker">
-                  <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_FAVORITE_NEXT_ID ? ' is-active' : ''}`}>Favorite Selector</button>
-                  <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_LOAD_FAVORITE_ID ? ' is-active' : ''}`}>Load Favorite</button>
-                  <div className="virtual-tryon-favorite-name">
-                    {selectedFavorite ? selectedFavorite.name : 'No favorites yet'}
-                  </div>
-                </div>
-              </div>
-              <div className="virtual-tryon-slots">
-                <div className="virtual-tryon-slot-row">
-                  <div className="virtual-tryon-arrows">
-                    <button type="button" className={`virtual-tryon-arrow${activeActionId === OUTFIT_PANEL_TOP_UP_ID ? ' is-active' : ''}`}><ChevronUp size={26} /></button>
-                    <button type="button" className={`virtual-tryon-arrow${activeActionId === OUTFIT_PANEL_TOP_DOWN_ID ? ' is-active' : ''}`}><ChevronDown size={26} /></button>
-                  </div>
-                  <div className="virtual-tryon-preview">
-                    {selectedSlotItems.top?.imageUrl ? <img src={selectedSlotItems.top.imageUrl} alt="Top clothing preview" referrerPolicy="no-referrer" /> : <span>No top item</span>}
-                  </div>
-                </div>
-                <div className="virtual-tryon-slot-row">
-                  <div className="virtual-tryon-arrows">
-                    <button type="button" className={`virtual-tryon-arrow${activeActionId === OUTFIT_PANEL_BOTTOM_UP_ID ? ' is-active' : ''}`}><ChevronUp size={26} /></button>
-                    <button type="button" className={`virtual-tryon-arrow${activeActionId === OUTFIT_PANEL_BOTTOM_DOWN_ID ? ' is-active' : ''}`}><ChevronDown size={26} /></button>
-                  </div>
-                  <div className="virtual-tryon-preview">
-                    {selectedSlotItems.bottom?.imageUrl ? <img src={selectedSlotItems.bottom.imageUrl} alt="Bottom clothing preview" referrerPolicy="no-referrer" /> : <span>No bottom item</span>}
-                  </div>
-                </div>
-                <div className="virtual-tryon-slot-row">
-                  <div className="virtual-tryon-arrows">
-                    <button type="button" className={`virtual-tryon-arrow${activeActionId === OUTFIT_PANEL_ACCESSORIES_UP_ID ? ' is-active' : ''}`}><ChevronUp size={26} /></button>
-                    <button type="button" className={`virtual-tryon-arrow${activeActionId === OUTFIT_PANEL_ACCESSORIES_DOWN_ID ? ' is-active' : ''}`}><ChevronDown size={26} /></button>
-                  </div>
-                  <div className="virtual-tryon-preview">
-                    {selectedSlotItems.accessories?.imageUrl ? <img src={selectedSlotItems.accessories.imageUrl} alt="Accessories clothing preview" referrerPolicy="no-referrer" /> : <span>No accessories item</span>}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="virtual-tryon-status">{tryOnStatus ?? (clothingLoading ? 'Loading Cloudinary clothing...' : 'Ready')}</div>
-            <div className="virtual-tryon-footer">
-              <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_BACK_ID ? ' is-active' : ''}`}>Back</button>
-              <button type="button" className={`virtual-tryon-action${activeActionId === OUTFIT_PANEL_EXIT_ID ? ' is-active' : ''}`}>Exit</button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <MenuOverlay
-          isOpen={menuNavigation.isOpen}
-          layer={menuNavigation.layer}
-          title={menuTitle}
-          activeIndex={menuNavigation.activeIndex}
-          items={currentMenuItems}
-          preview={menuPreview}
-          previewWidgetThemeId={selectedWidgetThemeId}
-          previewBackgroundThemeId={selectedBackgroundThemeId}
-          compactTopRight={
-            menuNavigation.layer === 'randomize_panel' ||
-            menuNavigation.layer === 'theme_panel' ||
-            menuNavigation.layer === 'theme_widget_list' ||
-            menuNavigation.layer === 'theme_background_list'
-          }
-        />
-      )}
+      <MenuOverlay
+        isOpen={menuNavigation.isOpen}
+        layer={menuNavigation.layer}
+        title={menuTitle}
+        activeIndex={menuNavigation.activeIndex}
+        items={currentMenuItems}
+        preview={menuPreview}
+        previewWidgetThemeId={selectedWidgetThemeId}
+        previewBackgroundThemeId={selectedBackgroundThemeId}
+        compactTopRight={
+          menuNavigation.layer === 'randomize_panel' ||
+          menuNavigation.layer === 'theme_panel' ||
+          menuNavigation.layer === 'theme_widget_list' ||
+          menuNavigation.layer === 'theme_background_list'
+        }
+        performanceLiteMode={performanceLiteMode}
+      />
 
-      <AnimatePresence>
-        {sleepMode && (
-          <motion.div
-            className="mirror-sleep-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
-            aria-hidden="true"
-          >
-            <motion.span
-              className="mirror-sleep-hint"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.8, duration: 1, ease: [0.16, 1, 0.3, 1] }}
-            >
-              Sleep - tap or press any key to wake
-            </motion.span>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
     </TooltipProvider>
   );

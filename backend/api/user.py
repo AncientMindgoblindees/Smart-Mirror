@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -5,9 +7,35 @@ from backend.database.models import UserSettings
 from backend.database.session import get_db
 from backend.schemas.user import UserSettingsCreate, UserSettingsOut, UserSettingsUpdate
 from backend.services import user_service
+from backend.services.realtime import control_registry
 
 
 router = APIRouter(prefix="/user", tags=["user"])
+
+
+def _settings_payload(settings: UserSettings) -> dict:
+    return {
+        "id": settings.id,
+        "theme": settings.theme,
+        "primary_font_size": settings.primary_font_size,
+        "accent_color": settings.accent_color,
+        "created_at": settings.created_at.isoformat(),
+        "updated_at": settings.updated_at.isoformat(),
+    }
+
+
+async def _broadcast_settings_updated(settings: UserSettings, source: str) -> None:
+    await control_registry.broadcast(
+        {
+            "type": "USER_SETTINGS_UPDATED",
+            "version": 2,
+            "timestamp": datetime.utcnow().isoformat(),
+            "payload": {
+                "source": source,
+                "settings": _settings_payload(settings),
+            },
+        }
+    )
 
 
 @router.get(
@@ -24,11 +52,13 @@ def get_user_settings(db: Session = Depends(get_db)) -> UserSettingsOut:
     response_model=UserSettingsOut,
     summary="Update user display settings",
 )
-def put_user_settings(
+async def put_user_settings(
     updates: UserSettingsUpdate,
     db: Session = Depends(get_db),
 ) -> UserSettingsOut:
-    return user_service.update_user_settings(db, updates)
+    settings = user_service.update_user_settings(db, updates)
+    await _broadcast_settings_updated(settings, source="api")
+    return settings
 
 
 @router.post(
@@ -36,7 +66,7 @@ def put_user_settings(
     response_model=UserSettingsOut,
     summary="Create user settings singleton if absent",
 )
-def post_user_settings(
+async def post_user_settings(
     payload: UserSettingsCreate,
     db: Session = Depends(get_db),
 ) -> UserSettingsOut:
@@ -49,6 +79,7 @@ def post_user_settings(
             setattr(existing, k, v)
     db.commit()
     db.refresh(existing)
+    await _broadcast_settings_updated(existing, source="api")
     return existing
 
 

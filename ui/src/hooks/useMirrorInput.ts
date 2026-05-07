@@ -2,10 +2,15 @@ import { useEffect, useRef } from 'react';
 
 import { getWebSocketUrl } from '@/config/backendOrigin';
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest('input, textarea, select, [contenteditable="true"]');
+}
+
 /**
  * Keyboard (dev / kiosk testing) + WebSocket `/ws/buttons` (physical GPIO buttons).
  *
- * Keys (when focus is not in an input):
+ * Keys (when focus is not in an input, and menu/overlay hooks consume these):
+ * - ArrowUp / ArrowDown / Enter: menu + mock GPIO navigation
  * - d: toggle tools / dev panel
  * - 2: toggle dim (matches GPIO DISPLAY click → toggle_dim)
  * - 3: toggle screen off / sleep (matches GPIO DISPLAY long-press → toggle_sleep)
@@ -15,10 +20,10 @@ import { getWebSocketUrl } from '@/config/backendOrigin';
 export type MirrorInputActions = {
   toggleDim: () => void;
   toggleSleep: () => void;
-  toggleDevPanel: () => void;
-  dismissTryOnOverlay: () => void;
+  openMenu: () => void;
   dismissAuthOverlay: () => void;
   getSleepMode: () => boolean;
+  isMenuOpen: () => boolean;
   isInputBlocked?: () => boolean;
 };
 
@@ -26,10 +31,13 @@ export function useMirrorInput(actions: MirrorInputActions) {
   const ref = useRef(actions);
   ref.current = actions;
 
+  const dispatchMenuKey = (key: 'ArrowUp' | 'ArrowDown' | 'Enter') => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (isEditableTarget(e.target)) return;
       if (ref.current.isInputBlocked?.()) return;
 
       if (ref.current.getSleepMode()) {
@@ -39,11 +47,6 @@ export function useMirrorInput(actions: MirrorInputActions) {
       }
 
       const k = e.key;
-      if (k === 'd' || k === 'D') {
-        e.preventDefault();
-        ref.current.toggleDevPanel();
-        return;
-      }
       if (k === '2') {
         e.preventDefault();
         ref.current.toggleDim();
@@ -56,7 +59,6 @@ export function useMirrorInput(actions: MirrorInputActions) {
       }
       if (k === 'x' || k === 'X') {
         e.preventDefault();
-        ref.current.dismissTryOnOverlay();
         ref.current.dismissAuthOverlay();
       }
     };
@@ -92,6 +94,19 @@ export function useMirrorInput(actions: MirrorInputActions) {
         try {
           const data = JSON.parse(ev.data as string) as { effect?: string };
           switch (data.effect) {
+            case 'menu_up':
+              dispatchMenuKey('ArrowUp');
+              break;
+            case 'menu_down':
+              dispatchMenuKey('ArrowDown');
+              break;
+            case 'menu_select':
+              if (ref.current.isMenuOpen()) {
+                dispatchMenuKey('Enter');
+              } else {
+                ref.current.openMenu();
+              }
+              break;
             case 'toggle_dim':
               ref.current.toggleDim();
               break;
@@ -99,7 +114,6 @@ export function useMirrorInput(actions: MirrorInputActions) {
               ref.current.toggleSleep();
               break;
             case 'dismiss_tryon':
-              ref.current.dismissTryOnOverlay();
               ref.current.dismissAuthOverlay();
               break;
             default:

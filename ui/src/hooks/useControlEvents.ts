@@ -2,11 +2,13 @@ import { useRef } from 'react';
 
 import { getWebSocketUrl } from '@/config/backendOrigin';
 import { useReconnectingWebSocket } from '@/hooks/infra/useReconnectingWebSocket';
+import { withApiTokenIfProtectedMedia } from '@/api/authMediaUrl';
 import {
   type AuthStatePayload,
   type CalendarUpdatedPayload,
   type DeviceEventPayload,
   type TryOnResultPayload,
+  type UserSettingsPayload,
   parseControlEvent,
 } from './controlEventProtocol';
 
@@ -35,6 +37,7 @@ type ControlEventHandlers = {
 
   onAuthStateChanged?: (payload: AuthStatePayload) => void;
   onCalendarUpdated?: (payload: CalendarUpdatedPayload) => void;
+  onUserSettingsUpdated?: (payload: UserSettingsPayload) => void;
 };
 
 export function useControlEvents(handlers: ControlEventHandlers): void {
@@ -94,8 +97,18 @@ export function useControlEvents(handlers: ControlEventHandlers): void {
           window.dispatchEvent(new CustomEvent('mirror:calendar_updated', { detail: parsed.rawPayload }));
           break;
         case 'TRYON_RESULT':
-          ref.current.onTryOnResult?.(parsed.payload);
-          window.dispatchEvent(new CustomEvent('mirror:tryon_result', { detail: parsed.payload }));
+          {
+            const payload = {
+              ...parsed.payload,
+              image_url: withApiTokenIfProtectedMedia(parsed.payload.image_url),
+            };
+            ref.current.onTryOnResult?.(payload);
+            window.dispatchEvent(new CustomEvent('mirror:tryon_result', { detail: payload }));
+          }
+          break;
+        case 'USER_SETTINGS_UPDATED':
+          ref.current.onUserSettingsUpdated?.(parsed.payload);
+          window.dispatchEvent(new CustomEvent('mirror:user_settings_updated', { detail: parsed.payload }));
           break;
         default:
           break;

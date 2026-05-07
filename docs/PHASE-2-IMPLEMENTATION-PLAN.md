@@ -89,8 +89,8 @@ hardware/
 
 - **`hardware/gpio/config.py`**
   - Defines:
-    - `ButtonId` enum: `LAYOUT`, `UP`, `DOWN`, `DISPLAY`.
-    - `PIN_MAP = {ButtonId.LAYOUT: 17, ButtonId.UP: 27, ButtonId.DOWN: 22, ButtonId.DISPLAY: 23}`.
+    - `ButtonId` enum: `LAYOUT`, `UP`, `DOWN`.
+    - `PIN_MAP = {ButtonId.UP: 17, ButtonId.DOWN: 27, ButtonId.LAYOUT: 22}`.
     - Timing constants: `DEBOUNCE_MS`, `LONG_PRESS_MS`.
   - Keeps **all hardware‑specific details** in one place so they can be documented and changed without touching logic.
 

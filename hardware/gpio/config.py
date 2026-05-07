@@ -1,17 +1,27 @@
-from enum import Enum, auto
+import os
+from enum import Enum
 
 
 class ButtonId(str, Enum):
     LAYOUT = "LAYOUT"
     UP = "UP"
     DOWN = "DOWN"
-    DISPLAY = "DISPLAY"
-    SLEEP = "SLEEP"
-    POWER = "POWER"
 
 
-DEBOUNCE_MS = 30
-LONG_PRESS_MS = 1800
+def _int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+# Keep debounce low enough to accept normal taps while still filtering switch bounce.
+DEBOUNCE_MS = _int_env("GPIO_DEBOUNCE_MS", 80)
+LONG_PRESS_MS = _int_env("GPIO_LONG_PRESS_MS", 1800)
 
 def _load_pin_map() -> dict[ButtonId, int]:
     try:
@@ -20,12 +30,9 @@ def _load_pin_map() -> dict[ButtonId, int]:
         PI_BCM_PIN_MAP = {}
 
     defaults = {
-        ButtonId.LAYOUT: 17,
-        ButtonId.UP: 27,
-        ButtonId.DOWN: 22,
-        ButtonId.DISPLAY: 23,
-        ButtonId.SLEEP: 24,
-        ButtonId.POWER: 25,
+        ButtonId.UP: 17,
+        ButtonId.DOWN: 27,
+        ButtonId.LAYOUT: 22,
     }
 
     out: dict[ButtonId, int] = {}

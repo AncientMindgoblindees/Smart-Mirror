@@ -60,14 +60,21 @@ describe('randomizeWidgetsOnGrid', () => {
     expect(occupied.size).toBe(expectedCellCount);
   });
 
-  it('preserves widget freeform dimensions during randomization', () => {
+  it('expands widget freeform dimensions to fill available space without overlap', () => {
     const widgets = [makeWidget('w1', 44, 28), makeWidget('w2', 32, 20)];
     const before = widgets.map((w) => ({ id: w.id, width: w.freeform.width, height: w.freeform.height }));
     const out = randomizeWidgetsOnGrid(widgets, { rows: 12, cols: 12 });
+    expect(out.summary.resizedPlacements).toBeGreaterThanOrEqual(0);
+    let grewAtLeastOne = false;
     for (const entry of before) {
       const widget = out.widgets.find((w) => w.id === entry.id);
-      expect(widget?.freeform.width).toBe(entry.width);
-      expect(widget?.freeform.height).toBe(entry.height);
+      expect(widget).toBeTruthy();
+      expect(widget!.freeform.width).toBeGreaterThanOrEqual(entry.width);
+      expect(widget!.freeform.height).toBeGreaterThanOrEqual(entry.height);
+      if (widget!.freeform.width > entry.width || widget!.freeform.height > entry.height) {
+        grewAtLeastOne = true;
+      }
     }
+    expect(grewAtLeastOne).toBe(true);
   });
 });

@@ -85,6 +85,20 @@ export function getTryOnGeneration(generationId: number): Promise<TryOnGeneratio
   return jsonRequest<TryOnGenerationRead>(`/tryon/generations/${generationId}`);
 }
 
+export type TryOnCacheResult = {
+  cached_image_ids: number[];
+  cache_hit_image_ids: number[];
+  cloudinary_fetch_image_ids: number[];
+  cache_failed_image_ids: number[];
+};
+
+export function cacheTryOnClothing(imageIds: number[]): Promise<TryOnCacheResult> {
+  return jsonRequest<TryOnCacheResult>('/tryon/cache-clothing', {
+    method: 'POST',
+    body: JSON.stringify({ image_ids: imageIds }),
+  });
+}
+
 export function getPersonImages(): Promise<PersonImageRead[]> {
   return jsonRequest<PersonImageRead[]>('/tryon/person-image');
 }
@@ -110,6 +124,13 @@ export function triggerCameraCapture(req: CameraCaptureRequest): Promise<{ statu
   return jsonRequest<{ status: string }>('/camera/capture', {
     method: 'POST',
     body: JSON.stringify(req),
+  });
+}
+
+export function requestPowerOff(source = 'mirror-menu'): Promise<{ status: string; requested: boolean; source: string }> {
+  return jsonRequest<{ status: string; requested: boolean; source: string }>('/system/poweroff', {
+    method: 'POST',
+    body: JSON.stringify({ source }),
   });
 }
 

@@ -1,14 +1,13 @@
-import asyncio
+import logging
 from typing import AsyncGenerator, Dict
 
 from sqlalchemy.orm import Session
 
-from backend import config
-from backend.services.camera_service import camera_state
-from backend.services.system_power import request_pi_shutdown
 from hardware.gpio.config import ButtonId
 from hardware.gpio.events import ButtonAction, ButtonEvent
 from hardware.gpio import service as gpio_service
+
+logger = logging.getLogger(__name__)
 
 
 async def iter_button_events() -> AsyncGenerator[ButtonEvent, None]:
@@ -24,31 +23,24 @@ def handle_button_event(event: ButtonEvent, db: Session) -> Dict[str, str]:
     """
     effect = "none"
 
-    if event.button_id == ButtonId.LAYOUT and event.action == ButtonAction.CLICK:
-        effect = "cycle_layout"
-    elif (
-        event.button_id.value == config.CAMERA_CAPTURE_BUTTON
-        and event.action == ButtonAction.CLICK
-    ):
-        effect = "capture_photo"
-        asyncio.create_task(
-            camera_state.start_capture(
-                countdown_seconds=config.CAMERA_CAPTURE_COUNTDOWN_SEC,
-                source="gpio-button",
-                session_id=None,
-            )
-        )
-    elif event.button_id == ButtonId.DISPLAY and event.action == ButtonAction.CLICK:
-        effect = "toggle_dim"
-    elif event.button_id == ButtonId.DISPLAY and event.action == ButtonAction.LONG_PRESS:
-        effect = "toggle_sleep"
-    elif event.button_id == ButtonId.SLEEP and event.action == ButtonAction.CLICK:
-        effect = "toggle_sleep"
-    elif event.button_id == ButtonId.POWER and event.action == ButtonAction.CLICK:
-        effect = "system_shutdown"
-        request_pi_shutdown(source="gpio-power-button")
+    if event.button_id == ButtonId.UP and event.action == ButtonAction.CLICK:
+        effect = "menu_up"
     elif event.button_id == ButtonId.DOWN and event.action == ButtonAction.CLICK:
+        effect = "menu_down"
+    elif event.button_id == ButtonId.LAYOUT and event.action in (
+        ButtonAction.CLICK,
+        ButtonAction.LONG_PRESS,
+    ):
+        effect = "menu_select"
+    elif event.button_id == ButtonId.DOWN and event.action == ButtonAction.LONG_PRESS:
         effect = "dismiss_tryon"
+
+    logger.info(
+        "button_event button_id=%s action=%s effect=%s",
+        event.button_id.value,
+        event.action.value,
+        effect,
+    )
 
     return {
         "button_id": event.button_id.value,
@@ -61,5 +53,6 @@ def emit_dev_event(button_id: ButtonId, action: ButtonAction) -> None:
     """
     Local development hook: inject synthetic events without GPIO.
     """
+    logger.info("button_dev_event_injected button_id=%s action=%s", button_id.value, action.value)
     gpio_service.emit_dev_event(button_id, action)
 

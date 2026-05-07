@@ -2,7 +2,9 @@
 @import "tailwindcss";
 @import './styles/tokens.css';
 @import './styles/ambient.css';
-
+html, body, #root {
+  cursor: none !important;
+}
 @layer base {
   *,
   *::before,

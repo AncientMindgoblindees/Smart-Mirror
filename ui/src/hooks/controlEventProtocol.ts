@@ -25,6 +25,15 @@ export type TryOnResultPayload = {
   image_url: string;
 };
 
+export type UserSettingsPayload = {
+  id: number;
+  theme: string;
+  primary_font_size: number;
+  accent_color: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ParsedControlEvent =
   | { type: 'CAMERA_LOADING_STARTED' }
   | { type: 'CAMERA_LOADING_READY' }
@@ -37,6 +46,7 @@ export type ParsedControlEvent =
   | { type: 'AUTH_STATE_CHANGED'; payload: AuthStatePayload; rawPayload: Record<string, unknown> }
   | { type: 'CALENDAR_UPDATED'; payload: CalendarUpdatedPayload; rawPayload: Record<string, unknown> }
   | { type: 'TRYON_RESULT'; payload: TryOnResultPayload }
+  | { type: 'USER_SETTINGS_UPDATED'; payload: UserSettingsPayload; rawPayload: Record<string, unknown> }
   | { type: 'UNKNOWN' };
 
 function readNumber(value: unknown, fallback: number): number {
@@ -110,6 +120,24 @@ export function parseControlEvent(rawText: string): ParsedControlEvent {
             image_url: String(payload.image_url ?? ''),
           },
         };
+      case 'USER_SETTINGS_UPDATED': {
+        const rawSettings = payload.settings;
+        const settings = rawSettings && typeof rawSettings === 'object'
+          ? rawSettings as Record<string, unknown>
+          : payload;
+        return {
+          type: 'USER_SETTINGS_UPDATED',
+          payload: {
+            id: readNumber(settings.id, 0),
+            theme: String(settings.theme ?? 'dark'),
+            primary_font_size: readNumber(settings.primary_font_size, 72),
+            accent_color: String(settings.accent_color ?? '#4a9eff'),
+            created_at: String(settings.created_at ?? ''),
+            updated_at: String(settings.updated_at ?? ''),
+          },
+          rawPayload: payload,
+        };
+      }
       default:
         return { type: 'UNKNOWN' };
     }

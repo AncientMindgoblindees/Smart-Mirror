@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -7,10 +8,13 @@ from sqlalchemy.orm import Session
 from backend.database.models import PersonImage
 from backend.database.session import SessionLocal, get_db
 from backend.schemas.person_image import PersonImageRead
-from backend.schemas.tryon import TryOnGenerationRead, TryOnRequest
+from backend.schemas.tryon import TryOnCacheRequest, TryOnCacheResponse, TryOnCacheStatusResponse, TryOnGenerationRead, TryOnRequest
+from backend.services.realtime import control_registry
 from backend.services import person_image_service, tryon_service
 
 router = APIRouter(prefix="/tryon", tags=["tryon"])
+public_router = APIRouter(prefix="/tryon/public", tags=["tryon-public"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/person-image", response_model=PersonImageRead, status_code=201)
@@ -76,10 +80,48 @@ def get_generation(
     return generation
 
 
+@public_router.get("/generations/{generation_id}/image")
+def get_generation_image_file(generation_id: int):
+    path = tryon_service.get_generation_local_image_path(generation_id)
+    return FileResponse(path)
+
+
+@router.post("/cache-clothing", response_model=TryOnCacheResponse)
+async def cache_clothing(
+    payload: TryOnCacheRequest,
+    db: Session = Depends(get_db),
+):
+    logger.info("tryon_cache endpoint=cache-clothing image_ids=%s", payload.image_ids)
+    result = await tryon_service.cache_clothing_images(db, payload.image_ids)
+    return TryOnCacheResponse(**result)
+
+
+@router.get("/cache-status", response_model=TryOnCacheStatusResponse)
+def get_cache_status():
+    status = tryon_service.get_cache_status()
+    logger.info(
+        "tryon_cache endpoint=cache-status cached_count=%s last_hit=%s last_miss=%s last_failed=%s",
+        status.get("cached_count", 0),
+        status.get("last_cache_hit_count", 0),
+        status.get("last_cloudinary_fetch_count", 0),
+        status.get("last_cache_failed_count", 0),
+    )
+    return TryOnCacheStatusResponse(**status)
+
+
 async def _process_tryon_generation(generation_id: int) -> None:
     db = SessionLocal()
     try:
-        await tryon_service.process_generation(db, generation_id)
+        generation = await tryon_service.process_generation(db, generation_id)
+        await control_registry.broadcast(
+            {
+                "type": "TRYON_RESULT",
+                "payload": {
+                    "generation_id": str(generation.id),
+                    "image_url": generation.result_image_url,
+                },
+            }
+        )
     except Exception:
         # Errors are persisted on the generation row by process_generation.
         pass

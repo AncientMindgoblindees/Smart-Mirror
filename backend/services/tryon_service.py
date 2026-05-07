@@ -2,7 +2,11 @@ import os
 import traceback
 import uuid
 import asyncio
+import shutil
+import logging
+import errno
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -20,8 +24,30 @@ DEFAULT_SHIRT_IMAGE = TRYON_DEFAULTS_DIR / "shirt_blank.jpg"
 DEFAULT_SHOES_IMAGE = TRYON_DEFAULTS_DIR / "shoes_blank.jpg"
 DEFAULT_HAT_IMAGE = TRYON_DEFAULTS_DIR / "hat_blank.jpg"
 MAX_STORED_GENERATIONS = 10
+TRYON_OUTPUT_DIR = BASE_DIR / "data" / "tryon"
+WARDROBE_RUNTIME_CACHE_DIR = BASE_DIR / "data" / "wardrobe_runtime_cache"
 
 _DEFAULT_IMAGE_CACHE: dict[str, str] = {}
+_RUNTIME_CLOTHING_FILE_CACHE: dict[int, str] = {}
+_LAST_CACHE_RESULT: dict[str, list[int]] = {
+    "cache_hit_image_ids": [],
+    "cloudinary_fetch_image_ids": [],
+    "cache_failed_image_ids": [],
+}
+logger = logging.getLogger(__name__)
+
+TRYON_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+WARDROBE_RUNTIME_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _clear_runtime_wardrobe_cache() -> None:
+    for child in WARDROBE_RUNTIME_CACHE_DIR.glob("*"):
+        if child.is_file():
+            child.unlink(missing_ok=True)
+
+
+_clear_runtime_wardrobe_cache()
+_RUNTIME_CLOTHING_FILE_CACHE.clear()
 
 
 def create_generation(db: Session, payload: TryOnRequest) -> TryOnGeneration:
@@ -136,9 +162,8 @@ async def process_generation(db: Session, generation_id: int) -> TryOnGeneration
         db.commit()
         db.refresh(generation)
 
-        output_url = await leonardo_service.get_generated_image_url(
-            leonardo_generation_id
-        )
+        output_url = await leonardo_service.get_generated_image_url(leonardo_generation_id)
+        local_result_path = await _persist_generated_image_local(output_url, generation.id)
 
         upload_result = cloud_storage_service.upload_generated_image(
             output_url,
@@ -148,7 +173,7 @@ async def process_generation(db: Session, generation_id: int) -> TryOnGeneration
         generation.status = "completed"
         generation.result_storage_provider = upload_result["storage_provider"]
         generation.result_storage_key = upload_result["storage_key"]
-        generation.result_image_url = upload_result["image_url"]
+        generation.result_image_url = f"/api/tryon/public/generations/{generation.id}/image"
         generation.error_message = None
 
         db.commit()
@@ -183,8 +208,14 @@ async def _resolve_slot_image_url(
     label: str,
 ) -> str:
     if provided_image is not None:
+        runtime_cached_file = _RUNTIME_CLOTHING_FILE_CACHE.get(provided_image.id)
+        if runtime_cached_file and os.path.exists(runtime_cached_file):
+            logger.info("tryon_cache slot=image_id:%s source=runtime_local path=%s", provided_image.id, runtime_cached_file)
+            return await leonardo_service.upload_init_image(runtime_cached_file)
         if provided_image.leonardo_init_url:
+            logger.info("tryon_cache slot=image_id:%s source=leonardo_url_cache", provided_image.id)
             return provided_image.leonardo_init_url
+        logger.info("tryon_cache slot=image_id:%s source=cloudinary_remote_upload", provided_image.id)
         leonardo_url = await leonardo_service.upload_remote_image(provided_image.image_url)
         provided_image.leonardo_init_url = leonardo_url
         db.commit()
@@ -227,6 +258,114 @@ def get_generation_by_id(db: Session, generation_id: int) -> TryOnGeneration | N
     )
 
 
+def get_generation_local_image_path(generation_id: int) -> Path:
+    base = TRYON_OUTPUT_DIR.resolve()
+    pattern = f"generation-{generation_id}-*"
+    files = sorted(TRYON_OUTPUT_DIR.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not files:
+        raise HTTPException(status_code=404, detail="Generated image not found on disk")
+    image_path = files[0].resolve()
+    try:
+        image_path.relative_to(base)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid generated image path") from exc
+    return image_path
+
+
+async def cache_clothing_images(db: Session, image_ids: list[int]) -> dict[str, list[int]]:
+    cached: list[int] = []
+    hits: list[int] = []
+    fetched: list[int] = []
+    failed: list[int] = []
+    seen: set[int] = set()
+    for image_id in image_ids:
+        if image_id in seen:
+            continue
+        seen.add(image_id)
+        row = db.query(ClothingImage).filter(ClothingImage.id == image_id).first()
+        if row is None:
+            logger.warning("tryon_cache prefetch image_id=%s status=missing_db_row", image_id)
+            continue
+        cached_path = _RUNTIME_CLOTHING_FILE_CACHE.get(row.id)
+        if cached_path and os.path.exists(cached_path):
+            cached.append(row.id)
+            hits.append(row.id)
+            logger.info("tryon_cache prefetch image_id=%s status=hit path=%s", row.id, cached_path)
+            continue
+        try:
+            local_path = await _download_clothing_to_runtime_cache(row.id, row.image_url)
+            _RUNTIME_CLOTHING_FILE_CACHE[row.id] = str(local_path)
+            cached.append(row.id)
+            fetched.append(row.id)
+            logger.info("tryon_cache prefetch image_id=%s status=miss_fetched path=%s url=%s", row.id, local_path, row.image_url)
+        except Exception:
+            failed.append(row.id)
+            logger.exception("tryon_cache prefetch image_id=%s status=failed url=%s", row.id, row.image_url)
+    result = {
+        "cached_image_ids": cached,
+        "cache_hit_image_ids": hits,
+        "cloudinary_fetch_image_ids": fetched,
+        "cache_failed_image_ids": failed,
+    }
+    _LAST_CACHE_RESULT["cache_hit_image_ids"] = list(hits)
+    _LAST_CACHE_RESULT["cloudinary_fetch_image_ids"] = list(fetched)
+    _LAST_CACHE_RESULT["cache_failed_image_ids"] = list(failed)
+    logger.info(
+        "tryon_cache summary requested=%s hit=%s miss_fetched=%s failed=%s cache_dir=%s",
+        len(image_ids),
+        len(hits),
+        len(fetched),
+        len(failed),
+        str(WARDROBE_RUNTIME_CACHE_DIR),
+    )
+    return result
+
+
+def get_cache_status() -> dict[str, object]:
+    valid_cache_ids = sorted(
+        [
+            image_id
+            for image_id, file_path in _RUNTIME_CLOTHING_FILE_CACHE.items()
+            if os.path.exists(file_path)
+        ]
+    )
+    return {
+        "cached_count": len(valid_cache_ids),
+        "cached_image_ids": valid_cache_ids,
+        "last_cache_hit_count": len(_LAST_CACHE_RESULT["cache_hit_image_ids"]),
+        "last_cloudinary_fetch_count": len(_LAST_CACHE_RESULT["cloudinary_fetch_image_ids"]),
+        "last_cache_failed_count": len(_LAST_CACHE_RESULT["cache_failed_image_ids"]),
+        "last_cache_hit_image_ids": list(_LAST_CACHE_RESULT["cache_hit_image_ids"]),
+        "last_cloudinary_fetch_image_ids": list(_LAST_CACHE_RESULT["cloudinary_fetch_image_ids"]),
+        "last_cache_failed_image_ids": list(_LAST_CACHE_RESULT["cache_failed_image_ids"]),
+    }
+
+
+async def _download_clothing_to_runtime_cache(image_id: int, image_url: str) -> Path:
+    temp_path = await leonardo_service.download_remote_image_to_tempfile(image_url)
+    temp_suffix = Path(temp_path).suffix or ".jpg"
+    target_path = WARDROBE_RUNTIME_CACHE_DIR / f"clothing-{image_id}{temp_suffix}"
+    target_path.unlink(missing_ok=True)
+    try:
+        os.replace(temp_path, target_path)
+    except OSError as exc:
+        # EXDEV happens on Linux when /tmp and project data dirs are different mounts.
+        if exc.errno == errno.EXDEV:
+            shutil.copy2(temp_path, target_path)
+            os.unlink(temp_path)
+        else:
+            raise
+    return target_path
+
+
+async def _persist_generated_image_local(image_url: str, generation_id: int) -> Path:
+    suffix = Path(urlparse(image_url).path).suffix or ".png"
+    temp_path = await leonardo_service.download_image(image_url)
+    target_path = TRYON_OUTPUT_DIR / f"generation-{generation_id}-{uuid.uuid4()}{suffix}"
+    shutil.move(temp_path, target_path)
+    return target_path
+
+
 def _enforce_generation_retention(db: Session, keep_latest: int) -> None:
     completed = (
         db.query(TryOnGeneration)
@@ -240,6 +379,11 @@ def _enforce_generation_retention(db: Session, keep_latest: int) -> None:
     )
     stale = completed[keep_latest:]
     for row in stale:
+        try:
+            local_path = get_generation_local_image_path(row.id)
+            local_path.unlink(missing_ok=True)
+        except HTTPException:
+            pass
         if row.result_storage_key:
             try:
                 cloud_storage_service.delete_image(row.result_storage_key)
