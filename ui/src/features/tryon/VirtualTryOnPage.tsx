@@ -237,6 +237,11 @@ export function VirtualTryOnPage() {
     resolve?.(answer);
   }, []);
 
+  const handleExitResult = useCallback(() => {
+    setShowResult(false);
+    setStatusText('Viewer closed');
+  }, []);
+
   useEffect(() => {
     if (!confirmState.open) return;
     const toggleChoice = () => setConfirmChoice((prev) => (prev === 'yes' ? 'no' : 'yes'));
@@ -324,7 +329,11 @@ export function VirtualTryOnPage() {
               dispatchMenuKey('Enter');
               break;
             case 'dismiss_tryon':
-              navigate('/');
+              if (showResult) {
+                handleExitResult();
+              } else {
+                navigate('/');
+              }
               break;
             default:
               break;
@@ -360,7 +369,7 @@ export function VirtualTryOnPage() {
         // ignore websocket close failures
       }
     };
-  }, [navigate]);
+  }, [handleExitResult, navigate, showResult]);
 
   useControlEvents({
     onCameraLoadingStarted: () => {
@@ -471,6 +480,23 @@ export function VirtualTryOnPage() {
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    const completedUrls = queueSnapshot.jobs
+      .filter((job) => job.state === 'completed' && typeof job.imageUrl === 'string' && job.imageUrl.length > 0)
+      .map((job) => job.imageUrl as string);
+    if (!completedUrls.length) return;
+
+    setTryOnHistory((prev) => {
+      let next = prev;
+      for (const url of completedUrls) {
+        if (!next.includes(url)) {
+          next = [url, ...next];
+        }
+      }
+      return next.slice(0, TRYON_HISTORY_LIMIT);
+    });
+  }, [queueSnapshot.jobs]);
 
   useEffect(() => {
     return () => {
@@ -713,6 +739,65 @@ export function VirtualTryOnPage() {
     });
   }, [tryOnHistory, tryOnHistoryIndex]);
 
+  const handlePreviousTryOn = useCallback(() => {
+    if (!tryOnHistory.length) {
+      setStatusText('No generated try-ons yet');
+      return;
+    }
+    const previous = (tryOnHistoryIndex - 1 + tryOnHistory.length) % tryOnHistory.length;
+    setTryOnHistoryIndex(previous);
+    void normalizeImageToTryOnFrame(tryOnHistory[previous]).then((normalizedUrl) => {
+      setResultImageUrl(normalizedUrl);
+      setShowResult(true);
+      setStatusText(`Viewing try-on ${previous + 1}/${tryOnHistory.length}`);
+    });
+  }, [tryOnHistory, tryOnHistoryIndex]);
+
+  useEffect(() => {
+    if (!showResult || confirmState.open) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        handlePreviousTryOn();
+        return;
+      }
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        handleNextTryOn();
+        return;
+      }
+      if (event.key === 'Escape' || event.key.toLowerCase() === 'x') {
+        event.preventDefault();
+        handleExitResult();
+      }
+    };
+
+    const onMockButton = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: string }>).detail;
+      const action = String(detail?.action ?? '').toLowerCase();
+      if (!action) return;
+      if (action === 'up') {
+        handlePreviousTryOn();
+        return;
+      }
+      if (action === 'down') {
+        handleNextTryOn();
+        return;
+      }
+      if (action === 'exit' || action === 'x') {
+        handleExitResult();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('mirror:button', onMockButton as EventListener);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('mirror:button', onMockButton as EventListener);
+    };
+  }, [confirmState.open, handleExitResult, handleNextTryOn, handlePreviousTryOn, showResult]);
+
   const fallbackImage = (Object.values(selectedItems).find((item) => item !== null) as FashionItem | undefined)?.image ?? null;
   const resultImage = resultImageUrl ?? fallbackImage;
 
@@ -734,6 +819,32 @@ export function VirtualTryOnPage() {
               <div className="absolute inset-0 shadow-[inset_0_0_150px_rgba(0,0,0,0.8)]" />
               <div className="absolute top-12 left-1/2 -translate-x-1/2 px-6 py-2 glass-morphism rounded-full border border-blue-500/30">
                 <span className="font-mono text-[10px] uppercase tracking-[0.6em] text-blue-400">Synthesized Environment</span>
+              </div>
+              <div className="absolute right-6 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 rounded-2xl border border-cyan-300/30 bg-black/65 px-3 py-3 backdrop-blur-sm">
+                <button
+                  type="button"
+                  className="rounded-lg border border-cyan-300/50 bg-cyan-400/15 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.24em] text-cyan-100"
+                  onClick={handlePreviousTryOn}
+                >
+                  Up
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-cyan-300/50 bg-cyan-400/15 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.24em] text-cyan-100"
+                  onClick={handleNextTryOn}
+                >
+                  Down
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-white/25 bg-white/10 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.24em] text-white/90"
+                  onClick={handleExitResult}
+                >
+                  Exit
+                </button>
+              </div>
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full border border-white/20 bg-black/60 px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-white/80">
+                {tryOnHistory.length > 0 ? `Try-On ${tryOnHistoryIndex + 1}/${tryOnHistory.length}` : 'Captured Image'}
               </div>
             </motion.div>
           )}
@@ -832,7 +943,7 @@ export function VirtualTryOnPage() {
         statusText={statusText}
         isLocked={isGenerating}
         showResult={showResult}
-        onCloseResult={() => setShowResult(false)}
+        onCloseResult={handleExitResult}
       />
     </main>
   );
