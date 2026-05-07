@@ -10,6 +10,7 @@ import type {
   UserSettingsOut,
   UserSettingsUpdate,
   WeatherSnapshotOut,
+  NewsFeedOut,
   WidgetConfigOut,
   WidgetConfigUpdate,
   ClothingItemRead,
@@ -53,6 +54,24 @@ export function getWeather(opts?: {
   units?: 'metric' | 'imperial';
 }): Promise<WeatherSnapshotOut> {
   return jsonRequest<WeatherSnapshotOut>(withQuery('/weather/', { q: opts?.q, units: opts?.units }));
+}
+
+export function getNews(opts?: {
+  limit?: number;
+  locale?: string;
+  language?: string;
+  categories?: string;
+  search?: string;
+}): Promise<NewsFeedOut> {
+  return jsonRequest<NewsFeedOut>(
+    withQuery('/news/', {
+      limit: opts?.limit,
+      locale: opts?.locale,
+      language: opts?.language,
+      categories: opts?.categories,
+      search: opts?.search,
+    }),
+  );
 }
 
 export function getClothingItems(opts?: {

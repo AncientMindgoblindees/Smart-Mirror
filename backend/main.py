@@ -27,6 +27,7 @@ from backend.api import (
     email,
     events,
     health,
+    news,
     oauth_provider,
     oauth_web,
     system,
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     secure_api = [Depends(require_api_token)]
     app.include_router(widgets.router, prefix="/api", dependencies=secure_api)
     app.include_router(weather.router, prefix="/api", dependencies=secure_api)
+    app.include_router(news.router, prefix="/api", dependencies=secure_api)
     app.include_router(user.router, prefix="/api", dependencies=secure_api)
     app.include_router(health.router, prefix="/api")
     app.include_router(camera.router, prefix="/api", dependencies=secure_api)

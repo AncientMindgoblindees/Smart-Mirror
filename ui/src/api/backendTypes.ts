@@ -81,6 +81,25 @@ export interface WeatherSnapshotOut {
   error?: string | null;
 }
 
+/** GET /api/news/ - TheNewsAPI.com top stories (proxied by backend). */
+export interface NewsHeadlineOut {
+  id: string;
+  title: string;
+  source: string;
+  category: string;
+  published_at: string;
+  url: string;
+  summary?: string | null;
+  image_url?: string | null;
+}
+
+export interface NewsFeedOut {
+  configured: boolean;
+  live: boolean;
+  headlines: NewsHeadlineOut[];
+  error?: string | null;
+}
+
 /** GET/POST /api/clothing/ — matches `ClothingItemRead`. */
 export interface ClothingItemRead {
   id: number;

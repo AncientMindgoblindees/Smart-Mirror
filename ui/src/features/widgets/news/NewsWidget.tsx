@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { WidgetConfig } from '../types';
-import { getNewsHeadlinesPreview, type NewsHeadline } from '@/features/ai/entrypoints';
+import { getNews } from '@/api/mirrorApi';
+import type { NewsHeadlineOut } from '@/api/backendTypes';
 import { estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
 import './news-widget.css';
 
@@ -44,29 +45,45 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
-  const [headlines, setHeadlines] = useState<NewsHeadline[]>([]);
+  const [headlines, setHeadlines] = useState<NewsHeadlineOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const summaryEnabled = Boolean(config?.integration?.provider);
-  const itemLimit = Math.max(3, Math.min(8, Number((config as unknown as Record<string, unknown>)?.limit ?? 5)));
+  const itemLimit = Math.max(1, Math.min(10, Number(config.limit ?? 5)));
+  const locale = config.locale?.trim() || 'us';
+  const language = config.language?.trim() || 'en';
+  const categories = config.categories?.trim() || '';
+  const search = config.search?.trim() || '';
   const pageSize = estimatePageSize(config.freeform.width, config.freeform.height);
   const { pageItems, pageIndex, pageCount } = useDisplayPagination(headlines, pageSize, 8000);
 
   const loadNews = useCallback(async () => {
     setError(null);
     try {
-      const items = await getNewsHeadlinesPreview(itemLimit, {
-        provider: 'mock',
-        includeSummary: summaryEnabled,
+      const feed = await getNews({
+        limit: itemLimit,
+        locale,
+        language,
+        categories,
+        search,
       });
-      setHeadlines(items);
+      if (!feed.configured) {
+        setHeadlines([]);
+        setError('News API is not configured.');
+        return;
+      }
+      if (!feed.live) {
+        setHeadlines([]);
+        setError(feed.error?.trim() || 'News data is unavailable.');
+        return;
+      }
+      setHeadlines(feed.headlines);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load headlines');
     } finally {
       setLoading(false);
     }
-  }, [itemLimit, summaryEnabled]);
+  }, [categories, itemLimit, language, locale, search]);
 
   useEffect(() => {
     let mounted = true;

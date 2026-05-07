@@ -40,6 +40,12 @@ export interface WidgetConfig {
   /** Weather widget: persisted in `config_json` by the companion app. */
   location?: string;
   unit?: 'metric' | 'imperial';
+  /** News widget: TheNewsAPI top story filters persisted in `config_json`. */
+  limit?: number;
+  locale?: string;
+  language?: string;
+  categories?: string;
+  search?: string;
   /** Clock widget: display format persisted in `config_json` by the companion app. */
   format?: '12h' | '24h';
   /** Calendar widget: event time display format persisted in `config_json`. */
