@@ -15,7 +15,6 @@ interface MirrorUIProps {
   onViewPicture: () => void;
   canViewPicture: boolean;
   onViewTryOn: () => void;
-  onNextTryOn: () => void;
   canViewTryOn: boolean;
   tryOnCount: number;
   onGenerate: () => void;
@@ -41,7 +40,6 @@ export default function MirrorUI({
   onViewPicture,
   canViewPicture,
   onViewTryOn,
-  onNextTryOn,
   canViewTryOn,
   tryOnCount,
   onGenerate,
@@ -74,7 +72,7 @@ export default function MirrorUI({
 
       let listSize = 0;
       if (view === 'CATEGORIES') {
-        listSize = CATEGORIES.length + 8; // save + wardrobe + take picture + view picture + view tryon + next tryon + generate + exit
+        listSize = CATEGORIES.length + 7; // save + wardrobe + take picture + view picture + view tryon + generate + exit
       } else if (view === 'ITEMS') {
         listSize = filteredItems.length + 1;
       } else {
@@ -106,10 +104,8 @@ export default function MirrorUI({
             } else if (activeIndex === CATEGORIES.length + 4) {
               onViewTryOn();
             } else if (activeIndex === CATEGORIES.length + 5) {
-              onNextTryOn();
-            } else if (activeIndex === CATEGORIES.length + 6) {
               onGenerate();
-            } else if (activeIndex === CATEGORIES.length + 7) {
+            } else if (activeIndex === CATEGORIES.length + 6) {
               onExit();
             }
           } else if (view === 'ITEMS') {
@@ -150,7 +146,6 @@ export default function MirrorUI({
     onTakePicture,
     onViewPicture,
     onViewTryOn,
-    onNextTryOn,
     onSelectItem,
     onToggleFavorite,
     selectedCategory,
@@ -259,21 +254,14 @@ export default function MirrorUI({
                   <motion.div
                     animate={{ opacity: activeIndex === CATEGORIES.length + 5 ? 1 : 0.3, x: activeIndex === CATEGORIES.length + 5 ? -10 : 0 }}
                     transition={{ duration: 0.15 }}
-                    className={`px-8 py-3 rounded-xl border-2 transition-all font-mono text-[10px] tracking-widest uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 5 ? 'border-white text-white' : 'border-white/5 text-white/30'}`}
-                  >
-                    NEXT TRY-ON
-                  </motion.div>
-                  <motion.div
-                    animate={{ opacity: activeIndex === CATEGORIES.length + 6 ? 1 : 0.3, x: activeIndex === CATEGORIES.length + 6 ? -10 : 0 }}
-                    transition={{ duration: 0.15 }}
-                    className={`px-8 py-4 rounded-xl border-2 transition-all font-mono text-xs tracking-[0.4em] uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 6 ? 'border-blue-500 bg-blue-500/20 text-white shadow-2xl' : 'border-white/5 text-white/30'}`}
+                    className={`px-8 py-4 rounded-xl border-2 transition-all font-mono text-xs tracking-[0.4em] uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 5 ? 'border-blue-500 bg-blue-500/20 text-white shadow-2xl' : 'border-white/5 text-white/30'}`}
                   >
                     GENERATE TRY-ON
                   </motion.div>
                   <motion.div
-                    animate={{ opacity: activeIndex === CATEGORIES.length + 7 ? 1 : 0.3, x: activeIndex === CATEGORIES.length + 7 ? -10 : 0 }}
+                    animate={{ opacity: activeIndex === CATEGORIES.length + 6 ? 1 : 0.3, x: activeIndex === CATEGORIES.length + 6 ? -10 : 0 }}
                     transition={{ duration: 0.15 }}
-                    className={`px-8 py-3 rounded-xl border-2 transition-all font-mono text-[10px] tracking-[0.2em] uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 7 ? 'border-white text-white' : 'border-white/5 text-white/30'}`}
+                    className={`px-8 py-3 rounded-xl border-2 transition-all font-mono text-[10px] tracking-[0.2em] uppercase glass-morphism-dark ${activeIndex === CATEGORIES.length + 6 ? 'border-white text-white' : 'border-white/5 text-white/30'}`}
                   >
                     EXIT TO MIRROR
                   </motion.div>

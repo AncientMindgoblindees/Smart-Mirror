@@ -78,6 +78,7 @@ function withPreviewMockData(widget: WidgetConfig): WidgetConfig {
     format: widget.format ?? '12h',
     timeFormat: widget.timeFormat ?? '12h',
     view: widget.view ?? 'week',
+    mode: widget.mode ?? 'unread_or_high',
   };
   return {
     ...widget,

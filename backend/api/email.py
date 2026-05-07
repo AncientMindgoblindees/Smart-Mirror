@@ -8,7 +8,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from email.utils import parseaddr
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Query
@@ -47,11 +47,23 @@ def _header_value(headers: List[Dict[str, str]], name: str) -> str:
     return ""
 
 
-async def _fetch_google_messages(access_token: str, limit: int) -> List[EmailMessageOut]:
+EmailViewMode = Literal["all", "unread", "high_priority", "unread_or_high"]
+
+
+def _gmail_query_for_mode(mode: EmailViewMode) -> str:
+    if mode == "all":
+        return "in:inbox"
+    if mode == "unread":
+        return "in:inbox is:unread"
+    if mode == "high_priority":
+        return "in:inbox is:important"
+    return "in:inbox (is:unread OR is:important)"
+
+
+async def _fetch_google_messages(access_token: str, limit: int, mode: EmailViewMode) -> List[EmailMessageOut]:
     headers = {"Authorization": f"Bearer {access_token}"}
-    # Unread OR important messages in inbox.
     params = {
-        "q": "in:inbox (is:unread OR is:important)",
+        "q": _gmail_query_for_mode(mode),
         "maxResults": str(min(limit, 50)),
     }
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -101,6 +113,10 @@ async def _fetch_google_messages(access_token: str, limit: int) -> List[EmailMes
 async def get_messages(
     limit: int = Query(20, ge=1, le=50),
     provider: Optional[str] = Query(None),
+    mode: EmailViewMode = Query(
+        "unread_or_high",
+        description="Inbox filter: all, unread, high_priority, or unread_or_high.",
+    ),
 ) -> Any:
     connected = auth_manager.get_connected_providers()
     active_names = [
@@ -117,7 +133,7 @@ async def get_messages(
             return []
         try:
             if name == "google":
-                return await _fetch_google_messages(token, limit)
+                return await _fetch_google_messages(token, limit, mode)
         except Exception:
             logger.exception("Email fetch failed for provider=%s", name)
         return []

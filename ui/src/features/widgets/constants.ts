@@ -53,6 +53,9 @@ export const INITIAL_WIDGETS: WidgetConfig[] = [
     enabled: true,
     grid: { row: 2, col: 3, rowSpan: 1, colSpan: 1 },
     freeform: { x: 56, y: 42, ...WIDGET_SIZE_PRESETS.medium, sizePreset: 'medium' },
+    limit: 8,
+    mode: 'unread_or_high',
+    timeFormat: '24h',
   },
 ];
 

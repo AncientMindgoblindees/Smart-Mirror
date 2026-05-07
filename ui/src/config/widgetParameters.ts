@@ -9,7 +9,7 @@ export type WidgetParameterOption = {
 
 export type WidgetParameterDefinition = {
   name: string;
-  key: 'enabled' | 'format' | 'sizePreset' | 'unit' | 'timeFormat' | 'view';
+  key: 'enabled' | 'format' | 'sizePreset' | 'unit' | 'timeFormat' | 'view' | 'mode';
   options: WidgetParameterOption[];
 };
 
@@ -113,10 +113,38 @@ const CALENDAR_PARAMETERS: WidgetParametersDefinition = {
   ],
 };
 
+const EMAIL_PARAMETERS: WidgetParametersDefinition = {
+  id: 'email',
+  displayName: 'Email',
+  parameters: [
+    DISPLAY_PARAMETER,
+    {
+      name: 'View Mode',
+      key: 'mode',
+      options: [
+        { label: 'Unread + Important', value: 'unread_or_high' },
+        { label: 'Unread', value: 'unread' },
+        { label: 'Important', value: 'high_priority' },
+        { label: 'All Inbox', value: 'all' },
+      ],
+    },
+    {
+      name: 'Time Format',
+      key: 'timeFormat',
+      options: [
+        { label: '12hr', value: '12h' },
+        { label: '24hr', value: '24h' },
+      ],
+    },
+    SIZE_PARAMETER,
+  ],
+};
+
 export const WIDGET_PARAMETERS_MAP: Record<string, WidgetParametersDefinition> = {
   clock: CLOCK_PARAMETERS,
   weather: WEATHER_PARAMETERS,
   calendar: CALENDAR_PARAMETERS,
+  email: EMAIL_PARAMETERS,
 };
 
 function widgetBaseType(type: string): string {
@@ -159,6 +187,10 @@ export function readWidgetParameterValue(widget: WidgetConfig, key: WidgetParame
   if (key === 'view') {
     if (widget.view === 'day' || widget.view === 'month') return widget.view;
     return 'week';
+  }
+  if (key === 'mode') {
+    if (widget.mode === 'all' || widget.mode === 'unread' || widget.mode === 'high_priority') return widget.mode;
+    return 'unread_or_high';
   }
   const preset = widget.freeform.sizePreset ?? 'medium';
   return preset;
@@ -211,6 +243,17 @@ export function cycleWidgetParameter(
         ...widget,
         view: nextValue === 'day' || nextValue === 'month' ? nextValue : 'week',
       },
+      previousValue,
+      nextValue,
+    };
+  }
+  if (parameter.key === 'mode') {
+    const nextMode =
+      nextValue === 'all' || nextValue === 'unread' || nextValue === 'high_priority'
+        ? nextValue
+        : 'unread_or_high';
+    return {
+      widget: { ...widget, mode: nextMode },
       previousValue,
       nextValue,
     };

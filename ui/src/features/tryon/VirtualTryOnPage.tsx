@@ -935,7 +935,6 @@ export function VirtualTryOnPage() {
         onViewPicture={handleViewPicture}
         canViewPicture={!!capturedImageUrl}
         onViewTryOn={handleViewTryOn}
-        onNextTryOn={handleNextTryOn}
         canViewTryOn={tryOnHistory.length > 0}
         tryOnCount={tryOnHistory.length}
         onGenerate={handleGenerate}

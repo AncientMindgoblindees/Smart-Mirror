@@ -59,4 +59,28 @@ describe('widgetParameters', () => {
     const nextTime = cycleWidgetParameter(calendarWidget, timeParam);
     expect(nextTime.widget.timeFormat).toBe('12h');
   });
+
+  it('exposes email view and time format controls', () => {
+    const def = getWidgetParametersForType('email');
+    expect(def?.parameters.some((p) => p.key === 'mode')).toBe(true);
+    expect(def?.parameters.some((p) => p.key === 'timeFormat')).toBe(true);
+
+    const emailWidget: WidgetConfig = {
+      ...BASE_WIDGET,
+      type: 'email',
+      mode: 'unread_or_high',
+      timeFormat: '24h',
+    };
+    const modeParam = def?.parameters.find((p) => p.key === 'mode');
+    const timeParam = def?.parameters.find((p) => p.key === 'timeFormat');
+    expect(modeParam).toBeTruthy();
+    expect(timeParam).toBeTruthy();
+    if (!modeParam || !timeParam) return;
+
+    const nextMode = cycleWidgetParameter(emailWidget, modeParam);
+    expect(nextMode.widget.mode).toBe('unread');
+
+    const nextTime = cycleWidgetParameter(emailWidget, timeParam);
+    expect(nextTime.widget.timeFormat).toBe('12h');
+  });
 });

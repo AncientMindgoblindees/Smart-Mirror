@@ -21,7 +21,10 @@ function resolveEmailPageSize(config: WidgetConfig): number {
 }
 
 export const EmailWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
-  const { messages, hasProviders, loading } = useEmailMessages();
+  const mode = config.mode ?? 'unread_or_high';
+  const timeFormat = config.timeFormat === '12h' ? '12h' : '24h';
+  const limit = Math.max(1, Math.min(50, Number(config.limit ?? 24)));
+  const { messages, hasProviders, loading } = useEmailMessages({ limit, mode, timeFormat });
   const pageSize = resolveEmailPageSize(config);
   const { pageItems, pageIndex, pageCount } = useDisplayPagination<EmailDisplay>(messages, pageSize, 7000);
 

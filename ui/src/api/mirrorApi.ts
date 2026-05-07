@@ -197,8 +197,9 @@ export function getCalendarTasks(opts?: {
 export function getEmailMessages(opts?: {
   provider?: string;
   limit?: number;
+  mode?: 'all' | 'unread' | 'high_priority' | 'unread_or_high';
 }): Promise<EmailMessagesResponse> {
   return jsonRequest<EmailMessagesResponse>(
-    withQuery('/email/messages', { provider: opts?.provider, limit: opts?.limit }),
+    withQuery('/email/messages', { provider: opts?.provider, limit: opts?.limit, mode: opts?.mode }),
   );
 }

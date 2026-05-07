@@ -8,6 +8,8 @@ export interface WidgetIntegrationConfig {
   feature?: string;
 }
 
+export type EmailViewMode = 'all' | 'unread' | 'high_priority' | 'unread_or_high';
+
 export interface WidgetConfig {
   /** Stable client id (includes backend id when synced: `w-<dbId>`). */
   id: string;
@@ -52,6 +54,8 @@ export interface WidgetConfig {
   timeFormat?: '12h' | '24h';
   /** Calendar widget: companion/mirror selectable range. */
   view?: 'day' | 'week' | 'month';
+  /** Email widget: inbox filter persisted in `config_json`. */
+  mode?: EmailViewMode;
 }
 
 export interface WidgetMetadata {

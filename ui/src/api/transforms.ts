@@ -147,6 +147,10 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
   const language = typeof cj.language === 'string' ? cj.language : undefined;
   const categories = typeof cj.categories === 'string' ? cj.categories : undefined;
   const search = typeof cj.search === 'string' ? cj.search : undefined;
+  const mode =
+    cj.mode === 'all' || cj.mode === 'unread' || cj.mode === 'high_priority' || cj.mode === 'unread_or_high'
+      ? (cj.mode as WidgetConfig['mode'])
+      : undefined;
   const normalizedType = normalizeWidgetTypeId(w.widget_id);
   return {
     id: `w-${w.id}`,
@@ -174,6 +178,7 @@ export function widgetFromBackend(w: WidgetConfigOut): WidgetConfig {
     ...(language !== undefined ? { language } : {}),
     ...(categories !== undefined ? { categories } : {}),
     ...(search !== undefined ? { search } : {}),
+    ...(mode !== undefined ? { mode } : {}),
   };
 }
 
@@ -208,6 +213,7 @@ export function widgetToBackend(w: WidgetConfig): WidgetConfigUpdate {
   if (w.language !== undefined) config_json.language = w.language;
   if (w.categories !== undefined) config_json.categories = w.categories;
   if (w.search !== undefined) config_json.search = w.search;
+  if (w.mode !== undefined) config_json.mode = w.mode;
   return {
     id: w.backendId ?? undefined,
     widget_id: widgetId,
