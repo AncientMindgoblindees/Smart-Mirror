@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-xdotool mousemove 0 0
 set -euo pipefail
 
 LOCKFILE="/tmp/smart_mirror.lock"
@@ -164,7 +163,7 @@ CHROMIUM_ARGS=(
 
   # Kiosk mode is more reliable than fullscreen
   --kiosk
-
+  --disable-features=HardwareCursors 
   # Prevent screen sleeping
   --disable-session-crashed-bubble
   --disable-infobars
