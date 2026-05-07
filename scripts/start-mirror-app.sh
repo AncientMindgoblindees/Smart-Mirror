@@ -29,8 +29,6 @@ MIRROR_CHROMIUM_USE_OZONE_PLATFORM="${MIRROR_CHROMIUM_USE_OZONE_PLATFORM:-0}"
 MIRROR_CHROMIUM_EXTRA_ARGS="${MIRROR_CHROMIUM_EXTRA_ARGS:-}"
 MIRROR_KIOSK="${MIRROR_KIOSK:-0}"
 MIRROR_TUNNEL_RESTART_DELAY_SEC="${MIRROR_TUNNEL_RESTART_DELAY_SEC:-5}"
-MIRROR_UI_WIDTH="${MIRROR_UI_WIDTH:-1440}"
-MIRROR_UI_HEIGHT="${MIRROR_UI_HEIGHT:-2560}"
 
 mkdir -p "${LOG_DIR}"
 
@@ -128,7 +126,6 @@ if ! curl -fsS "${URL}" >/dev/null 2>&1; then
   echo "Backend failed to start. See ${BACKEND_LOG_FILE}"
   exit 1
 fi
-
 if command -v chromium-browser >/dev/null 2>&1; then
   BROWSER_CMD="chromium-browser"
 elif command -v chromium >/dev/null 2>&1; then
@@ -138,35 +135,41 @@ else
   exit 1
 fi
 
+echo "Waiting for display initialization..."
+
+# Give labwc/Wayland time to initialize outputs
+sleep 3
+
+# Optional but highly recommended:
+# Wait until the monitor reports the expected resolution
+if command -v wlr-randr >/dev/null 2>&1; then
+  for _ in {1..20}; do
+    if wlr-randr | grep -q "1440x2560"; then
+      echo "Display mode detected."
+      break
+    fi
+    sleep 0.5
+  done
+fi
+
 CHROMIUM_ARGS=(
   --password-store="${MIRROR_CHROMIUM_PASSWORD_STORE}"
   --no-first-run
   --no-default-browser-check
-  --window-size="${MIRROR_UI_WIDTH},${MIRROR_UI_HEIGHT}"
+
+  # Native Wayland support
+  --enable-features=UseOzonePlatform
+  --ozone-platform=wayland
+
+  # Kiosk mode is more reliable than fullscreen
+  --kiosk
+
+  # Prevent screen sleeping
+  --disable-session-crashed-bubble
+  --disable-infobars
 )
 
-if [[ "${MIRROR_CHROMIUM_DISABLE_INFOBARS}" == "1" ]]; then
-  CHROMIUM_ARGS+=(--disable-infobars)
-fi
-
-if [[ "${MIRROR_KIOSK}" == "1" ]]; then
-  CHROMIUM_ARGS+=(--kiosk)
-else
-  CHROMIUM_WINDOW_FLAG="--start-fullscreen"
-  if [[ "${MIRROR_FULLSCREEN:-1}" != "1" ]]; then
-    CHROMIUM_WINDOW_FLAG="--start-maximized"
-  fi
-  CHROMIUM_ARGS+=("${CHROMIUM_WINDOW_FLAG}")
-fi
-
-if [[ "${MIRROR_CHROMIUM_USE_OZONE_PLATFORM}" == "1" ]]; then
-  CHROMIUM_ARGS+=(--enable-features=UseOzonePlatform)
-fi
-
-if [[ -n "${MIRROR_CHROMIUM_OZONE_PLATFORM}" ]]; then
-  CHROMIUM_ARGS+=(--ozone-platform="${MIRROR_CHROMIUM_OZONE_PLATFORM}")
-fi
-
+# Extra custom args from env
 if [[ -n "${MIRROR_CHROMIUM_EXTRA_ARGS}" ]]; then
   if ! mapfile -d '' -t CHROMIUM_EXTRA_ARGS < <(
     MIRROR_CHROMIUM_EXTRA_ARGS="${MIRROR_CHROMIUM_EXTRA_ARGS}" "${PYTHON}" -c 'import os, shlex, sys; args = shlex.split(os.environ["MIRROR_CHROMIUM_EXTRA_ARGS"]); sys.stdout.buffer.write(b"\0".join(arg.encode("utf-8") for arg in args)); sys.stdout.buffer.write(b"\0" if args else b"")'
@@ -174,11 +177,13 @@ if [[ -n "${MIRROR_CHROMIUM_EXTRA_ARGS}" ]]; then
     echo "Invalid MIRROR_CHROMIUM_EXTRA_ARGS. Use shell-style quoting."
     exit 1
   fi
+
   CHROMIUM_ARGS+=("${CHROMIUM_EXTRA_ARGS[@]}")
 fi
 
 CHROMIUM_ARGS+=("${URL}")
 
+echo "Launching Chromium..."
 "${BROWSER_CMD}" "${CHROMIUM_ARGS[@]}" &
 
 echo "Smart Mirror started."
