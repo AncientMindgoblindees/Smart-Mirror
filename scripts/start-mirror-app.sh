@@ -184,6 +184,14 @@ fi
 CHROMIUM_ARGS+=("${URL}")
 
 echo "Launching Chromium..."
+
+# Trigger a pointer movement to activate cursor hiding
+if command -v wmctrl >/dev/null 2>&1; then
+  # Move pointer to 0,0 before launching to pre-hide cursor
+  wmctrl -m >/dev/null 2>&1 && sleep 0.1
+fi
+
+# Small pause, then launch
 "${BROWSER_CMD}" "${CHROMIUM_ARGS[@]}" &
 
 echo "Smart Mirror started."
