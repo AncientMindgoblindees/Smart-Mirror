@@ -774,6 +774,7 @@ export default function MirrorApp() {
         void cancelPendingAuth();
       }
     },
+    isAuthOverlayOpen: () => Boolean(pendingAuth),
     getSleepMode: () => false,
     isMenuOpen: () => menuNavigation.isOpen,
     isInputBlocked: () => menuNavigation.isOpen,

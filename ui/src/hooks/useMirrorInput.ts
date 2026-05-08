@@ -22,6 +22,7 @@ export type MirrorInputActions = {
   toggleSleep: () => void;
   openMenu: () => void;
   dismissAuthOverlay: () => void;
+  isAuthOverlayOpen: () => boolean;
   getSleepMode: () => boolean;
   isMenuOpen: () => boolean;
   isInputBlocked?: () => boolean;
@@ -101,6 +102,10 @@ export function useMirrorInput(actions: MirrorInputActions) {
               dispatchMenuKey('ArrowDown');
               break;
             case 'menu_select':
+              if (ref.current.isAuthOverlayOpen()) {
+                ref.current.dismissAuthOverlay();
+                break;
+              }
               if (ref.current.isMenuOpen()) {
                 dispatchMenuKey('Enter');
               } else {
