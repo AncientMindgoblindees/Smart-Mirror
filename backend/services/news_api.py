@@ -17,7 +17,7 @@ THENEWSAPI_BASE = "https://api.thenewsapi.com/v1"
 
 _cache_lock = asyncio.Lock()
 _cache: dict[str, tuple[NewsFeedOut, float]] = {}
-CACHE_TTL_SEC = 300.0
+CACHE_TTL_SEC = 30 * 60.0
 
 
 def _category_label(categories: Any) -> str:

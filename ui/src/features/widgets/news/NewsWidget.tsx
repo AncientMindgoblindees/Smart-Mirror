@@ -6,7 +6,7 @@ import type { NewsHeadlineOut } from '@/api/backendTypes';
 import { estimatePageSize, useDisplayPagination } from '../useDisplayPagination';
 import './news-widget.css';
 
-const DEFAULT_FEED_CATEGORIES = ['general', 'tech', 'business'];
+const NEWS_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 const CATEGORY_LABELS: Record<string, string> = {
   business: 'Business',
   entertainment: 'Entertainment',
@@ -73,6 +73,7 @@ function parseCsv(value: string): string[] {
 
 function labelForFeed(category: string, search: string): string {
   if (category) {
+    if (category.includes(',')) return 'News';
     return CATEGORY_LABELS[category] ?? category.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
   if (search) return 'Search';
@@ -80,13 +81,12 @@ function labelForFeed(category: string, search: string): string {
 }
 
 function buildFeedRequests(categories: string, search: string): Array<{ id: string; label: string; categories: string }> {
-  const categoryList = parseCsv(categories);
-  const feedCategories = categoryList.length > 0 ? categoryList : search ? [''] : DEFAULT_FEED_CATEGORIES;
-  return feedCategories.map((category, index) => ({
-    id: category || `top-${index}`,
+  const category = parseCsv(categories).join(',');
+  return [{
+    id: category || (search ? 'search' : 'top'),
     label: labelForFeed(category, search),
     categories: category,
-  }));
+  }];
 }
 
 export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ config }) => {
@@ -163,7 +163,7 @@ export const NewsWidget: React.FC<{ config: WidgetConfig }> = React.memo(({ conf
   }, [loadNews]);
 
   useEffect(() => {
-    const id = window.setInterval(() => { void loadNews(); }, 5 * 60 * 1000);
+    const id = window.setInterval(() => { void loadNews(); }, NEWS_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [loadNews]);
 
