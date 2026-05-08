@@ -3,6 +3,18 @@ import ReactDOM from 'react-dom/client';
 import { AppRouter } from '@/app/AppRouter';
 import '@/index.css';
 
+const TRYON_STORAGE_KEYS = ['mirror:outfit-favorites', 'mirror:tryon-history'] as const;
+
+function clearTryOnBrowserState() {
+  try {
+    for (const key of TRYON_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore storage access failures in restricted browser contexts.
+  }
+}
+
 // Hide cursor immediately
 document.documentElement.style.cursor = "none";
 document.body.style.cursor = "none";
@@ -23,6 +35,8 @@ setTimeout(() => {
   document.body.style.cursor = "none";
   if (root) root.style.cursor = "none";
 }, 0);
+
+clearTryOnBrowserState();
 
 // Then render your app
 ReactDOM.createRoot(document.getElementById('root')!).render(
